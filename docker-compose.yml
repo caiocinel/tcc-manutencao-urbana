@@ -9,10 +9,10 @@ services:
       - "3000:80"
     depends_on:
       - backend
-    environment:
-      - NODE_ENV=production
     networks:
       - app-network
+    mem_limit: 50m
+    restart: unless-stopped
 
   backend:
     build:
@@ -22,26 +22,30 @@ services:
       - "5000:5000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://postgres:CHANGEME@db:5432/manutencao_urbana
-      - JWT_SECRET=CHANGEME
+      - MONGODB_URI=mongodb://mongo:27017/manutencao_urbana
+      - JWT_SECRET=admin
+      - FRONTEND_URL=http://localhost:3000
+      - IA_URL=http://ia:8000
     depends_on:
-      - db
+      - mongo
     networks:
       - app-network
+    mem_limit: 100m
+    restart: unless-stopped
 
-  db:
-    image: postgis/postgis:13-master
+  mongo:
+    image: mongo:7
     environment:
-      - POSTGRES_DB=manutencao_urbana
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=CHANGEME
+      - MONGO_INITDB_DATABASE=manutencao_urbana
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - mongo_data:/data/db
     ports:
-      - "5432:5432"
+      - "27017:27017"
     networks:
       - app-network
+    mem_limit: 128m
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.1", "--quiet"]
 
   ia:
     build:
@@ -51,11 +55,17 @@ services:
       - "8000:8000"
     environment:
       - PYTHON_ENV=production
+      - CLASSIFICATION_API_KEY=${HUGGINGFACE_API_TOKEN:-}
+      - CLASSIFICATION_API_URL=${CLASSIFICATION_API_URL:-https://api-inference.huggingface.co/models/facebook/bart-large-mnli}
+      - CLASSIFICATION_FORMAT=${CLASSIFICATION_FORMAT:-huggingface}
+      - CLASSIFICATION_CATEGORIES=${CLASSIFICATION_CATEGORIES:-Buraco,Iluminação,Semáforo,Árvore Caída,Outro}
     networks:
       - app-network
+    mem_limit: 50m
+    restart: unless-stopped
 
 volumes:
-  postgres_data:
+  mongo_data:
 
 networks:
   app-network:

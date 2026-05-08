@@ -1,37 +1,42 @@
+// Rotas de defeitos (CRUD + upload de imagem)
 const express = require('express');
-const { Pool } = require('pg');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+const jwt = require('jsonwebtoken');
+const axios = require('axios');
+const Defeito = require('../models/Defeito');
+const User = require('../models/User');
+const { apiLimiter } = require('../middleware/rateLimit');
+const { compressImage } = require('../middleware/imageProcessor');
 
 const router = express.Router();
 
-// Configuração do multer para upload de imagens
-const storage = multer.disk_storage({
+// Configura o multer para salvar arquivos em /uploads
+const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+
+const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + path.extname(file.originalname));
-  }
+  },
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
-// Configuração do banco de dados
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-// Middleware para verificar token JWT
+// Middleware de autenticação JWT
 const authenticateToken = (req, res, next) => {
-  const token = req.header('Authorization');
-  
-  if (!token) {
+  // Verifica se o token de autenticação foi fornecido
+  const header = req.header('Authorization');
+  if (!header) {
     return res.status(401).json({ error: 'Acesso negado' });
   }
-  
+
   try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET);
+    // Valida o token JWT
+    const verified = jwt.verify(header, process.env.JWT_SECRET);
     req.user = verified;
     next();
   } catch (error) {
@@ -39,109 +44,129 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-// Criar diretório de uploads se não existir
-const fs = require('fs');
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
+// Rate limit por usuário: máximo 10 requisições por hora
+const checkUserRateLimit = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) return res.status(401).json({ error: 'Usuário não encontrado' });
+
+    const now = new Date();
+    // Reseta o contador se passou 1 hora
+    if (now - user.requestsResetAt > 60 * 60 * 1000) {
+      user.requestsCount = 0;
+      user.requestsResetAt = now;
+    }
+
+    if (user.requestsCount >= 10) {
+      return res.status(429).json({ error: 'Limite de requisições excedido. Aguarde 1 hora.' });
+    }
+
+    user.requestsCount += 1;
+    await user.save();
+    next();
+  } catch (error) {
+    console.error('Erro no rate limit:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+};
+
+// Garante que a pasta de uploads existe
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Endpoint para criar defeito
-router.post('/', authenticateToken, upload.single('imagem'), async (req, res) => {
+// POST /api/defeitos - Cria novo defeito (autenticado, com foto opcional)
+router.post('/', authenticateToken, checkUserRateLimit, apiLimiter, upload.single('imagem'), compressImage, async (req, res) => {
   try {
     const { titulo, descricao, latitude, longitude } = req.body;
-    const usuario_id = req.user.userId;
-    
-    // Validar coordenadas
+
     if (!latitude || !longitude) {
       return res.status(400).json({ error: 'Latitude e longitude são obrigatórios' });
     }
-    
-    // Criar ponto geográfico
-    const localizacao = `POINT(${longitude} ${latitude})`;
-    
-    // Caminho da imagem
+
     const imagem_url = req.file ? `/uploads/${req.file.filename}` : null;
-    
-    // Inserir defeito no banco
-    const result = await pool.query(
-      `INSERT INTO defeitos (usuario_id, titulo, descricao, localizacao, imagem_url)
-       VALUES ($1, $2, $3, ST_GeomFromText($4, 4326), $5)
-       RETURNING id, titulo, descricao, ST_AsText(localizacao) as localizacao, imagem_url, status, criado_em`,
-      [usuario_id, titulo, descricao, localizacao, imagem_url]
-    );
-    
-    // Chamar serviço de IA para classificação
-    // (implementação futura)
-    
-    res.status(201).json(result.rows[0]);
+
+    const defeito = await Defeito.create({
+      usuario: req.user.userId,
+      titulo,
+      descricao,
+      localizacao: {
+        type: 'Point',
+        coordinates: [parseFloat(longitude), parseFloat(latitude)],
+      },
+      imagem_url,
+    });
+
+    // Tenta classificar automaticamente via IA (falha silenciosa se indisponível)
+    try {
+      const iaUrl = process.env.IA_URL || 'http://localhost:8000';
+      const response = await axios.post(`${iaUrl}/classify`, {
+        text: descricao,
+      }, { timeout: 10000 });
+
+      defeito.categoria = response.data.category;
+      await defeito.save();
+    } catch (error) {
+      console.error('Erro ao classificar com IA:', error.message);
+    }
+
+    res.status(201).json(defeito);
   } catch (error) {
     console.error('Erro ao criar defeito:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// Endpoint para listar defeitos
+// GET /api/defeitos - Lista todos os defeitos (público)
 router.get('/', async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT id, titulo, descricao, ST_AsText(localizacao) as localizacao, imagem_url, status, criado_em
-       FROM defeitos ORDER BY criado_em DESC`
-    );
-    
-    res.json(result.rows);
+    const defeitos = await Defeito.find()
+      .populate('usuario', 'nome email')
+      .sort({ criado_em: -1 });
+    res.json(defeitos);
   } catch (error) {
     console.error('Erro ao listar defeitos:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// Endpoint para obter defeito por ID
+// GET /api/defeitos/:id - Detalhe de um defeito (público)
 router.get('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const result = await pool.query(
-      `SELECT id, titulo, descricao, ST_AsText(localizacao) as localizacao, imagem_url, status, criado_em
-       FROM defeitos WHERE id = $1`,
-      [id]
-    );
-    
-    if (result.rows.length === 0) {
+    const defeito = await Defeito.findById(req.params.id)
+      .populate('usuario', 'nome email');
+
+    if (!defeito) {
       return res.status(404).json({ error: 'Defeito não encontrado' });
     }
-    
-    res.json(result.rows[0]);
+
+    res.json(defeito);
   } catch (error) {
     console.error('Erro ao obter defeito:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// Endpoint para atualizar defeito (admin)
-router.patch('/:id', authenticateToken, async (req, res) => {
+// PATCH /api/defeitos/:id - Atualiza status do defeito (admin only)
+router.patch('/:id', authenticateToken, apiLimiter, async (req, res) => {
   try {
-    // Verificar se usuário é admin
-    const userResult = await pool.query(
-      'SELECT admin FROM usuarios WHERE id = $1',
-      [req.user.userId]
-    );
-    
-    if (userResult.rows.length === 0 || !userResult.rows[0].admin) {
+    const user = await User.findById(req.user.userId);
+    if (!user || !user.admin) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
-    
-    const { id } = req.params;
+
     const { status } = req.body;
-    
-    const result = await pool.query(
-      'UPDATE defeitos SET status = $1, atualizado_em = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
-      [status, id]
+    const defeito = await Defeito.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
     );
-    
-    if (result.rows.length === 0) {
+
+    if (!defeito) {
       return res.status(404).json({ error: 'Defeito não encontrado' });
     }
-    
-    res.json(result.rows[0]);
+
+    res.json(defeito);
   } catch (error) {
     console.error('Erro ao atualizar defeito:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });

@@ -1,18 +1,15 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Copiar package.json e package-lock.json
 COPY package*.json ./
 
-# Instalar dependências
-RUN npm install
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+  && npm install --omit=optional --omit=dev \
+  && apk del .build-deps
 
-# Copiar o restante dos arquivos
 COPY . .
 
-# Expor porta
 EXPOSE 5000
 
-# Comando para rodar a aplicação
-CMD ["node", "src/server.js"]
+CMD ["node", "--max-old-space-size=150", "index.js"]
