@@ -15,7 +15,7 @@ const generateCsrfToken = (req, res, next) => {
     res.cookie(SESSION_COOKIE, sessionId, {
       httpOnly: true,       // Invisível para JavaScript
       sameSite: 'strict',   // Protege contra ataques de outro site
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production' || !!process.env.HTTPS,
       path: '/',
     });
   }
@@ -24,8 +24,8 @@ const generateCsrfToken = (req, res, next) => {
   const token = crypto.randomBytes(32).toString('hex');
   res.cookie(TOKEN_COOKIE, token, {
     httpOnly: false,
-    sameSite: 'strict',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+    secure: process.env.NODE_ENV === 'production' || !!process.env.HTTPS,
     path: '/',
   });
   req.csrfToken = token;

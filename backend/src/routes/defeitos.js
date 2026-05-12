@@ -1,4 +1,3 @@
-// Rotas de defeitos (CRUD + upload de imagem)
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -7,12 +6,15 @@ const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const Defeito = require('../models/Defeito');
 const User = require('../models/User');
+const Apoio = require('../models/Apoio');
+const { query } = require('../config/database');
+const { notifyUser } = require('../services/push');
 const { apiLimiter } = require('../middleware/rateLimit');
 const { compressImage } = require('../middleware/imageProcessor');
+const logger = require('../services/logger');
 
 const router = express.Router();
 
-// Configura o multer para salvar arquivos em /uploads
 const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
 
 const storage = multer.diskStorage({
@@ -24,18 +26,39 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Formato de imagem não suportado. Use JPEG, PNG, WebP, GIF ou AVIF.'));
+    }
+  },
+});
 
-// Middleware de autenticação JWT
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'Arquivo muito grande. Máximo 5MB.' });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  if (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  next();
+};
+
 const authenticateToken = (req, res, next) => {
-  // Verifica se o token de autenticação foi fornecido
   const header = req.header('Authorization');
   if (!header) {
     return res.status(401).json({ error: 'Acesso negado' });
   }
 
   try {
-    // Valida o token JWT
     const verified = jwt.verify(header, process.env.JWT_SECRET);
     req.user = verified;
     next();
@@ -44,14 +67,27 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-// Rate limit por usuário: máximo 10 requisições por hora
+const requireEmailVerified = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) return res.status(401).json({ error: 'Usuário não encontrado' });
+    if (user.admin) return next();
+    if (!user.email_verificado) {
+      return res.status(403).json({ error: 'Verifique seu email antes de criar um chamado' });
+    }
+    next();
+  } catch (error) {
+    logger.error({ err: error }, 'Erro ao verificar email');
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+};
+
 const checkUserRateLimit = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(401).json({ error: 'Usuário não encontrado' });
 
     const now = new Date();
-    // Reseta o contador se passou 1 hora
     if (now - user.requestsResetAt > 60 * 60 * 1000) {
       user.requestsCount = 0;
       user.requestsResetAt = now;
@@ -65,24 +101,39 @@ const checkUserRateLimit = async (req, res, next) => {
     await user.save();
     next();
   } catch (error) {
-    console.error('Erro no rate limit:', error);
+    logger.error({ err: error }, 'Erro no rate limit');
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 };
 
-// Garante que a pasta de uploads existe
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// POST /api/defeitos - Cria novo defeito (autenticado, com foto opcional)
-router.post('/', authenticateToken, checkUserRateLimit, apiLimiter, upload.single('imagem'), compressImage, async (req, res) => {
+router.post('/', authenticateToken, requireEmailVerified, checkUserRateLimit, apiLimiter, upload.single('imagem'), handleMulterError, compressImage, async (req, res) => {
   try {
-    const { titulo, descricao, latitude, longitude } = req.body;
+    const { titulo, descricao, latitude, longitude, rua, bairro, categoria } = req.body;
 
     if (!latitude || !longitude) {
       return res.status(400).json({ error: 'Latitude e longitude são obrigatórios' });
     }
+    if (!descricao || descricao.trim().length < 20) {
+      return res.status(400).json({ error: 'Descreva o problema em detalhes (mínimo 20 caracteres)' });
+    }
+    if (!categoria) {
+      return res.status(400).json({ error: 'Selecione uma categoria' });
+    }
+
+    const { rows: catRows } = await query(
+      'SELECT prioridade_base, prazo_sla_dias FROM categorias WHERE nome = $1',
+      [categoria]
+    );
+    if (!catRows[0]) {
+      return res.status(400).json({ error: 'Categoria inválida' });
+    }
+
+    const prioridade = catRows[0].prioridade_base;
+    const previsao_conclusao = new Date(Date.now() + catRows[0].prazo_sla_dias * 24 * 60 * 60 * 1000).toISOString();
 
     const imagem_url = req.file ? `/uploads/${req.file.filename}` : null;
 
@@ -90,47 +141,253 @@ router.post('/', authenticateToken, checkUserRateLimit, apiLimiter, upload.singl
       usuario: req.user.userId,
       titulo,
       descricao,
-      localizacao: {
-        type: 'Point',
-        coordinates: [parseFloat(longitude), parseFloat(latitude)],
-      },
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
+      rua: rua || null,
+      bairro: bairro || null,
+      categoria,
+      prioridade,
+      previsao_conclusao,
       imagem_url,
+      imagem_thumbnail: req.file?.thumbnailBlob || null,
     });
 
-    // Tenta classificar automaticamente via IA (falha silenciosa se indisponível)
+    let iaSugestao = null;
     try {
       const iaUrl = process.env.IA_URL || 'http://localhost:8000';
       const response = await axios.post(`${iaUrl}/classify`, {
         text: descricao,
       }, { timeout: 10000 });
 
-      defeito.categoria = response.data.category;
-      await defeito.save();
+      const iaCategory = response.data.category;
+      const confidence = response.data.confidence;
+
+      if (iaCategory && iaCategory !== categoria && confidence > 0.5) {
+        iaSugestao = { categoria: iaCategory, confianca: confidence };
+      }
     } catch (error) {
-      console.error('Erro ao classificar com IA:', error.message);
+      logger.error({ err: error.message }, 'Erro ao classificar com IA');
     }
 
-    res.status(201).json(defeito);
+    const responseData = { ...defeito };
+    if (iaSugestao) responseData.categoria_sugerida_ia = iaSugestao;
+
+    res.status(201).json(responseData);
   } catch (error) {
-    console.error('Erro ao criar defeito:', error);
+    logger.error({ err: error }, 'Erro ao criar defeito');
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// GET /api/defeitos - Lista todos os defeitos (público)
+const PESO_PRIORIDADE = { alta: 10, media: 6, baixa: 2 };
+
+function calcularScoreUrgencia(d) {
+  const pesoCat = PESO_PRIORIDADE[d.prioridade] || 6;
+  const diasEspera = Math.max(0, (Date.now() - new Date(d.criado_em).getTime()) / (24 * 60 * 60 * 1000));
+  const apoios = d.apoios_total || 0;
+  return Math.round((pesoCat * 0.6) + (Math.min(diasEspera, 30) * 0.3) + (Math.min(apoios, 20) * 0.1));
+}
+
 router.get('/', async (req, res) => {
   try {
-    const defeitos = await Defeito.find()
+    const filter = {};
+    const { dias, ordenar, status } = req.query;
+    if (status) {
+      const statusList = status.split(',').map(s => s.trim());
+      filter.status = statusList.length === 1 ? statusList[0] : statusList;
+    }
+    let defeitos = await Defeito.find(filter)
+      .populate('usuario', 'nome email')
+      .sort({ criado_em: -1 });
+    if (dias) {
+      const cutoff = new Date(Date.now() - parseInt(dias) * 24 * 60 * 60 * 1000);
+      defeitos = defeitos.filter(d => new Date(d.criado_em) >= cutoff);
+    }
+
+    const defeitoIds = defeitos.map(d => d.id);
+    const apoioCounts = await Apoio.countsByDefeitos(defeitoIds);
+    for (const d of defeitos) {
+      d.apoios_total = apoioCounts[d.id] || 0;
+    }
+
+    const authHeader = req.header('Authorization');
+    let usuarioApoios = {};
+    if (authHeader) {
+      try {
+        const verified = jwt.verify(authHeader, process.env.JWT_SECRET);
+        usuarioApoios = await Apoio.hasApoiadoMany(verified.userId, defeitoIds);
+      } catch {}
+      for (const d of defeitos) {
+        d.usuario_apoiou = !!usuarioApoios[d.id];
+      }
+    }
+
+    for (const d of defeitos) {
+      d.score_urgencia = calcularScoreUrgencia(d);
+    }
+
+    if (ordenar === 'score') {
+      defeitos.sort((a, b) => (b.score_urgencia || 0) - (a.score_urgencia || 0));
+    }
+
+    res.json(defeitos);
+  } catch (error) {
+    logger.error({ err: error }, 'Erro ao listar defeitos');
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.get('/meus', authenticateToken, async (req, res) => {
+  try {
+    const defeitos = await Defeito.find({ usuario: req.user.userId })
       .populate('usuario', 'nome email')
       .sort({ criado_em: -1 });
     res.json(defeitos);
   } catch (error) {
-    console.error('Erro ao listar defeitos:', error);
+    logger.error({ err: error }, 'Erro ao listar meus defeitos');
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// GET /api/defeitos/:id - Detalhe de um defeito (público)
+router.get('/regioes', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user || !user.admin) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+
+    const rf = {};
+    const { dias, status: rStatus } = req.query;
+    if (rStatus) {
+      const statusList = rStatus.split(',').map(s => s.trim());
+      rf.status = statusList.length === 1 ? statusList[0] : statusList;
+    }
+    let todos = await Defeito.find(rf).populate('usuario', 'nome email');
+    if (dias) {
+      const cutoff = new Date(Date.now() - parseInt(dias) * 24 * 60 * 60 * 1000);
+      todos = todos.filter(d => new Date(d.criado_em) >= cutoff);
+    }
+
+    const clusters = clusterizarDefeitos(todos);
+    res.json(clusters);
+  } catch (error) {
+    logger.error({ err: error }, 'Erro ao agrupar regiões');
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+function clusterizarDefeitos(lista, raio = 0.005) {
+  const clusters = [];
+  const visitados = new Set();
+  for (const d of lista) {
+    if (visitados.has(d.id) || !d.latitude || !d.longitude) continue;
+    const grupo = [];
+    for (const outro of lista) {
+      if (visitados.has(outro.id) || !outro.latitude || !outro.longitude) continue;
+      const dist = Math.sqrt(
+        Math.pow(d.latitude - outro.latitude, 2) +
+        Math.pow(d.longitude - outro.longitude, 2)
+      );
+      if (dist < raio) {
+        grupo.push(outro);
+        visitados.add(outro.id);
+      }
+    }
+    if (grupo.length > 0) {
+      const centroLat = grupo.reduce((s, x) => s + x.latitude, 0) / grupo.length;
+      const centroLng = grupo.reduce((s, x) => s + x.longitude, 0) / grupo.length;
+      const comImagem = grupo.filter(x => x.imagem_url).length;
+      const statusCount = {};
+      for (const g of grupo) {
+        statusCount[g.status] = (statusCount[g.status] || 0) + 1;
+      }
+      clusters.push({
+        id: grupo.map(x => x.id).join(','),
+        centro: { latitude: centroLat, longitude: centroLng },
+        total: grupo.length,
+        com_imagem: comImagem,
+        status: statusCount,
+        defeitos: grupo.slice(0, 20),
+      });
+    }
+  }
+  clusters.sort((a, b) => b.total - a.total);
+  return clusters;
+}
+
+router.get('/clusters', async (req, res) => {
+  try {
+    const filter = {};
+    const { status, usuario, dias } = req.query;
+    if (status) {
+      const statusList = status.split(',').map(s => s.trim());
+      filter.status = statusList.length === 1 ? statusList[0] : statusList;
+    }
+    if (usuario) filter.usuario = usuario;
+    let todos = await Defeito.find(filter).populate('usuario', 'nome email');
+    if (dias) {
+      const cutoff = new Date(Date.now() - parseInt(dias) * 24 * 60 * 60 * 1000);
+      todos = todos.filter(d => new Date(d.criado_em) >= cutoff);
+    }
+
+    const defeitoIds = todos.map(d => d.id);
+    const apoioCounts = await Apoio.countsByDefeitos(defeitoIds);
+    for (const d of todos) {
+      d.apoios_total = apoioCounts[d.id] || 0;
+    }
+    const authHeader = req.header('Authorization');
+    let usuarioApoios = {};
+    if (authHeader) {
+      try {
+        const verified = jwt.verify(authHeader, process.env.JWT_SECRET);
+        usuarioApoios = await Apoio.hasApoiadoMany(verified.userId, defeitoIds);
+      } catch {}
+      for (const d of todos) {
+        d.usuario_apoiou = !!usuarioApoios[d.id];
+      }
+    }
+
+    const clusters = clusterizarDefeitos(todos);
+    res.json(clusters);
+  } catch (error) {
+    logger.error({ err: error }, 'Erro ao clusterizar');
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.post('/encerrar-lote', authenticateToken, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Lista de IDs inválida' });
+    }
+    const now = new Date().toISOString();
+    let count = 0;
+    for (const id of ids) {
+      const result = await Defeito.findByIdAndUpdate(id, { status: 'encerrado', atendido_em: now });
+      if (result) count++;
+    }
+    res.json({ message: `${count} chamado(s) encerrado(s)`, encerrados: count });
+  } catch (error) {
+    logger.error({ err: error }, 'Erro ao encerrar lote');
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.post('/:id/apoiar', authenticateToken, async (req, res) => {
+  try {
+    const defeito = await Defeito.findById(req.params.id);
+    if (!defeito) return res.status(404).json({ error: 'Defeito não encontrado' });
+    const result = await Apoio.toggle(req.user.userId, req.params.id);
+    result.total = await Apoio.countByDefeito(req.params.id);
+    result.apoiado = await Apoio.hasApoiado(req.user.userId, req.params.id);
+    res.json(result);
+  } catch (error) {
+    logger.error({ err: error }, 'Erro ao alternar apoio');
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const defeito = await Defeito.findById(req.params.id)
@@ -140,14 +397,25 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Defeito não encontrado' });
     }
 
+    defeito.apoios_total = await Apoio.countByDefeito(req.params.id);
+
+    const authHeader = req.header('Authorization');
+    if (authHeader) {
+      try {
+        const verified = jwt.verify(authHeader, process.env.JWT_SECRET);
+        defeito.usuario_apoiou = await Apoio.hasApoiado(verified.userId, req.params.id);
+      } catch {
+        defeito.usuario_apoiou = false;
+      }
+    }
+
     res.json(defeito);
   } catch (error) {
-    console.error('Erro ao obter defeito:', error);
+    logger.error({ err: error }, 'Erro ao obter defeito');
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// PATCH /api/defeitos/:id - Atualiza status do defeito (admin only)
 router.patch('/:id', authenticateToken, apiLimiter, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
@@ -155,20 +423,84 @@ router.patch('/:id', authenticateToken, apiLimiter, async (req, res) => {
       return res.status(403).json({ error: 'Acesso negado' });
     }
 
-    const { status } = req.body;
+    const oldDefeito = await Defeito.findById(req.params.id);
+    if (!oldDefeito) {
+      return res.status(404).json({ error: 'Defeito não encontrado' });
+    }
+
+    const { status, prioridade } = req.body;
+    const update = {};
+    if (status) update.status = status;
+    if (prioridade) update.prioridade = prioridade;
+
     const defeito = await Defeito.findByIdAndUpdate(
       req.params.id,
-      { status },
+      update,
       { new: true }
     );
 
-    if (!defeito) {
-      return res.status(404).json({ error: 'Defeito não encontrado' });
+    if (status && status !== oldDefeito.status) {
+      const statusLabels = { pendente: 'Pendente', em_andamento: 'Em Andamento', atendido: 'Atendido', encerrado: 'Encerrado' };
+      notifyUser(
+        defeito.usuario,
+        'Status atualizado',
+        `Seu chamado "${defeito.titulo}" mudou para: ${statusLabels[status] || status}`,
+        '/'
+      ).catch(() => {});
     }
 
     res.json(defeito);
   } catch (error) {
-    console.error('Erro ao atualizar defeito:', error);
+    logger.error({ err: error }, 'Erro ao atualizar defeito');
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.patch('/:id/anexar', authenticateToken, upload.single('imagem'), handleMulterError, compressImage, async (req, res) => {
+  try {
+    const { rows: defeitoRows } = await query('SELECT * FROM defeitos WHERE id = $1', [req.params.id]);
+    const defeitoRow = defeitoRows[0];
+    if (!defeitoRow) return res.status(404).json({ error: 'Defeito não encontrado' });
+
+    if (defeitoRow.status !== 'pendente') {
+      return res.status(400).json({ error: 'Apenas chamados pendentes podem receber anexos.' });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) return res.status(403).json({ error: 'Acesso negado' });
+
+    const { atualizacao } = req.body;
+
+    const imagensExtra = JSON.parse(defeitoRow.imagens_extra || '[]');
+    const totalImagens = (defeitoRow.imagem_url ? 1 : 0) + imagensExtra.length;
+
+    if (req.file && totalImagens >= 3) {
+      return res.status(400).json({ error: 'Limite máximo de 3 imagens por chamado atingido.' });
+    }
+
+    if (req.file) {
+      const novaImagem = `/uploads/${req.file.filename}`;
+      imagensExtra.push(novaImagem);
+    }
+
+    const atualizacoes = JSON.parse(defeitoRow.atualizacoes || '[]');
+    if (atualizacao && atualizacao.trim()) {
+      atualizacoes.push({
+        texto: atualizacao.trim(),
+        usuario: user.nome || user.email,
+        criado_em: new Date().toISOString(),
+      });
+    }
+
+    await query(
+      'UPDATE defeitos SET imagens_extra = $1, atualizacoes = $2, atualizado_em = $3 WHERE id = $4',
+      [JSON.stringify(imagensExtra), JSON.stringify(atualizacoes), new Date().toISOString(), req.params.id]
+    );
+
+    const updated = await Defeito.findById(req.params.id).populate('usuario', 'nome email');
+    res.json(updated);
+  } catch (error) {
+    logger.error({ err: error }, 'Erro ao anexar ao defeito');
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });

@@ -1,45 +1,49 @@
-// Modelo de Defeito - abstrai operações na tabela defeitos
 const crypto = require('crypto');
-const { db } = require('../config/database');
+const { query } = require('../config/database');
 
-// Prepared statements para consultas frequentes
-const userStmt = db.prepare('SELECT id, nome, email, admin FROM users WHERE id = ?');
-const insertStmt = db.prepare(`INSERT INTO defeitos
-  (id, usuario, titulo, descricao, latitude, longitude, imagem_url, categoria, status, criado_em, atualizado_em)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-const findStmt = db.prepare('SELECT * FROM defeitos ORDER BY criado_em DESC');
-const findByIdStmt = db.prepare('SELECT * FROM defeitos WHERE id = ?');
-const updateStmt = db.prepare(`UPDATE defeitos SET titulo = ?, descricao = ?, latitude = ?, longitude = ?, imagem_url = ?, categoria = ?, status = ?, atualizado_em = ? WHERE id = ?`);
-
-// Converte linha do SQLite em objeto com métodos
 function toDefeito(row) {
   if (!row) return null;
+  const rawBlob = row.imagem_thumbnail && row.imagem_thumbnail instanceof Buffer
+    ? row.imagem_thumbnail : null;
+  const thumbnailBase64 = rawBlob
+    ? `data:image/webp;base64,${rawBlob.toString('base64')}` : null;
   return {
     _id: row.id, id: row.id, usuario: row.usuario,
     titulo: row.titulo, descricao: row.descricao,
-    localizacao: row.latitude != null ? {
-      type: 'Point',
-      coordinates: [row.longitude, row.latitude],
-    } : null,
     latitude: row.latitude, longitude: row.longitude,
+    rua: row.rua, bairro: row.bairro,
     imagem_url: row.imagem_url, categoria: row.categoria,
-    status: row.status, criado_em: row.criado_em, atualizado_em: row.atualizado_em,
+    status: row.status, prioridade: row.prioridade,
+    previsao_conclusao: row.previsao_conclusao,
+    atendido_em: row.atendido_em, usuario_email: row.usuario_email,
+    imagem_thumbnail: thumbnailBase64,
+    _imagem_thumbnail: rawBlob,
+    imagens_extra: JSON.parse(row.imagens_extra || '[]'),
+    atualizacoes: JSON.parse(row.atualizacoes || '[]'),
+    criado_em: row.criado_em, atualizado_em: row.atualizado_em,
     async save() {
       const now = new Date().toISOString();
-      updateStmt.run(
-        this.titulo, this.descricao, this.latitude, this.longitude,
-        this.imagem_url, this.categoria, this.status, now, this._id
+      await query(
+        `UPDATE defeitos SET titulo = $1, descricao = $2, latitude = $3, longitude = $4,
+         rua = $5, bairro = $6, imagem_url = $7, categoria = $8, status = $9,
+         prioridade = $10, previsao_conclusao = $11, atendido_em = $12,
+         imagem_thumbnail = $13, atualizado_em = $14 WHERE id = $15`,
+        [this.titulo, this.descricao, this.latitude, this.longitude,
+         this.rua, this.bairro, this.imagem_url, this.categoria, this.status,
+         this.prioridade, this.previsao_conclusao, this.atendido_em,
+         this._imagem_thumbnail || null, now, this._id]
       );
     },
   };
 }
 
-// Popula um campo referenciando outro documento (ex: usuario -> User)
-function populateField(docs, field, select) {
+async function populateField(docs, field, select) {
+  if (!select) return docs;
   const list = Array.isArray(docs) ? docs : [docs];
   for (const doc of list) {
     if (doc && doc[field]) {
-      const ref = userStmt.get(doc[field]);
+      const { rows } = await query('SELECT id, nome, email, admin FROM users WHERE id = $1', [doc[field]]);
+      const ref = rows[0];
       if (ref) {
         const fields = select.split(' ');
         const populated = { _id: ref.id, id: ref.id };
@@ -53,10 +57,11 @@ function populateField(docs, field, select) {
   return docs;
 }
 
-// Query builder para listar defeitos com filtro, ordenação e populate
+const allowedCols = ['id', 'usuario', 'titulo', 'descricao', 'latitude', 'longitude', 'rua', 'bairro', 'categoria', 'status', 'prioridade', 'criado_em', 'atualizado_em', 'usuario_email'];
+
 class DefeitoQuery {
-  constructor(query) {
-    this._query = query;
+  constructor(filters) {
+    this._filters = filters;
     this._sortObj = {};
     this._populateOpts = null;
   }
@@ -71,17 +76,25 @@ class DefeitoQuery {
     return this;
   }
 
-  exec() {
+  async exec() {
     let sql = 'SELECT * FROM defeitos';
     const params = [];
-
     const where = [];
-    if (this._query && Object.keys(this._query).length > 0) {
-      for (const [key, val] of Object.entries(this._query)) {
-        where.push(`${key} = ?`);
-        params.push(val);
+
+    if (this._filters && Object.keys(this._filters).length > 0) {
+      for (const [key, val] of Object.entries(this._filters)) {
+        if (!allowedCols.includes(key)) continue;
+        if (Array.isArray(val)) {
+          const placeholders = val.map((_, i) => `$${params.length + i + 1}`).join(',');
+          where.push(`${key} IN (${placeholders})`);
+          params.push(...val);
+        } else {
+          params.push(val);
+          where.push(`${key} = $${params.length}`);
+        }
       }
     }
+
     if (where.length > 0) sql += ' WHERE ' + where.join(' AND ');
 
     const keys = Object.keys(this._sortObj);
@@ -95,26 +108,21 @@ class DefeitoQuery {
       sql += ' ORDER BY criado_em DESC';
     }
 
-    const rows = db.prepare(sql).all(...params);
+    const { rows } = await query(sql, params);
     const docs = rows.map(toDefeito);
 
     if (this._populateOpts) {
-      populateField(docs, this._populateOpts.field, this._populateOpts.select);
+      await populateField(docs, this._populateOpts.field, this._populateOpts.select);
     }
 
     return docs;
   }
 
   then(resolve, reject) {
-    try {
-      resolve(this.exec());
-    } catch (e) {
-      reject(e);
-    }
+    this.exec().then(resolve).catch(reject);
   }
 }
 
-// Query builder para buscar um único defeito por ID
 class SingleDefeitoQuery {
   constructor(id) {
     this._id = id;
@@ -126,67 +134,90 @@ class SingleDefeitoQuery {
     return this;
   }
 
-  exec() {
-    const doc = toDefeito(findByIdStmt.get(this._id));
+  async exec() {
+    const { rows } = await query('SELECT * FROM defeitos WHERE id = $1', [this._id]);
+    const doc = toDefeito(rows[0]);
     if (doc && this._populateOpts) {
-      populateField([doc], this._populateOpts.field, this._populateOpts.select);
+      await populateField([doc], this._populateOpts.field, this._populateOpts.select);
     }
     return doc;
   }
 
   then(resolve, reject) {
-    try {
-      resolve(this.exec());
-    } catch (e) {
-      reject(e);
-    }
+    this.exec().then(resolve).catch(reject);
   }
 }
 
 const Defeito = {
-  // Inicia query com filtro opcional
-  find(query = {}) {
-    return new DefeitoQuery(query);
+  find(filters = {}) {
+    return new DefeitoQuery(filters);
   },
 
-  // Busca por ID
   findById(id) {
     return new SingleDefeitoQuery(id);
   },
 
-  // Cria novo defeito com UUID e timestamps
   async create(data) {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const status = data.status || 'pendente';
-    const coord = data.localizacao && data.localizacao.coordinates;
-    const lng = coord ? coord[0] : null;
-    const lat = coord ? coord[1] : (data.latitude || null);
+    const prioridade = data.prioridade || 'media';
+    const lat = data.latitude != null ? data.latitude : null;
+    const lng = data.longitude != null ? data.longitude : null;
+    const previsao = data.previsao_conclusao || null;
 
-    insertStmt.run(
-      id, data.usuario, data.titulo, data.descricao || null,
-      lat, lng, data.imagem_url || null, data.categoria || null,
-      status, now, now
+    await query(
+      `INSERT INTO defeitos (id, usuario, titulo, descricao, latitude, longitude, rua, bairro, imagem_url, categoria, status, prioridade, previsao_conclusao, criado_em, atualizado_em, imagem_thumbnail, imagens_extra, atualizacoes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+      [id, data.usuario, data.titulo, data.descricao || null,
+       lat, lng, data.rua || null, data.bairro || null,
+       data.imagem_url || null, data.categoria || null,
+       status, prioridade, previsao, now, now, data.imagem_thumbnail || null,
+       JSON.stringify(data.imagens_extra || []), JSON.stringify(data.atualizacoes || [])]
     );
+
     return toDefeito({
       id, usuario: data.usuario, titulo: data.titulo, descricao: data.descricao,
-      latitude: lat, longitude: lng, imagem_url: data.imagem_url,
-      categoria: data.categoria, status, criado_em: now, atualizado_em: now,
+      latitude: lat, longitude: lng, rua: data.rua || null, bairro: data.bairro || null,
+      imagem_url: data.imagem_url, categoria: data.categoria, prioridade, status,
+      previsao_conclusao: previsao,
+      usuario_email: data.usuario_email, atendido_em: null,
+      imagem_thumbnail: data.imagem_thumbnail || null,
+      imagens_extra: [], atualizacoes: [],
+      criado_em: now, atualizado_em: now,
     });
   },
 
-  // Atualiza parcialmente um defeito (merge com dados existentes)
   async findByIdAndUpdate(id, update, options = {}) {
     const now = new Date().toISOString();
-    const existing = findByIdStmt.get(id);
+    const { rows } = await query('SELECT * FROM defeitos WHERE id = $1', [id]);
+    const existing = rows[0];
     if (!existing) return null;
-    const merged = { ...existing, ...update, atualizado_em: now };
-    updateStmt.run(
-      merged.titulo, merged.descricao, merged.latitude, merged.longitude,
-      merged.imagem_url, merged.categoria, merged.status, now, id
+
+    const allowed = ['titulo', 'descricao', 'latitude', 'longitude', 'rua', 'bairro', 'imagem_url', 'categoria', 'status', 'prioridade', 'previsao_conclusao', 'atendido_em', 'usuario_email', 'imagem_thumbnail', 'imagens_extra', 'atualizacoes'];
+    const sanitized = {};
+    for (const key of allowed) {
+      sanitized[key] = key in update ? update[key] : existing[key];
+    }
+
+    if (update.status === 'atendido' && !existing.atendido_em) {
+      sanitized.atendido_em = now;
+    }
+
+    await query(
+      `UPDATE defeitos SET titulo = $1, descricao = $2, latitude = $3, longitude = $4,
+       rua = $5, bairro = $6, imagem_url = $7, categoria = $8, status = $9,
+       prioridade = $10, previsao_conclusao = $11, atendido_em = $12,
+       imagem_thumbnail = $13, atualizado_em = $14 WHERE id = $15`,
+      [sanitized.titulo, sanitized.descricao, sanitized.latitude, sanitized.longitude,
+       sanitized.rua, sanitized.bairro, sanitized.imagem_url, sanitized.categoria,
+       sanitized.status, sanitized.prioridade, sanitized.previsao_conclusao,
+       sanitized.atendido_em, sanitized.imagem_thumbnail || null, now, id]
     );
+
     if (options.new) {
-      return toDefeito(findByIdStmt.get(id));
+      const { rows: newRows } = await query('SELECT * FROM defeitos WHERE id = $1', [id]);
+      return toDefeito(newRows[0]);
     }
   },
 };
