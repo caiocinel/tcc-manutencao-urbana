@@ -12,8 +12,8 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.js',
       manifest: {
-        short_name: 'Manutenção Urbana',
-        name: 'Sistema de Manutenção Urbana',
+        short_name: 'CIU',
+        name: 'Central de Inteligência Urbana',
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },

@@ -1,56 +1,114 @@
-// Página de listagem de defeitos - cards com status e detalhes
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { ThumbsUp, Crosshair, Target } from '@phosphor-icons/react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import Header from '../components/Header';
+
+function ScorePill({ score }) {
+  if (score == null) return null;
+  const cls = score >= 7 ? 'score-alta' : score >= 4 ? 'score-media' : 'score-baixa';
+  return <span className={`score-pill ${cls}`}>
+    <Target size={11} style={{ verticalAlign: 'middle', marginRight: 2 }} />
+    {score}
+  </span>;
+}
 
 export default function DefectList() {
   const [defeitos, setDefeitos] = useState([]);
-  const { isAuthenticated } = useAuth();
-  const navigate = useNavigate();
+  const [meusDefeitos, setMeusDefeitos] = useState([]);
+  const [apiError, setApiError] = useState('');
+  const [filtro, setFiltro] = useState('todos');
+  const [ordenarScore, setOrdenarScore] = useState(false);
+  const { isAuthenticated, user } = useAuth();
 
-  // Carrega lista de defeitos ao montar o componente
   useEffect(() => {
-    api.listDefeitos().then(setDefeitos).catch(console.error);
-  }, []);
+    api.listDefeitos({ ordenar: ordenarScore ? 'score' : undefined })
+      .then(setDefeitos)
+      .catch((err) => setApiError('Erro ao carregar chamados: ' + err.message));
+    if (isAuthenticated) {
+      api.meusDefeitos()
+        .then(setMeusDefeitos)
+        .catch(() => {});
+    }
+  }, [isAuthenticated, ordenarScore]);
 
   const statusLabel = {
     pendente: 'Pendente',
     em_andamento: 'Em Andamento',
-    resolvido: 'Resolvido',
+    atendido: 'Atendido',
+    encerrado: 'Encerrado',
   };
 
-  return (
-    <div className="list-container">
-      <div className="list-header">
-        <h1>Defeitos Reportados</h1>
-        <button onClick={() => navigate('/')}>Voltar ao Mapa</button>
-      </div>
+  const prioridadeCores = { baixa: '#22c55e', media: '#f59e0b', alta: '#dc2626' };
+  const prioridadeLabels = { baixa: 'Baixa', media: 'Média', alta: 'Alta' };
 
-      <div className="defect-grid">
-        {defeitos.map((d) => (
-          // Card com borda colorida conforme o status
-          <div key={d.id} className={`defect-card status-${d.status}`}>
-            <div className="defect-card-header">
-              <h3>{d.titulo}</h3>
-              <span className={`badge badge-${d.status}`}>{statusLabel[d.status] || d.status}</span>
-            </div>
-            <p className="defect-desc">{d.descricao}</p>
-            <p className="defect-meta">
-              {d.usuario?.nome && <>Por: {d.usuario.nome} | </>}
-              {new Date(d.criado_em).toLocaleDateString()}
-            </p>
-            {d.latitude && d.longitude && (
-              <p className="defect-coords">
-                📍 {d.latitude.toFixed(4)}, {d.longitude.toFixed(4)}
-              </p>
-            )}
-            {d.imagem_url && (
-              <img src={d.imagem_url} alt={d.titulo} className="defect-thumb" />
+  const filtrados = defeitos.filter(d => {
+    if (filtro === 'todos') return true;
+    if (filtro === 'pendentes') return d.status === 'pendente' || d.status === 'em_andamento';
+    if (filtro === 'atendidos') return d.status === 'atendido' || d.status === 'encerrado';
+    if (filtro === 'meus') return meusDefeitos.some(m => m.id === d.id);
+    return true;
+  });
+
+  return (
+    <div className="admin-page">
+      <Header />
+
+      <div className="list-container">
+        {isAuthenticated && (
+          <div className="map-filters" style={{ marginBottom: 16 }}>
+            <button className={filtro === 'todos' ? 'filter-active' : ''} onClick={() => setFiltro('todos')}>Todos</button>
+            <button className={filtro === 'pendentes' ? 'filter-active' : ''} onClick={() => setFiltro('pendentes')}>Pendentes</button>
+            <button className={filtro === 'atendidos' ? 'filter-active' : ''} onClick={() => setFiltro('atendidos')}>Atendidos</button>
+            <button className={filtro === 'meus' ? 'filter-active' : ''} onClick={() => setFiltro('meus')}>Meus Chamados</button>
+            {user?.admin && (
+              <button
+                className={ordenarScore ? 'filter-active' : ''}
+                onClick={() => setOrdenarScore(o => !o)}
+                style={{ marginLeft: 'auto' }}
+              >
+                <Target size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                Urgência
+              </button>
             )}
           </div>
-        ))}
-        {defeitos.length === 0 && <p className="empty">Nenhum defeito reportado ainda.</p>}
+        )}
+
+        {apiError && <p className="error" style={{ textAlign: 'center' }}>{apiError}</p>}
+        <div className="chamado-grid">
+          {filtrados.map((d) => (
+            <div key={d.id} className={`chamado-card status-${d.status}`}>
+              <div className="chamado-card-header">
+                <h3>{d.titulo}</h3>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <ScorePill score={d.score_urgencia} />
+                  <span className={`badge badge-${d.status}`}>{statusLabel[d.status] || d.status}</span>
+                </div>
+              </div>
+              <p className="chamado-desc">{d.descricao}</p>
+              <p className="chamado-meta">
+                {d.usuario?.nome && <>Por: {d.usuario.nome} | </>}
+                {new Date(d.criado_em).toLocaleDateString()}
+                {d.prioridade && (
+                  <> | Prioridade: <span style={{ color: prioridadeCores[d.prioridade], fontWeight: 600 }}>{prioridadeLabels[d.prioridade]}</span></>
+                )}
+                {d.apoios_total > 0 && (
+                  <> | <ThumbsUp size={12} style={{ verticalAlign: 'middle', marginRight: 2 }} /> {d.apoios_total} apoio(s)</>
+                )}
+              </p>
+              {d.latitude && d.longitude && (
+                <p className="chamado-coords">
+                  <Crosshair size={12} style={{ verticalAlign: 'middle', marginRight: 3 }} />
+                  {d.latitude.toFixed(4)}, {d.longitude.toFixed(4)}
+                </p>
+              )}
+              {(d.imagem_thumbnail || d.imagem_url) && (
+                <img src={d.imagem_thumbnail || d.imagem_url} alt={d.titulo} className="chamado-thumb" />
+              )}
+            </div>
+          ))}
+          {filtrados.length === 0 && <p className="empty">Nenhum chamado encontrado.</p>}
+        </div>
       </div>
     </div>
   );

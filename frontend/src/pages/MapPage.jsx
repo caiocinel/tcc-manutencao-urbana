@@ -1,13 +1,14 @@
-// Página principal - Mapa interativo com Leaflet e CARTO tiles
-import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { useEffect, useState, useCallback, memo, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
+import { Plus, Heart, Paperclip, Sun, Fire, MapPin, NotePencil } from '@phosphor-icons/react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/Toast';
+import Header from '../components/Header';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// Corrige ícones padrão do Leaflet (problema conhecido com webpack/vite)
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -15,78 +16,584 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-// Cores dos marcadores conforme o status do defeito
 const statusColors = {
-  pendente: 'red',
-  em_andamento: 'orange',
-  resolvido: 'green',
+  pendente: '#eab308',
+  em_andamento: '#f97316',
+  resolvido: '#22c55e',
 };
+
+function censurarNome(nome) {
+  if (!nome || nome.length <= 6) return nome || 'Anônimo';
+  return nome.slice(0, 3) + '*'.repeat(nome.length - 6) + nome.slice(-3);
+}
+
+function MapClickHandler({ creating, onMapClick, setPinPos }) {
+  useMapEvents({
+    click(e) {
+      if (creating) onMapClick(e.latlng);
+    },
+    mousemove(e) {
+      if (creating) setPinPos(e.latlng);
+    },
+  });
+  return null;
+}
+
+const pinIcon = L.icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+});
+
+import HeatmapLayer from '../components/HeatmapLayer';
+
+function IndividualMarker({ d, isAuthenticated, onApoiar, onAttach }) {
+  if (!d.latitude || !d.longitude) return null;
+  const color = statusColors[d.status] || 'gray';
+  const icon = L.divIcon({
+    className: 'custom-marker',
+    html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+  const imagens = [];
+  if (d.imagem_url || d.imagem_thumbnail) imagens.push(d.imagem_thumbnail || d.imagem_url);
+  if (d.imagens_extra?.length > 0) imagens.push(...d.imagens_extra);
+
+  return (
+    <Marker position={[d.latitude, d.longitude]} icon={icon}>
+      <Popup>
+        <strong>{d.titulo}</strong>
+        <p>{d.descricao}</p>
+        <p>Status: <strong>{d.status}</strong></p>
+        {d.usuario?.nome && <p style={{ fontSize: 12, color: '#9ca3af' }}>Por: {censurarNome(d.usuario.nome)}</p>}
+        {imagens.map((url, i) => (
+          <img key={i} src={url} alt={`${d.titulo} - ${i + 1}`} style={{ width: '100%', maxWidth: 200, borderRadius: 4, marginTop: i > 0 ? 4 : 0 }} />
+        ))}
+        {d.atualizacoes?.length > 0 && (
+          <div style={{ marginTop: 6, fontSize: 12, color: '#9ca3af' }}>
+            {d.atualizacoes.map((a, i) => (
+              <p key={i} style={{ marginTop: 2 }}>
+                <NotePencil size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} /> {a.texto} <em>({new Date(a.criado_em).toLocaleDateString()})</em>
+              </p>
+            ))}
+          </div>
+        )}
+        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <button className="btn-sm btn-apoiar" onClick={() => onApoiar(d.id)}>
+            <Heart size={13} weight={d.usuario_apoiou ? 'fill' : 'regular'} style={{ verticalAlign: 'middle', marginRight: 2 }} />
+            Apoiar ({d.apoios_total || 0})
+          </button>
+          {isAuthenticated && d.status === 'pendente' && (
+            <button className="btn-sm btn-apoiar" onClick={() => onAttach(d)}>
+              <Paperclip size={13} style={{ verticalAlign: 'middle', marginRight: 2 }} />
+              Anexar
+            </button>
+          )}
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
+const IndividualMarkerMemo = memo(IndividualMarker);
+
+function ClusterMarker({ c, selectedIds, isAuthenticated, encerrando, onToggleSelect, onConfirmEncerrar, onApoiar, onAttach }) {
+  const selecionados = Object.keys(selectedIds).filter(k => selectedIds[k]).length;
+  const clusterIcon = L.divIcon({
+    className: 'custom-marker',
+    html: `<div style="background:#22c55e;width:36px;height:36px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#000;font-weight:700;font-size:13px">${c.total}</div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+  });
+  return (
+    <Marker position={[c.centro.latitude, c.centro.longitude]} icon={clusterIcon}>
+      <Popup>
+        <div className="cluster-popup">
+          <div className="cluster-popup-header">{c.total} chamados nesta região</div>
+          {isAuthenticated && selecionados > 0 && (
+            <button
+              onClick={() => onConfirmEncerrar(true)}
+              disabled={encerrando}
+              className="cluster-encerrar-btn"
+            >
+              {encerrando ? 'Encerrando...' : `Encerrar Selecionados (${selecionados})`}
+            </button>
+          )}
+          <div className="cluster-popup-list">
+            {c.defeitos.map((d) => {
+              const imagens = [];
+              if (d.imagem_url || d.imagem_thumbnail) imagens.push(d.imagem_thumbnail || d.imagem_url);
+              if (d.imagens_extra?.length > 0) imagens.push(...d.imagens_extra);
+              return (
+                <div key={d.id} className="cluster-item">
+                  <label className="cluster-item-label">
+                    {isAuthenticated && (
+                      <input
+                        type="checkbox"
+                        checked={!!selectedIds[d.id]}
+                        onChange={() => onToggleSelect(d.id)}
+                        className="cluster-item-checkbox"
+                      />
+                    )}
+                    <div className="cluster-item-content">
+                      <div className="cluster-item-title">{d.titulo}</div>
+                      <div className="cluster-item-desc">{d.descricao}</div>
+                      <div className="cluster-item-meta">
+                        <span className={`status-badge status-${d.status}`}>{d.status}</span>
+                        {d.usuario?.nome && <span>{censurarNome(d.usuario.nome)}</span>}
+                      </div>
+                      {imagens.map((url, i) => (
+                        <img key={i} src={url} alt={`${d.titulo} - ${i + 1}`} className="cluster-item-img" />
+                      ))}
+                      {d.atualizacoes?.length > 0 && (
+                        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                          {d.atualizacoes.map((a, j) => (
+                            <p key={j}>
+                              <NotePencil size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} /> {a.texto}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                        <button className="btn-sm btn-apoiar" style={{ fontSize: 11 }} onClick={() => onApoiar(d.id)}>
+                          <Heart size={11} weight={d.usuario_apoiou ? 'fill' : 'regular'} style={{ verticalAlign: 'middle', marginRight: 1 }} />
+                          {d.apoios_total || 0}
+                        </button>
+                        {isAuthenticated && d.status === 'pendente' && (
+                          <button className="btn-sm btn-apoiar" style={{ fontSize: 11 }} onClick={() => onAttach(d)}>
+                            <Paperclip size={11} style={{ verticalAlign: 'middle' }} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
+const ClusterMarkerMemo = memo(ClusterMarker);
 
 export default function MapPage() {
   const [defeitos, setDefeitos] = useState([]);
-  const [userPos, setUserPos] = useState([-23.5505, -46.6333]); // SP como fallback
+  const [clusters, setClusters] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState('');
   const { isAuthenticated, logout, user } = useAuth();
   const navigate = useNavigate();
+  const addToast = useToast();
+  const geoTimeoutRef = useRef(null);
+  const mun = user?.municipio;
+  const mapBounds = mun ? L.latLngBounds([mun.min_lat, mun.min_lng], [mun.max_lat, mun.max_lng]) : null;
+  const defaultCenter = mun ? [(mun.min_lat + mun.max_lat) / 2, (mun.min_lng + mun.max_lng) / 2] : [-22.6069, -46.9190];
 
-  // Carrega defeitos e tenta obter geolocalização do usuário
-  useEffect(() => {
-    api.listDefeitos().then(setDefeitos).catch(console.error);
-    navigator.geolocation?.getCurrentPosition(
-      (pos) => setUserPos([pos.coords.latitude, pos.coords.longitude]),
-      () => {}
-    );
+  const [creating, setCreating] = useState(false);
+  const [pinPos, setPinPos] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [titulo, setTitulo] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [imagem, setImagem] = useState(null);
+  const [rua, setRua] = useState('');
+  const [bairro, setBairro] = useState('');
+  const [geocoding, setGeocoding] = useState(false);
+  const [categorias, setCategorias] = useState([]);
+  const [categoria, setCategoria] = useState('');
+  const [submitError, setSubmitError] = useState('');
+
+  const [filtro, setFiltro] = useState('pendentes');
+  const [diasFiltro, setDiasFiltro] = useState('');
+  const [meusDefeitos, setMeusDefeitos] = useState([]);
+  const [selectedIds, setSelectedIds] = useState({});
+  const [encerrando, setEncerrando] = useState(false);
+  const [showConfirmEncerrar, setShowConfirmEncerrar] = useState(false);
+  const [heatmapVisible, setHeatmapVisible] = useState(false);
+  const [attachDefeito, setAttachDefeito] = useState(null);
+  const [attachImagem, setAttachImagem] = useState(null);
+  const [attachTexto, setAttachTexto] = useState('');
+  const [attachSaving, setAttachSaving] = useState(false);
+
+  const geocodeLatLng = useCallback(async (latlng) => {
+    if (geoTimeoutRef.current) clearTimeout(geoTimeoutRef.current);
+    geoTimeoutRef.current = setTimeout(async () => {
+      setGeocoding(true);
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}&zoom=18&addressdetails=1`,
+          { headers: { 'User-Agent': 'CentralInteligenciaUrbana/1.0' } }
+        );
+        const data = await res.json();
+        if (data.address) {
+          setRua(data.address.road || data.address.path || '');
+          setBairro(data.address.suburb || data.address.neighbourhood || data.address.district || '');
+        }
+      } catch {
+      } finally {
+        setGeocoding(false);
+      }
+    }, 300);
   }, []);
+
+  function carregarDados() {
+    setLoading(true);
+    setApiError('');
+    const params = {};
+    if (isAuthenticated) {
+      if (filtro === 'pendentes') params.status = 'pendente,em_andamento';
+      else if (filtro === 'atendidos') params.status = 'atendido,encerrado';
+      else if (filtro === 'meus' && user?.id) params.usuario = user.id;
+    }
+    if (diasFiltro) params.dias = diasFiltro;
+    api.listClusters(params)
+      .then((data) => {
+        setClusters(data);
+        setDefeitos(data.flatMap(c => c.defeitos));
+      })
+      .catch((err) => {
+        setApiError('Erro ao carregar: ' + err.message);
+        api.listDefeitos().then(setDefeitos).catch(() => {});
+      })
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    carregarDados();
+  }, [isAuthenticated, filtro, diasFiltro]);
+
+  useEffect(() => {
+    api.listCategorias().then(setCategorias).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      api.meusDefeitos().then(setMeusDefeitos).catch(() => {});
+    }
+  }, [isAuthenticated]);
+
+  function handleStartCreate() {
+    if (!isAuthenticated) { navigate('/login'); return; }
+    if (!user?.admin && !user?.email_verificado) {
+      setApiError('Verifique seu email na página "Conta" antes de criar um chamado.');
+      return;
+    }
+    setCreating(true);
+    setPinPos(null);
+    setShowForm(false);
+    setTitulo('');
+    setDescricao('');
+    setImagem(null);
+    setRua('');
+    setBairro('');
+    setCategoria('');
+    setSubmitError('');
+  }
+
+  const handleMapClick = useCallback(async (latlng) => {
+    setPinPos(latlng);
+    setShowForm(true);
+    setCreating(false);
+    geocodeLatLng(latlng);
+  }, [geocodeLatLng]);
+
+  function handleCancel() {
+    setCreating(false);
+    setPinPos(null);
+    setShowForm(false);
+    setTitulo('');
+    setDescricao('');
+    setImagem(null);
+    setRua('');
+    setBairro('');
+    setCategoria('');
+    setSubmitError('');
+  }
+
+  function handlePinDrag(e) {
+    const latlng = e.target.getLatLng();
+    setPinPos(latlng);
+    geocodeLatLng(latlng);
+  }
+
+  const catSelecionada = categorias.find(c => c.nome === categoria);
+  const previsaoLabel = catSelecionada ? new Date(Date.now() + catSelecionada.prazo_sla_dias * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR') : null;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSubmitError('');
+    if (!pinPos) return;
+    const formData = new FormData();
+    formData.append('titulo', titulo);
+    formData.append('descricao', descricao);
+    formData.append('latitude', pinPos.lat);
+    formData.append('longitude', pinPos.lng);
+    formData.append('rua', rua);
+    formData.append('bairro', bairro);
+    formData.append('categoria', categoria);
+    if (imagem) formData.append('imagem', imagem);
+
+    try {
+      await api.createDefeito(formData);
+      carregarDados();
+      handleCancel();
+    } catch (err) {
+      setSubmitError(err.message);
+    }
+  }
+
+  async function handleApoiar(id) {
+    try {
+      await api.apoiarDefeito(id);
+      carregarDados();
+    } catch (err) {
+      addToast('Erro ao apoiar: ' + err.message, 'error');
+    }
+  }
+
+  function toggleSelect(id) {
+    setSelectedIds(prev => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  async function handleAnexar(e) {
+    e.preventDefault();
+    if (!attachImagem && !attachTexto.trim()) return;
+    setAttachSaving(true);
+    try {
+      const fd = new FormData();
+      if (attachImagem) fd.append('imagem', attachImagem);
+      if (attachTexto.trim()) fd.append('atualizacao', attachTexto);
+      await api.anexarDefeito(attachDefeito.id, fd);
+      addToast('Anexado com sucesso!', 'success');
+      setAttachDefeito(null);
+      setAttachImagem(null);
+      setAttachTexto('');
+      carregarDados();
+    } catch (err) {
+      addToast('Erro: ' + err.message, 'error');
+    } finally {
+      setAttachSaving(false);
+    }
+  }
+
+  async function handleEncerrarSelecionados() {
+    const ids = Object.keys(selectedIds).filter(k => selectedIds[k]);
+    if (ids.length === 0) return;
+    setEncerrando(true);
+    try {
+      await api.encerrarLote(ids);
+      setSelectedIds({});
+      carregarDados();
+    } catch (err) {
+      setApiError('Erro ao encerrar: ' + err.message);
+    } finally {
+      setEncerrando(false);
+    }
+  }
+
+  const renderizarIndividuais = () => {
+    const lista = clusters.length > 0
+      ? clusters.flatMap(c => c.defeitos)
+      : defeitos;
+    return lista
+      .filter(d => clusters.length === 0 || clusters.some(c => c.total < 3 && c.defeitos.some(x => x.id === d.id)))
+      .map((d) => (
+        <IndividualMarkerMemo
+          key={d.id}
+          d={d}
+          isAuthenticated={isAuthenticated}
+          onApoiar={handleApoiar}
+          onAttach={(def) => { setAttachDefeito(def); setAttachImagem(null); setAttachTexto(''); }}
+        />
+      ));
+  };
+
+  const renderizarClusters = () => {
+    return clusters
+      .filter(c => c.total >= 3)
+      .map((c) => (
+        <ClusterMarkerMemo
+          key={'c-' + c.id}
+          c={c}
+          selectedIds={selectedIds}
+          isAuthenticated={isAuthenticated}
+          encerrando={encerrando}
+          onToggleSelect={toggleSelect}
+          onConfirmEncerrar={setShowConfirmEncerrar}
+          onApoiar={handleApoiar}
+          onAttach={(def) => { setAttachDefeito(def); setAttachImagem(null); setAttachTexto(''); }}
+        />
+      ));
+  };
 
   return (
     <div className="map-page">
-      {/* Header com autenticação e navegação */}
-      <header className="map-header">
-        <h1>Manutenção Urbana</h1>
-        <div className="header-actions">
-          {isAuthenticated ? (
-            <>
-              <span>{user?.email}</span>
-              <button onClick={() => navigate('/criar')}>+ Novo</button>
-              <button onClick={() => navigate('/lista')}>Lista</button>
-              <button onClick={logout}>Sair</button>
-            </>
-          ) : (
-            <button onClick={() => navigate('/login')}>Entrar</button>
-          )}
+      <Header creating={creating} />
+
+      {apiError && <p className="error" style={{ textAlign: 'center', padding: 8 }}>{apiError}</p>}
+
+      {isAuthenticated && !creating && (
+        <div className="map-filters">
+          <button className={filtro === 'todos' ? 'filter-active' : ''} onClick={() => setFiltro('todos')}>Todos</button>
+          <button className={filtro === 'pendentes' ? 'filter-active' : ''} onClick={() => setFiltro('pendentes')}>Pendentes</button>
+          <button className={filtro === 'atendidos' ? 'filter-active' : ''} onClick={() => setFiltro('atendidos')}>Atendidos</button>
+          <button className={filtro === 'meus' ? 'filter-active' : ''} onClick={() => setFiltro('meus')}>Meus Chamados</button>
+          <button className={heatmapVisible ? 'filter-active' : ''} onClick={() => setHeatmapVisible(v => !v)}>
+            {heatmapVisible ? <Sun size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> : <Fire size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />}
+            {heatmapVisible ? 'Mapa Normal' : 'Mapa de Calor'}
+          </button>
+          <select className="filter-select" value={diasFiltro} onChange={e => setDiasFiltro(e.target.value)}>
+            <option value="">Todo período</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="15">Últimos 15 dias</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="90">Últimos 90 dias</option>
+          </select>
         </div>
-      </header>
+      )}
 
-      {/* Mapa Leaflet com tiles CARTO (gratuito para uso não comercial) */}
-      <MapContainer center={userPos} zoom={14} className="map-container">
-        <TileLayer
-          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-        />
+      <div style={{ position: 'relative', flex: 1, width: '100%' }}>
+        <MapContainer
+          center={defaultCenter}
+          zoom={14}
+          className="map-container"
+          maxBounds={mapBounds}
+          maxBoundsViscosity={1}
+          minZoom={12}
+          style={{ height: '100%', width: '100%' }}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          />
 
-        {/* Renderiza marcadores para cada defeito */}
-        {defeitos.map((d) => {
-          if (!d.latitude || !d.longitude) return null;
-          const color = statusColors[d.status] || 'gray';
-          // Marcador customizado: bolinha colorida
-          const icon = L.divIcon({
-            className: 'custom-marker',
-            html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`,
-            iconSize: [16, 16],
-            iconAnchor: [8, 8],
-          });
-          return (
-            <Marker key={d.id} position={[d.latitude, d.longitude]} icon={icon}>
-              {/* Popup com detalhes do defeito */}
-              <Popup>
-                <strong>{d.titulo}</strong>
-                <p>{d.descricao}</p>
-                <p>Status: <strong>{d.status}</strong></p>
-                {d.imagem_url && <img src={d.imagem_url} alt={d.titulo} style={{ width: '100%', maxWidth: 200, borderRadius: 4 }} />}
-              </Popup>
-            </Marker>
-          );
-        })}
-      </MapContainer>
+          {creating && (
+            <MapClickHandler creating={creating} onMapClick={handleMapClick} setPinPos={setPinPos} />
+          )}
+
+          {pinPos && showForm && (
+            <Marker position={pinPos} icon={pinIcon} draggable={true} eventHandlers={{ dragend: handlePinDrag }} />
+          )}
+
+          {creating && pinPos && !showForm && (
+            <Marker position={pinPos} icon={pinIcon} />
+          )}
+
+          {heatmapVisible ? (
+            <HeatmapLayer pontos={defeitos} ativo={heatmapVisible} />
+          ) : (
+            <>
+              {renderizarIndividuais()}
+              {renderizarClusters()}
+            </>
+          )}
+        </MapContainer>
+
+        {loading && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 1000, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.3)',
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <div className="skeleton skeleton-cluster" style={{ margin: '0 auto 8px' }} />
+              <div className="skeleton skeleton-line" style={{ width: 160, margin: '0 auto' }} />
+              <div className="skeleton skeleton-line" style={{ width: 100, margin: '4px auto 0' }} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {isAuthenticated && !creating && (
+        <button className="fab" onClick={handleStartCreate} title="Novo Chamado">
+          <Plus size={24} weight="bold" />
+        </button>
+      )}
+
+      {showConfirmEncerrar && (
+        <div className="defect-overlay" onClick={() => setShowConfirmEncerrar(false)}>
+          <div className="defect-modal" style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <h3>Confirmar Encerramento</h3>
+            <p className="chamado-desc" style={{ marginBottom: 'var(--space-4)' }}>
+              Deseja realmente encerrar {Object.keys(selectedIds).filter(k => selectedIds[k]).length} chamado(s)?
+            </p>
+            <div className="modal-actions" style={{ justifyContent: 'center' }}>
+              <button className="btn-primary" onClick={async () => { setShowConfirmEncerrar(false); await handleEncerrarSelecionados(); }}>
+                Sim, Encerrar
+              </button>
+              <button className="btn-secondary" onClick={() => setShowConfirmEncerrar(false)}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {attachDefeito && (
+        <div className="defect-overlay" onClick={() => setAttachDefeito(null)}>
+          <div className="defect-modal" onClick={e => e.stopPropagation()}>
+            <h3>
+              <Paperclip size={18} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+              Anexar ao Chamado
+            </h3>
+            <p className="chamado-meta" style={{ marginBottom: 'var(--space-2)' }}><strong>{attachDefeito.titulo}</strong></p>
+            <form onSubmit={handleAnexar} className="defect-form">
+              <textarea placeholder="Adicione uma atualização sobre o chamado..." value={attachTexto} onChange={e => setAttachTexto(e.target.value)} rows={2} />
+              <input type="file" accept="image/*" onChange={e => setAttachImagem(e.target.files[0])} />
+              <p className="hint">Máximo 3 imagens por chamado. Formatos: JPEG, PNG, WebP.</p>
+              <div className="modal-actions">
+                <button type="submit" className="btn-primary" disabled={attachSaving}>
+                  {attachSaving ? 'Salvando...' : (attachImagem || attachTexto.trim() ? 'Anexar' : 'Selecione algo')}
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => setAttachDefeito(null)}>Cancelar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showForm && pinPos && (
+        <div className="defect-overlay">
+          <div className="defect-modal">
+            <h3>Novo Chamado</h3>
+            {submitError && <p className="error">{submitError}</p>}
+            <form onSubmit={handleSubmit} className="defect-form">
+              <input type="text" placeholder="Título" value={titulo} onChange={e => setTitulo(e.target.value)} required />
+              <textarea placeholder="Descreva o problema em detalhes (mín. 20 caracteres)" value={descricao} onChange={e => setDescricao(e.target.value)} rows={3} required minLength={20} />
+              <select value={categoria} onChange={e => setCategoria(e.target.value)} required className="filter-select" style={{ width: '100%' }}>
+                <option value="">Selecione a categoria</option>
+                {categorias.map(c => (
+                  <option key={c.id} value={c.nome}>● {c.nome}</option>
+                ))}
+              </select>
+              {catSelecionada && (
+                <p className="hint" style={{ marginTop: -4 }}>
+                  Prioridade: <strong>{catSelecionada.prioridade_base}</strong> | Previsão: <strong>{previsaoLabel}</strong>
+                </p>
+              )}
+              <input type="text" placeholder="Rua" value={rua} onChange={e => setRua(e.target.value)} />
+              <input type="text" placeholder="Bairro" value={bairro} onChange={e => setBairro(e.target.value)} />
+              <input type="file" accept="image/*" onChange={e => setImagem(e.target.files[0])} />
+              <p className="coord-display">
+                <MapPin size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                {pinPos.lat.toFixed(5)}, {pinPos.lng.toFixed(5)}
+              </p>
+              {geocoding && <p className="hint">Obtendo endereço...</p>}
+              <p className="hint">Arraste o alfinete no mapa para ajustar a posição</p>
+              <div className="modal-actions">
+                <button type="submit" className="btn-primary">Enviar</button>
+                <button type="button" onClick={handleCancel} className="btn-secondary">Cancelar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
