@@ -4,3 +4,5 @@ backend/node_modules/
 backend/.env
 backend/uploads/
 database/
+doc.md
+todo.md
