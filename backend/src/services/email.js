@@ -1,6 +1,6 @@
 const logger = require('./logger');
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FROM_EMAIL = process.env.FROM_EMAIL || 'Central Urbana <onboarding@resend.dev>';
 
 async function sendEmail({ to, subject, html }) {
