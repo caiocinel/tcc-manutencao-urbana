@@ -5,7 +5,7 @@ const pool = new Pool({
   port: parseInt(process.env.DB_PORT || '5432'),
   database: process.env.DB_NAME || 'manutencao_urbana',
   user: process.env.DB_USER || 'urbana',
-  password: process.env.DB_PASSWORD || 'CHANGE_ME',
+  password: process.env.DB_PASSWORD,
 });
 
 function computeBbox(ring) {

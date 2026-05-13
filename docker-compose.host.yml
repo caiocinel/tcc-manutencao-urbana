@@ -14,7 +14,7 @@ services:
     environment:
       POSTGRES_DB: manutencao_urbana
       POSTGRES_USER: urbana
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-CHANGE_ME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -50,7 +50,7 @@ services:
       - DB_PORT=5432
       - DB_NAME=manutencao_urbana
       - DB_USER=urbana
-      - DB_PASSWORD=${DB_PASSWORD:-CHANGE_ME}
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_POOL_MAX=10
     volumes:
       - uploads:/app/uploads
