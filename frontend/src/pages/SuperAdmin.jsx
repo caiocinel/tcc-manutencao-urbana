@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -14,12 +14,7 @@ export default function SuperAdmin() {
   const [usuarios, setUsuarios] = useState([]);
   const [municipios, setMunicipios] = useState([]);
 
-  useEffect(() => {
-    if (!isAuthenticated || !user?.admin) { navigate('/login'); return; }
-    loadData();
-  }, [isAuthenticated, user]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
       const [u, m] = await Promise.all([
         api.adminListUsers(),
@@ -30,7 +25,12 @@ export default function SuperAdmin() {
     } catch (err) {
       addToast('Erro ao carregar dados: ' + err.message, 'error');
     }
-  }
+  }, [addToast]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.admin) { navigate('/login'); return; }
+    loadData();
+  }, [isAuthenticated, user, navigate, loadData]);
 
   async function handleUpdateUser(userId, municipioId) {
     try {

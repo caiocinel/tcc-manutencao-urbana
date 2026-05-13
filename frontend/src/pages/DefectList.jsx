@@ -19,17 +19,26 @@ export default function DefectList() {
   const [apiError, setApiError] = useState('');
   const [filtro, setFiltro] = useState('todos');
   const [ordenarScore, setOrdenarScore] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { isAuthenticated, user } = useAuth();
 
   useEffect(() => {
-    api.listDefeitos({ ordenar: ordenarScore ? 'score' : undefined })
-      .then(setDefeitos)
-      .catch((err) => setApiError('Erro ao carregar chamados: ' + err.message));
-    if (isAuthenticated) {
-      api.meusDefeitos()
-        .then(setMeusDefeitos)
-        .catch(() => {});
-    }
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      api.listDefeitos({ ordenar: ordenarScore ? 'score' : undefined }),
+      isAuthenticated ? api.meusDefeitos() : Promise.resolve([]),
+    ])
+      .then(([defs, meus]) => {
+        if (!cancelled) { setDefeitos(defs); setMeusDefeitos(meus || []); }
+      })
+      .catch((err) => {
+        if (!cancelled) setApiError('Erro ao carregar chamados: ' + err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [isAuthenticated, ordenarScore]);
 
   const statusLabel = {
@@ -75,6 +84,19 @@ export default function DefectList() {
         )}
 
         {apiError && <p className="error" style={{ textAlign: 'center' }}>{apiError}</p>}
+        {loading && (
+          <div className="chamado-grid">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="chamado-card" style={{ borderLeft: '4px solid var(--border-default)' }}>
+                <div className="skeleton skeleton-line" style={{ width: '60%', height: 16, marginBottom: 8 }} />
+                <div className="skeleton skeleton-line" style={{ width: '90%', height: 12, marginBottom: 4 }} />
+                <div className="skeleton skeleton-line" style={{ width: '40%', height: 12, marginBottom: 8 }} />
+                <div className="skeleton skeleton-line" style={{ width: '30%', height: 10 }} />
+              </div>
+            ))}
+          </div>
+        )}
+        {!loading && (
         <div className="chamado-grid">
           {filtrados.map((d) => (
             <div key={d.id} className={`chamado-card status-${d.status}`}>
@@ -109,6 +131,7 @@ export default function DefectList() {
           ))}
           {filtrados.length === 0 && <p className="empty">Nenhum chamado encontrado.</p>}
         </div>
+        )}
       </div>
     </div>
   );

@@ -15,8 +15,8 @@ function toUser(row) {
     email_verificado: row.email_verificado === 1 || row.email_verificado === true,
     codigo_2fa: row.codigo_2fa, codigo_2fa_expira: row.codigo_2fa_expira,
     cpf_hash: row.cpf_hash,
-    requestsResetAt: row.requestsResetAt,
-    requestsCount: row.requestsCount,
+    requestsResetAt: row.requestsresetat,
+    requestsCount: row.requestscount,
     criado_em: row.criado_em, atualizado_em: row.atualizado_em,
     async save() {
       const now = new Date().toISOString();

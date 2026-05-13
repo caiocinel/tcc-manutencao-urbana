@@ -43,9 +43,9 @@ app.use(express.json({ limit: '5mb' }));
 
 app.use(cookieParser());
 
-app.use(globalLimiter);
-
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.use('/api', globalLimiter);
 
 app.get('/api/csrf-token', generateCsrfToken, (req, res) => {
   res.json({ csrfToken: req.csrfToken });

@@ -1,17 +1,5 @@
-body {
-  margin: 0;
-  font-family: var(--font-sans);
-  line-height: var(--leading-normal);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@keyframes shimmer {
+  0% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+  100% { opacity: 0.3; }
 }
-
-h1, h2, h3, h4, h5, h6 {
-  line-height: var(--leading-tight);
-}
-
-#root {
-  min-height: 100vh;
-}
-
-* { box-sizing: border-box; }

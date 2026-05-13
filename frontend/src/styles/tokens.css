@@ -87,3 +87,38 @@
   --transition-base: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   --transition-spring: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+
+[data-theme="light"] {
+  --bg-primary: #f5f5f0;
+  --bg-surface: #ffffff;
+  --bg-elevated: #e8e8e3;
+  --bg-input: #ffffff;
+  --bg-hover: #ddddf8;
+
+  --border-default: #d4d4d0;
+  --border-hover: #a3a39f;
+
+  --text-primary: #1a1a1c;
+  --text-secondary: #52525b;
+  --text-tertiary: #71717a;
+  --text-muted: #a1a1aa;
+
+  --accent-green: #16a34a;
+  --accent-green-bg: rgba(22, 163, 74, 0.08);
+  --accent-yellow: #ca8a04;
+  --accent-yellow-bg: rgba(202, 138, 4, 0.08);
+  --accent-orange: #ea580c;
+  --accent-orange-bg: rgba(234, 88, 12, 0.08);
+  --accent-red: #dc2626;
+  --accent-red-bg: rgba(220, 38, 38, 0.08);
+  --accent-amber: #d97706;
+  --accent-blue: #2563eb;
+  --accent-blue-bg: rgba(37, 99, 235, 0.08);
+
+  --overlay: rgba(0, 0, 0, 0.4);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+  --shadow-diffusion: 0 20px 40px -15px rgba(0,0,0,0.1);
+}

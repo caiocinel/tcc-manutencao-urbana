@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import { Camera, ChatCircle } from '@phosphor-icons/react';
+import { Camera, ChatCircle, Download, Calendar } from '@phosphor-icons/react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import { useToast } from '../components/Toast';
+import { useTheme } from '../context/ThemeContext';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -33,7 +34,7 @@ function imagensDoDefeito(d) {
   return urls;
 }
 
-function DefeitoPin({ d }) {
+const DefeitoPin = memo(function DefeitoPin({ d }) {
   if (!d.latitude || !d.longitude) return null;
   const color = statusColors[d.status] || 'gray';
   const icon = L.divIcon({
@@ -71,10 +72,11 @@ function DefeitoPin({ d }) {
       </Popup>
     </Marker>
   );
-}
-
+});
+ 
 export default function AdminDashboard() {
   const { user, isAuthenticated } = useAuth();
+  const { theme } = useTheme();
   const navigate = useNavigate();
   const addToast = useToast();
 
@@ -83,15 +85,17 @@ export default function AdminDashboard() {
   const [filterRegiao, setFilterRegiao] = useState('todos');
   const [filterStatus, setFilterStatus] = useState('pendente,em_andamento');
   const [selectedDefeito, setSelectedDefeito] = useState(null);
+  const [diasFiltro, setDiasFiltro] = useState('');
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, navigate]);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
       const params = {};
-      if (filterStatus) { params.status = filterStatus; }
+      if (filterStatus) params.status = filterStatus;
+      if (diasFiltro) params.dias = diasFiltro;
       const [d] = await Promise.all([
         api.listDefeitos(params),
       ]);
@@ -99,17 +103,33 @@ export default function AdminDashboard() {
       if (user?.admin) {
         const rParams = {};
         if (filterStatus) rParams.status = filterStatus;
+        if (diasFiltro) rParams.dias = diasFiltro;
         const r = await api.regioesDefeitos(rParams);
         setRegioes(r);
       }
     } catch (err) {
       addToast('Erro ao carregar dados: ' + err.message, 'error');
     }
-  }
+  }, [filterStatus, diasFiltro, user, addToast]);
+
+  const exportCSV = useCallback(() => {
+    if (defeitos.length === 0) { addToast('Nenhum dado para exportar', 'error'); return; }
+    const header = 'ID,Título,Descrição,Status,Prioridade,Categoria,Rua,Bairro,Latitude,Longitude,Data,Criado por';
+    const rows = defeitos.map(d =>
+      `"${d.id}","${(d.titulo||'').replace(/"/g,'""')}","${(d.descricao||'').replace(/"/g,'""')}","${d.status}","${d.prioridade||''}","${d.categoria||''}","${(d.rua||'').replace(/"/g,'""')}","${(d.bairro||'').replace(/"/g,'""')}",${d.latitude||''},${d.longitude||''},"${d.criado_em||''}","${d.usuario?.nome||''}"`
+    );
+    const csv = '\uFEFF' + header + '\n' + rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `chamados-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    addToast('CSV exportado com sucesso!');
+  }, [defeitos, addToast]);
 
   useEffect(() => {
     loadData();
-  }, [filterStatus]);
+  }, [filterStatus, diasFiltro, loadData]);
 
   async function handleUpdateDefeito(id, data) {
     try {
@@ -139,7 +159,7 @@ export default function AdminDashboard() {
           <MapContainer center={defaultCenter} zoom={13} className="admin-map" scrollWheelZoom={true}>
             <TileLayer
               attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-               url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+              url={theme === 'light' ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'}
             />
             {defeitos.map(d => <DefeitoPin key={d.id} d={d} />)}
           </MapContainer>
@@ -147,7 +167,10 @@ export default function AdminDashboard() {
 
         <div className="admin-regioes-section">
           <div className="admin-regioes-header">
-            <h2>Regiões com Chamados</h2>
+            <h2>
+              <Calendar size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+              Regiões com Chamados
+            </h2>
             <div className="admin-filters">
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                 <option value="pendente,em_andamento">Pendentes + Em Andamento</option>
@@ -157,11 +180,22 @@ export default function AdminDashboard() {
                 <option value="atendido">Atendidos</option>
                 <option value="encerrado">Encerrados</option>
               </select>
+              <select value={diasFiltro} onChange={e => setDiasFiltro(e.target.value)} style={{ minWidth: 100 }}>
+                <option value="">Todo período</option>
+                <option value="7">Últimos 7 dias</option>
+                <option value="15">Últimos 15 dias</option>
+                <option value="30">Últimos 30 dias</option>
+                <option value="90">Últimos 90 dias</option>
+              </select>
               <select value={filterRegiao} onChange={e => setFilterRegiao(e.target.value)}>
                 <option value="todos">Todos os chamados</option>
                 <option value="com_imagem">Com imagens</option>
                 <option value="mais_reports">Mais reports (3+)</option>
               </select>
+              <button className="btn-export" onClick={exportCSV} aria-label="Exportar CSV">
+                <Download size={14} aria-hidden="true" />
+                CSV
+              </button>
             </div>
           </div>
           <div className="admin-regioes-grid">
@@ -231,9 +265,9 @@ export default function AdminDashboard() {
          </div>
        </div>
 
-       {selectedDefeito && (
-         <div className="defect-overlay" onClick={() => setSelectedDefeito(null)}>
-           <div className="defect-modal" onClick={e => e.stopPropagation()}>
+        {selectedDefeito && (
+          <div className="defect-overlay" onClick={() => setSelectedDefeito(null)} role="dialog" aria-modal="true" aria-label={selectedDefeito.titulo}>
+            <div className="defect-modal" onClick={e => e.stopPropagation()}>
              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                <div>
                  <h3 style={{ margin: 0 }}>{selectedDefeito.titulo}</h3>

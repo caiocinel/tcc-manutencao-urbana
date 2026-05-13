@@ -156,7 +156,7 @@ router.patch('/municipio', authenticateToken, async (req, res) => {
     if (!municipio_id) return res.status(400).json({ error: 'municipio_id é obrigatório' });
 
     const { rows } = await query(
-      'SELECT codigo, nome, uf_sigla, min_lat, max_lat, min_lng, max_lng FROM municipios WHERE codigo = $1',
+    'SELECT codigo, nome, uf_sigla, min_lat, max_lat, min_lng, max_lng, poligono_json FROM municipios WHERE codigo = $1',
       [municipio_id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Município não encontrado' });

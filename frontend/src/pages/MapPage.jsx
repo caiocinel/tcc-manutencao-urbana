@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback, memo, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
+import { motion, AnimatePresence } from 'framer-motion';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polygon } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Heart, Paperclip, Sun, Fire, MapPin, NotePencil } from '@phosphor-icons/react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { useTheme } from '../context/ThemeContext';
 import Header from '../components/Header';
-import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -102,6 +103,8 @@ function IndividualMarker({ d, isAuthenticated, onApoiar, onAttach }) {
 const IndividualMarkerMemo = memo(IndividualMarker);
 
 function ClusterMarker({ c, selectedIds, isAuthenticated, encerrando, onToggleSelect, onConfirmEncerrar, onApoiar, onAttach }) {
+  const [visibleCount, setVisibleCount] = useState(() => 5);
+  useEffect(() => { setVisibleCount(5); }, [c.id]);
   const selecionados = Object.keys(selectedIds).filter(k => selectedIds[k]).length;
   const clusterIcon = L.divIcon({
     className: 'custom-marker',
@@ -109,6 +112,8 @@ function ClusterMarker({ c, selectedIds, isAuthenticated, encerrando, onToggleSe
     iconSize: [36, 36],
     iconAnchor: [18, 18],
   });
+  const visibleDefeitos = c.defeitos.slice(0, visibleCount);
+  const hasMore = c.defeitos.length > visibleCount;
   return (
     <Marker position={[c.centro.latitude, c.centro.longitude]} icon={clusterIcon}>
       <Popup>
@@ -124,7 +129,7 @@ function ClusterMarker({ c, selectedIds, isAuthenticated, encerrando, onToggleSe
             </button>
           )}
           <div className="cluster-popup-list">
-            {c.defeitos.map((d) => {
+            {visibleDefeitos.map((d) => {
               const imagens = [];
               if (d.imagem_url || d.imagem_thumbnail) imagens.push(d.imagem_thumbnail || d.imagem_url);
               if (d.imagens_extra?.length > 0) imagens.push(...d.imagens_extra);
@@ -175,6 +180,15 @@ function ClusterMarker({ c, selectedIds, isAuthenticated, encerrando, onToggleSe
               );
             })}
           </div>
+          {hasMore && (
+            <button
+              onClick={() => setVisibleCount(prev => prev + 5)}
+              className="btn-secondary"
+              style={{ width: '100%', marginTop: 8, fontSize: 'var(--text-sm)' }}
+            >
+              Ver mais {Math.min(5, c.defeitos.length - visibleCount)} de {c.defeitos.length}
+            </button>
+          )}
         </div>
       </Popup>
     </Marker>
@@ -188,13 +202,42 @@ export default function MapPage() {
   const [clusters, setClusters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState('');
-  const { isAuthenticated, logout, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const { theme } = useTheme();
+  const tileUrl = theme === 'light'
+    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  const boundaryColor = theme === 'light' ? '#22c55e' : '#16a34a';
   const navigate = useNavigate();
   const addToast = useToast();
   const geoTimeoutRef = useRef(null);
+  const mapRef = useRef(null);
   const mun = user?.municipio;
-  const mapBounds = mun ? L.latLngBounds([mun.min_lat, mun.min_lng], [mun.max_lat, mun.max_lng]) : null;
-  const defaultCenter = mun ? [(mun.min_lat + mun.max_lat) / 2, (mun.min_lng + mun.max_lng) / 2] : [-22.6069, -46.9190];
+  const hasBounds = mun &&
+    typeof mun.min_lat === 'number' && isFinite(mun.min_lat) &&
+    typeof mun.min_lng === 'number' && isFinite(mun.min_lng) &&
+    typeof mun.max_lat === 'number' && isFinite(mun.max_lat) &&
+    typeof mun.max_lng === 'number' && isFinite(mun.max_lng);
+  const mapBounds = hasBounds ? L.latLngBounds([mun.min_lat, mun.min_lng], [mun.max_lat, mun.max_lng]) : null;
+  const defaultCenter = hasBounds ? [(mun.min_lat + mun.max_lat) / 2, (mun.min_lng + mun.max_lng) / 2] : [-22.6069, -46.9190];
+
+  let polygonPositions = null;
+  let centroid = null;
+  let overlayPositions = null;
+  if (mun?.poligono_json) {
+    try {
+      const parsed = typeof mun.poligono_json === 'string' ? JSON.parse(mun.poligono_json) : mun.poligono_json;
+      if (parsed?.coordinates?.[0]) {
+        polygonPositions = parsed.coordinates[0].map(([lng, lat]) => [lat, lng]);
+        const n = polygonPositions.length;
+        centroid = polygonPositions.reduce(([al, an], [lat, lng]) => [al + lat / n, an + lng / n], [0, 0]);
+        overlayPositions = [
+          [[90, -180], [90, 180], [-90, 180], [-90, -180], [90, -180]],
+          [...polygonPositions].reverse(),
+        ];
+      }
+    } catch {}
+  }
 
   const [creating, setCreating] = useState(false);
   const [pinPos, setPinPos] = useState(null);
@@ -211,7 +254,7 @@ export default function MapPage() {
 
   const [filtro, setFiltro] = useState('pendentes');
   const [diasFiltro, setDiasFiltro] = useState('');
-  const [meusDefeitos, setMeusDefeitos] = useState([]);
+  const [, setMeusDefeitos] = useState([]);
   const [selectedIds, setSelectedIds] = useState({});
   const [encerrando, setEncerrando] = useState(false);
   const [showConfirmEncerrar, setShowConfirmEncerrar] = useState(false);
@@ -236,13 +279,14 @@ export default function MapPage() {
           setBairro(data.address.suburb || data.address.neighbourhood || data.address.district || '');
         }
       } catch {
+        // erro de geocodificação ignorado - não crítico
       } finally {
         setGeocoding(false);
       }
     }, 300);
   }, []);
 
-  function carregarDados() {
+  const carregarDados = useCallback(() => {
     setLoading(true);
     setApiError('');
     const params = {};
@@ -262,11 +306,27 @@ export default function MapPage() {
         api.listDefeitos().then(setDefeitos).catch(() => {});
       })
       .finally(() => setLoading(false));
-  }
+  }, [isAuthenticated, filtro, diasFiltro, user]);
 
   useEffect(() => {
     carregarDados();
-  }, [isAuthenticated, filtro, diasFiltro]);
+  }, [carregarDados]);
+
+  useEffect(() => {
+    const el = document.querySelector('.map-container');
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      if (mapRef.current) mapRef.current.invalidateSize();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (mapRef.current) {
+      setTimeout(() => mapRef.current.invalidateSize(), 200);
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     api.listCategorias().then(setCategorias).catch(() => {});
@@ -297,11 +357,27 @@ export default function MapPage() {
   }
 
   const handleMapClick = useCallback(async (latlng) => {
+    if (polygonPositions && user?.municipio_id && !user?.admin) {
+      let inside = false;
+      const verts = polygonPositions;
+      for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+        const [lat_i, lng_i] = verts[i];
+        const [lat_j, lng_j] = verts[j];
+        if ((lat_i > latlng.lat) !== (lat_j > latlng.lat) && latlng.lng < (lng_j - lng_i) * (latlng.lat - lat_i) / (lat_j - lat_i) + lng_i) {
+          inside = !inside;
+        }
+      }
+      if (!inside) {
+        setApiError('O chamado deve estar dentro do perímetro do seu município');
+        return;
+      }
+    }
+    setApiError('');
     setPinPos(latlng);
     setShowForm(true);
     setCreating(false);
     geocodeLatLng(latlng);
-  }, [geocodeLatLng]);
+  }, [geocodeLatLng, polygonPositions, user]);
 
   function handleCancel() {
     setCreating(false);
@@ -323,12 +399,27 @@ export default function MapPage() {
   }
 
   const catSelecionada = categorias.find(c => c.nome === categoria);
+  // eslint-disable-next-line react-hooks/purity
   const previsaoLabel = catSelecionada ? new Date(Date.now() + catSelecionada.prazo_sla_dias * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR') : null;
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitError('');
     if (!pinPos) return;
+    if (polygonPositions && user?.municipio_id && !user?.admin) {
+      let inside = false;
+      for (let i = 0, j = polygonPositions.length - 1; i < polygonPositions.length; j = i++) {
+        const [lat_i, lng_i] = polygonPositions[i];
+        const [lat_j, lng_j] = polygonPositions[j];
+        if ((lat_i > pinPos.lat) !== (lat_j > pinPos.lat) && pinPos.lng < (lng_j - lng_i) * (pinPos.lat - lat_i) / (lat_j - lat_i) + lng_i) {
+          inside = !inside;
+        }
+      }
+      if (!inside) {
+        setSubmitError('O chamado deve estar dentro do perímetro do seu município');
+        return;
+      }
+    }
     const formData = new FormData();
     formData.append('titulo', titulo);
     formData.append('descricao', descricao);
@@ -340,8 +431,12 @@ export default function MapPage() {
     if (imagem) formData.append('imagem', imagem);
 
     try {
-      await api.createDefeito(formData);
-      carregarDados();
+      const res = await api.createDefeito(formData);
+      if (res.offline) {
+        addToast(res.message, 'success');
+      } else {
+        carregarDados();
+      }
       handleCancel();
     } catch (err) {
       setSubmitError(err.message);
@@ -438,40 +533,70 @@ export default function MapPage() {
 
       {apiError && <p className="error" style={{ textAlign: 'center', padding: 8 }}>{apiError}</p>}
 
-      {isAuthenticated && !creating && (
-        <div className="map-filters">
-          <button className={filtro === 'todos' ? 'filter-active' : ''} onClick={() => setFiltro('todos')}>Todos</button>
-          <button className={filtro === 'pendentes' ? 'filter-active' : ''} onClick={() => setFiltro('pendentes')}>Pendentes</button>
-          <button className={filtro === 'atendidos' ? 'filter-active' : ''} onClick={() => setFiltro('atendidos')}>Atendidos</button>
-          <button className={filtro === 'meus' ? 'filter-active' : ''} onClick={() => setFiltro('meus')}>Meus Chamados</button>
-          <button className={heatmapVisible ? 'filter-active' : ''} onClick={() => setHeatmapVisible(v => !v)}>
-            {heatmapVisible ? <Sun size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> : <Fire size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />}
-            {heatmapVisible ? 'Mapa Normal' : 'Mapa de Calor'}
-          </button>
-          <select className="filter-select" value={diasFiltro} onChange={e => setDiasFiltro(e.target.value)}>
-            <option value="">Todo período</option>
-            <option value="7">Últimos 7 dias</option>
-            <option value="15">Últimos 15 dias</option>
-            <option value="30">Últimos 30 dias</option>
-            <option value="90">Últimos 90 dias</option>
-          </select>
-        </div>
-      )}
+      <AnimatePresence>
+        {isAuthenticated && !creating && (
+          <motion.div
+            className="map-filters"
+            initial={{ y: -10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -10, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <button className={filtro === 'todos' ? 'filter-active' : ''} onClick={() => setFiltro('todos')}>Todos</button>
+            <button className={filtro === 'pendentes' ? 'filter-active' : ''} onClick={() => setFiltro('pendentes')}>Pendentes</button>
+            <button className={filtro === 'atendidos' ? 'filter-active' : ''} onClick={() => setFiltro('atendidos')}>Atendidos</button>
+            <button className={filtro === 'meus' ? 'filter-active' : ''} onClick={() => setFiltro('meus')}>Meus Chamados</button>
+            <motion.button
+              className={heatmapVisible ? 'filter-active' : ''}
+              onClick={() => setHeatmapVisible(v => !v)}
+              whileTap={{ scale: 0.95 }}
+            >
+              {heatmapVisible ? <Sun size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> : <Fire size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />}
+              {heatmapVisible ? 'Mapa Normal' : 'Mapa de Calor'}
+            </motion.button>
+            <select className="filter-select" value={diasFiltro} onChange={e => setDiasFiltro(e.target.value)}>
+              <option value="">Todo período</option>
+              <option value="7">Últimos 7 dias</option>
+              <option value="15">Últimos 15 dias</option>
+              <option value="30">Últimos 30 dias</option>
+              <option value="90">Últimos 90 dias</option>
+            </select>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <div style={{ position: 'relative', flex: 1, width: '100%' }}>
+      <div style={{ position: 'relative', flex: 1, width: '100%', minHeight: 300 }}>
         <MapContainer
-          center={defaultCenter}
+          center={centroid || defaultCenter}
           zoom={14}
           className="map-container"
           maxBounds={mapBounds}
           maxBoundsViscosity={1}
           minZoom={12}
-          style={{ height: '100%', width: '100%' }}
+          style={{ height: '100%', width: '100%', minHeight: 'inherit' }}
+          whenReady={(ev) => {
+            mapRef.current = ev.target;
+            setTimeout(() => ev.target.invalidateSize(), 350);
+            setTimeout(() => ev.target.invalidateSize(), 900);
+          }}
         >
           <TileLayer
             attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            url={tileUrl}
           />
+
+          {overlayPositions && (
+            <Polygon
+              positions={overlayPositions}
+              pathOptions={{ color: 'none', fillColor: '#000', fillOpacity: 0.4, interactive: false, fillRule: 'evenodd' }}
+            />
+          )}
+          {polygonPositions && (
+            <Polygon
+              positions={polygonPositions}
+              pathOptions={{ color: boundaryColor, weight: 2, fillColor: 'transparent', interactive: false }}
+            />
+          )}
 
           {creating && (
             <MapClickHandler creating={creating} onMapClick={handleMapClick} setPinPos={setPinPos} />
@@ -510,14 +635,24 @@ export default function MapPage() {
         )}
       </div>
 
-      {isAuthenticated && !creating && (
-        <button className="fab" onClick={handleStartCreate} title="Novo Chamado">
-          <Plus size={24} weight="bold" />
-        </button>
-      )}
+      <AnimatePresence>
+        {isAuthenticated && !creating && (
+          <motion.button
+            className="fab"
+            onClick={handleStartCreate}
+            aria-label="Criar novo chamado"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+          >
+            <Plus size={24} weight="bold" />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {showConfirmEncerrar && (
-        <div className="defect-overlay" onClick={() => setShowConfirmEncerrar(false)}>
+        <div className="defect-overlay" onClick={() => setShowConfirmEncerrar(false)} role="dialog" aria-modal="true" aria-label="Confirmar encerramento">
           <div className="defect-modal" style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
             <h3>Confirmar Encerramento</h3>
             <p className="chamado-desc" style={{ marginBottom: 'var(--space-4)' }}>
@@ -536,7 +671,7 @@ export default function MapPage() {
       )}
 
       {attachDefeito && (
-        <div className="defect-overlay" onClick={() => setAttachDefeito(null)}>
+        <div className="defect-overlay" onClick={() => setAttachDefeito(null)} role="dialog" aria-modal="true" aria-label="Anexar ao chamado">
           <div className="defect-modal" onClick={e => e.stopPropagation()}>
             <h3>
               <Paperclip size={18} style={{ verticalAlign: 'middle', marginRight: 6 }} />
@@ -559,7 +694,7 @@ export default function MapPage() {
       )}
 
       {showForm && pinPos && (
-        <div className="defect-overlay">
+        <div className="defect-overlay" role="dialog" aria-modal="true" aria-label="Novo chamado">
           <div className="defect-modal">
             <h3>Novo Chamado</h3>
             {submitError && <p className="error">{submitError}</p>}

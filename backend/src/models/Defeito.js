@@ -1,6 +1,12 @@
 const crypto = require('crypto');
 const { query } = require('../config/database');
 
+function parseJsonField(val, fallback = '[]') {
+  if (val == null) return [];
+  if (typeof val !== 'string') return val;
+  try { return JSON.parse(val); } catch { return JSON.parse(fallback); }
+}
+
 function toDefeito(row) {
   if (!row) return null;
   const rawBlob = row.imagem_thumbnail && row.imagem_thumbnail instanceof Buffer
@@ -18,8 +24,8 @@ function toDefeito(row) {
     atendido_em: row.atendido_em, usuario_email: row.usuario_email,
     imagem_thumbnail: thumbnailBase64,
     _imagem_thumbnail: rawBlob,
-    imagens_extra: JSON.parse(row.imagens_extra || '[]'),
-    atualizacoes: JSON.parse(row.atualizacoes || '[]'),
+    imagens_extra: parseJsonField(row.imagens_extra),
+    atualizacoes: parseJsonField(row.atualizacoes),
     criado_em: row.criado_em, atualizado_em: row.atualizado_em,
     async save() {
       const now = new Date().toISOString();
@@ -183,7 +189,7 @@ const Defeito = {
       previsao_conclusao: previsao,
       usuario_email: data.usuario_email, atendido_em: null,
       imagem_thumbnail: data.imagem_thumbnail || null,
-      imagens_extra: [], atualizacoes: [],
+      imagens_extra: '[]', atualizacoes: '[]',
       criado_em: now, atualizado_em: now,
     });
   },

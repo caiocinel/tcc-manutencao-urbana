@@ -1,23 +1,26 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { IconContext } from '@phosphor-icons/react';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/Toast';
 import ErrorBoundary from './components/ErrorBoundary';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import MapPage from './pages/MapPage';
-import DefectList from './pages/DefectList';
-import Settings from './pages/Settings';
-import AccountSettings from './pages/AccountSettings';
+import { ThemeProvider } from './context/ThemeContext';
+import { useKeyboardNav } from './hooks/useKeyboardNav';
 import './styles/tokens.css';
 import './App.css';
 
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const MapPage = lazy(() => import('./pages/MapPage'));
+const DefectList = lazy(() => import('./pages/DefectList'));
+const Settings = lazy(() => import('./pages/Settings'));
+const AccountSettings = lazy(() => import('./pages/AccountSettings'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const AdminDashboardMetrics = lazy(() => import('./pages/AdminDashboardMetrics'));
 const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
 
-function AdminFallback() {
+function PageFallback() {
   return (
     <div className="admin-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
       <div style={{ textAlign: 'center' }}>
@@ -28,40 +31,78 @@ function AdminFallback() {
   );
 }
 
+function AnimatedRoute({ children }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      style={{ height: '100%' }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function KeyboardNav() {
+  useKeyboardNav();
+  return null;
+}
+
+function MapPageGuard() {
+  const { loading, isAuthenticated } = useAuth();
+  if (loading) return <PageFallback />;
+  return <MapPage key={String(isAuthenticated)} />;
+}
+
+function SkipLink() {
+  return (
+    <a href="#main-content" className="skip-link">
+      Ir para o conteúdo principal
+    </a>
+  );
+}
+
 function App() {
   return (
     <ErrorBoundary>
       <IconContext.Provider value={{ weight: 'light', size: 20 }}>
+        <ThemeProvider>
         <AuthProvider>
           <ToastProvider>
             <BrowserRouter>
+              <SkipLink />
+              <KeyboardNav />
+              <main id="main-content" style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
               <Routes>
-                <Route path="/" element={<MapPage />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/registro" element={<Register />} />
-                <Route path="/lista" element={<DefectList />} />
-                <Route path="/config" element={<Settings />} />
-                <Route path="/conta" element={<AccountSettings />} />
+                <Route path="/" element={<Suspense fallback={<PageFallback />}><div style={{ height: '100%', display: 'flex', flexDirection: 'column', flex: 1 }}><MapPageGuard /></div></Suspense>} />
+                <Route path="/login" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><Login /></AnimatedRoute></Suspense>} />
+                <Route path="/registro" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><Register /></AnimatedRoute></Suspense>} />
+                <Route path="/lista" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><DefectList /></AnimatedRoute></Suspense>} />
+                <Route path="/config" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><Settings /></AnimatedRoute></Suspense>} />
+                <Route path="/conta" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><AccountSettings /></AnimatedRoute></Suspense>} />
                 <Route path="/admin" element={
-                  <Suspense fallback={<AdminFallback />}>
-                    <AdminDashboard />
+                  <Suspense fallback={<PageFallback />}>
+                    <AnimatedRoute><AdminDashboard /></AnimatedRoute>
                   </Suspense>
                 } />
                 <Route path="/admin/dashboard" element={
-                  <Suspense fallback={<AdminFallback />}>
-                    <AdminDashboardMetrics />
+                  <Suspense fallback={<PageFallback />}>
+                    <AnimatedRoute><AdminDashboardMetrics /></AnimatedRoute>
                   </Suspense>
                 } />
                 <Route path="/admin/usuarios" element={
-                  <Suspense fallback={<AdminFallback />}>
-                    <SuperAdmin />
+                  <Suspense fallback={<PageFallback />}>
+                    <AnimatedRoute><SuperAdmin /></AnimatedRoute>
                   </Suspense>
                 } />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
+              </main>
             </BrowserRouter>
           </ToastProvider>
         </AuthProvider>
+        </ThemeProvider>
       </IconContext.Provider>
     </ErrorBoundary>
   );

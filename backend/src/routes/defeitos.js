@@ -13,6 +13,39 @@ const { apiLimiter } = require('../middleware/rateLimit');
 const { compressImage } = require('../middleware/imageProcessor');
 const logger = require('../services/logger');
 
+function pointInPolygon(lat, lng, polygon) {
+  let inside = false;
+  const ring = polygon.coordinates[0];
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [lngi, lati] = ring[i];
+    const [lngj, latj] = ring[j];
+    if ((lati > lat) !== (latj > lat) && lng < (lngj - lngi) * (lat - lati) / (latj - lati) + lngi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+async function validatePerimeter(req, res, next) {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user || !user.municipio_id) return next();
+    if (user.admin) return next();
+    const { rows } = await query('SELECT poligono_json FROM municipios WHERE codigo = $1', [user.municipio_id]);
+    if (!rows[0] || !rows[0].poligono_json) return next();
+    const polygon = typeof rows[0].poligono_json === 'string' ? JSON.parse(rows[0].poligono_json) : rows[0].poligono_json;
+    const lat = parseFloat(req.body.latitude);
+    const lng = parseFloat(req.body.longitude);
+    if (!isNaN(lat) && !isNaN(lng) && !pointInPolygon(lat, lng, polygon)) {
+      return res.status(403).json({ error: 'O chamado deve estar dentro do perímetro do seu município' });
+    }
+    next();
+  } catch (error) {
+    logger.error({ err: error }, 'Erro ao validar perímetro');
+    next();
+  }
+}
+
 const router = express.Router();
 
 const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
@@ -87,10 +120,11 @@ const checkUserRateLimit = async (req, res, next) => {
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(401).json({ error: 'Usuário não encontrado' });
 
-    const now = new Date();
-    if (now - user.requestsResetAt > 60 * 60 * 1000) {
+    const now = Date.now();
+    const resetAt = user.requestsResetAt ? new Date(user.requestsResetAt).getTime() : 0;
+    if (now - resetAt > 60 * 60 * 1000) {
       user.requestsCount = 0;
-      user.requestsResetAt = now;
+      user.requestsResetAt = new Date(now);
     }
 
     if (user.requestsCount >= 10) {
@@ -110,12 +144,15 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-router.post('/', authenticateToken, requireEmailVerified, checkUserRateLimit, apiLimiter, upload.single('imagem'), handleMulterError, compressImage, async (req, res) => {
+router.post('/', authenticateToken, requireEmailVerified, checkUserRateLimit, apiLimiter, upload.single('imagem'), handleMulterError, compressImage, validatePerimeter, async (req, res) => {
   try {
     const { titulo, descricao, latitude, longitude, rua, bairro, categoria } = req.body;
 
     if (!latitude || !longitude) {
       return res.status(400).json({ error: 'Latitude e longitude são obrigatórios' });
+    }
+    if (!titulo || !titulo.trim()) {
+      return res.status(400).json({ error: 'Título é obrigatório' });
     }
     if (!descricao || descricao.trim().length < 20) {
       return res.status(400).json({ error: 'Descreva o problema em detalhes (mínimo 20 caracteres)' });

@@ -1,135 +1,172 @@
-# Central de Inteligência Urbana
+# Central de Inteligência Urbana (Urban Intelligence Center)
 
-Sistema completo de abertura e gestão de chamados para serviços públicos, como Progressive Web App (PWA).
+A full-stack Progressive Web App for reporting and managing urban infrastructure issues (potholes, broken lighting, damaged sidewalks, fallen trees, etc.).
 
-## Arquitetura
+## Architecture
 
-| Componente | Tecnologia |
+| Layer | Technology |
 |---|---|
-| Frontend | React 19 + Vite + Phosphor Icons |
-| Backend | Node.js + Express (serve SPA + API no mesmo processo) |
-| Banco de Dados | PostgreSQL 16 (pg, pool de 10 conexões) |
-| Mapas | Leaflet + react-leaflet + leaflet.heat |
-| Gráficos | Recharts (dashboard de métricas) |
-| Autenticação | JWT + bcrypt + CSRF Double Submit Cookie |
-| IA | Adaptador plugável (HuggingFace, OpenAI ou API própria) |
-| Segurança | Helmet, Rate Limiting, Criptografia AES-256-GCM (CPF) |
-| Notificações | Web Push API (PWA) |
-| Logger | Pino estruturado com rotação |
+| Frontend | React 19 + Vite 8 + Phosphor Icons + Framer Motion |
+| Backend | Node.js + Express 5 (serves SPA + API) |
+| Database | PostgreSQL 16 (pg driver, pool of 10 connections) |
+| Maps | Leaflet + react-leaflet + leaflet.heat |
+| Charts | Recharts (admin metrics dashboard) |
+| Auth | JWT + bcrypt + CSRF Double Submit Cookie |
+| AI (optional) | Pluggable adapter (HuggingFace, OpenAI, or custom API) |
+| Security | Helmet, Rate Limiting (3 levels), AES-256-GCM (CPF encryption) |
+| Notifications | Web Push API (PWA) |
+| Logger | Pino structured logging with rotation |
 
-## Como Iniciar com Docker (recomendado)
+## Deploy
+
+### Production (VPS ARM64 - 4GB RAM, 2 cores)
 
 ```bash
+# 1. Clone the repository
+git clone <repo-url>
+cd tcc-manutencao-urbana
+
+# 2. Configure environment variables
+cp backend/.env.example .env
+# Edit .env with your secrets:
+#   JWT_SECRET=<random-32-char-string>
+#   ENCRYPTION_KEY=<random-32-char-string>
+#   DOMAIN=yourdomain.com
+#   DB_PASSWORD=<secure-password>
+
+# 3. Start all services (PostgreSQL + Backend + Nginx + Certbot)
 docker compose up -d --build
+
+# 4. Import IBGE municipalities (first run only)
+docker compose exec -T backend node seed-municipios-ibge.js
+
+# 5. Set up SSL certificate (first run only)
+docker compose run --rm certbot certonly --webroot \
+  -w /var/www/certbot -d yourdomain.com
+
+# 6. With SSL active, Nginx will serve HTTPS automatically
+#    Frontend: https://yourdomain.com
+#    API:      https://yourdomain.com/api
 ```
 
-- Aplicação completa: http://localhost:5000
-- Serviço de IA: http://localhost:8000 (opcional, ativar com `--profile ia`)
-
-### Importar municípios do IBGE (primeira execução)
+### Using docker-compose.host.yml (VPS without Nginx)
 
 ```bash
-docker compose exec -T backend node seed-municipios-ibge.js
+docker compose -f docker-compose.host.yml up -d --build
+# App at http://localhost:5000
 ```
 
-## Como Iniciar Localmente (sem Docker)
+### Development (without Docker)
 
-### Pré-requisitos
-- Node.js 18+
-- PostgreSQL 16 rodando localmente
-- Python 3.9+ (para o serviço de IA, opcional)
+```bash
+# Terminal 1 - PostgreSQL
+docker compose up -d postgres
 
-### Passo a passo
+# Terminal 2 - Backend
+cd backend
+cp .env.example .env   # edit credentials
+npm install
+node --max-old-space-size=2048 index.js
+# -> http://localhost:5000
 
-1. **Configure o banco PostgreSQL**
-   ```bash
-   createdb manutencao_urbana
-   ```
+# Terminal 3 - Frontend
+cd frontend
+npm install
+npm run dev
+# -> http://localhost:5173
 
-2. **Instale as dependências do Backend**
-   ```bash
-   cd backend
-   npm install
-   cp .env.example .env  # edite as credenciais
-   ```
+# Terminal 4 - AI (optional)
+cd ia
+pip install -r requirements.txt
+python main.py
+# -> http://localhost:8000
+```
 
-3. **Inicie o Backend**
-   ```bash
-   cd backend
-   node --max-old-space-size=2048 index.js
-   ```
-   API em http://localhost:5000
+## Project Structure
 
-4. **Inicie o Frontend** (em outro terminal)
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-   Frontend em http://localhost:5173
+```
+tcc-manutencao-urbana/
+├── backend/              # Node.js + Express API
+│   ├── index.js          # Entry point
+│   ├── src/
+│   │   ├── routes/       # auth.js, defeitos.js, categorias.js, municipios.js
+│   │   ├── models/       # User.js, Defeito.js, Apoio.js
+│   │   ├── middleware/   # csrf.js, imageProcessor.js, rateLimit.js
+│   │   ├── services/     # email.js, encryption.js, push.js, logger.js
+│   │   └── config/       # database.js
+│   └── scripts/          # Migration, backup, restore
+├── frontend/             # React + Vite SPA
+│   └── src/
+│       ├── pages/        # MapPage, DefectList, AdminDashboard, etc.
+│       ├── components/   # Header, UserMenu, Toast, HeatmapLayer
+│       ├── context/      # AuthContext
+│       ├── services/     # api.js (HTTP client)
+│       ├── styles/       # tokens.css (design system)
+│       └── hooks/
+├── ia/                   # Optional AI classification service (Python/FastAPI)
+├── docker-compose.yml    # Production (with Nginx + SSL)
+├── docker-compose.host.yml  # VPS without Nginx
+├── nginx.prod.conf       # Nginx config (production)
+├── nginx.conf            # Nginx config (development)
+└── .env                  # Root environment variables
+```
 
-5. **(Opcional) Importe os municípios**
-   ```bash
-   node backend/seed-municipios-ibge.js
-   ```
+## API Endpoints
 
-## Serviço de IA (Pluggable)
+### Authentication
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| POST | `/api/auth/registro` | — | Register with CPF and municipality |
+| POST | `/api/auth/login` | — | Login |
+| POST | `/api/auth/validar-cpf` | — | Validate CPF via BrasilAPI |
+| PATCH | `/api/auth/senha` | JWT | Change password |
+| POST | `/api/auth/verificar-email` | JWT | Verify email with code |
+| GET | `/api/auth/push/key` | — | VAPID public key |
+| POST | `/api/auth/push/subscribe` | JWT | Save push subscription |
 
-| Variável | Descrição | Padrão |
-|---|---|---|
-| `CLASSIFICATION_API_URL` | URL da API de classificação | HuggingFace bart-large-mnli |
-| `CLASSIFICATION_API_KEY` | Token de autenticação | vazio |
-| `CLASSIFICATION_FORMAT` | Formato: `huggingface` ou `generic` | huggingface |
-| `CLASSIFICATION_CATEGORIES` | Categorias separadas por vírgula | Buraco,Iluminação,... |
+### Defects (Chamados)
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| GET | `/api/defeitos` | — | List all (with support count) |
+| GET | `/api/defeitos/meus` | JWT | List user's defects |
+| GET | `/api/defeitos/clusters` | — | Clustered for map |
+| GET | `/api/defeitos/:id` | — | Detail |
+| POST | `/api/defeitos` | JWT + email verified | Create with photo |
+| POST | `/api/defeitos/:id/apoiar` | JWT | Toggle upvote |
+| PATCH | `/api/defeitos/:id` | JWT+admin | Update status/priority |
+| PATCH | `/api/defeitos/:id/anexar` | JWT | Attach image or text |
 
-## Endpoints da API
+### Admin
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| GET | `/api/auth/admin/users` | JWT+admin | List users |
+| GET | `/api/auth/admin/estatisticas` | JWT+admin | Dashboard metrics |
+| PATCH | `/api/auth/admin/users/:id` | JWT+admin | Assign municipality |
+| PATCH | `/api/auth/admin/users/:id/admin` | JWT+super | Promote/remove admin |
 
-### Autenticação
-- `POST /api/auth/registro` — Cadastro com CPF e município
-- `POST /api/auth/login` — Login
-- `PATCH /api/auth/senha` — Alterar senha
-- `POST /api/auth/verificar-email` — Verificar email
+### Support
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| GET | `/api/categorias` | — | List categories |
+| GET | `/api/municipios` | — | List municipalities |
+| GET | `/api/csrf-token` | — | Get CSRF token |
+| GET | `/api/health` | — | Health check |
 
-### Defeitos
-- `GET /api/defeitos` — Listar todos (com contagem de apoios)
-- `GET /api/defeitos/clusters` — Clusterizado para mapa
-- `POST /api/defeitos` — Criar novo defeito com foto
-- `PATCH /api/defeitos/:id` — Atualizar status/prioridade (admin)
-- `POST /api/defeitos/:id/apoiar` — Alternar apoio (upvote)
+## Security
 
-### Administração
-- `GET /api/auth/admin/users` — Listar usuários (admin)
-- `GET /api/auth/admin/estatisticas` — Métricas do dashboard (admin)
-- `PATCH /api/auth/admin/users/:id` — Atribuir município (admin)
-
-### Categorias e Municípios
-- `GET /api/categorias` — Listar categorias
-- `GET /api/municipios` — Listar municípios (do IBGE)
-
-### Segurança
-- `GET /api/csrf-token` — Obter token CSRF
-- Rate limit: 200 req/15min global, 20 auth, 50 API
-
-## Rotas do Frontend
-
-| Rota | Página | Descrição |
-|---|---|---|
-| `/` | MapPage | Mapa interativo com clusters |
-| `/lista` | DefectList | Lista de chamados em cards |
-| `/login` | Login | Autenticação |
-| `/registro` | Register | Cadastro |
-| `/conta` | AccountSettings | Alterar senha, verificar email |
-| `/config` | Settings | Selecionar município |
-| `/admin` | AdminDashboard | Painel admin com mapa + regiões |
-| `/admin/dashboard` | AdminDashboardMetrics | Métricas com gráficos |
-| `/admin/usuarios` | SuperAdmin | Gerenciar usuários e permissões |
+- **Passwords:** bcrypt hashing (salt rounds = 10)
+- **JWT:** 24h expiration, payload `{ userId, email, admin, municipio_id }`
+- **CPF:** AES-256-GCM encrypted at rest + SHA-256 hash for unique lookups
+- **CSRF:** Double Submit Cookie pattern on all mutations
+- **Rate Limiting:** 3 levels (global 200/15min, auth 20/15min, API 200/h)
+- **User Rate Limit:** 10 requests/hour per user (auto-reset)
+- **Helmet:** Security headers (except CSP for Leaflet tiles)
 
 ## Design System
 
-Tema escuro com design tokens CSS:
+Dark theme with CSS custom properties (tokens):
 
-- **Fonte:** Inter (sans-serif) + JetBrains Mono (mono)
-- **Tipografia:** Escala de 11px a 36px com tracking controlado
-- **Espaçamento:** Escala de 4px a 64px
-- **Cores:** bg-primary `#0d0d0f`, accent-green `#22c55e`
-- **Componentes:** shadcn/ui-inspired, sem dependência externa
+- **Font:** Inter (sans-serif) + JetBrains Mono (mono)
+- **Typography:** 11px to 36px scale with controlled tracking
+- **Spacing:** 4px to 64px scale
+- **Colors:** `--bg-primary: #0d0d0f`, `--accent-green: #22c55e`

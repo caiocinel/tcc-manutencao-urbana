@@ -8,7 +8,7 @@ import SearchableSelect from '../components/SearchableSelect';
 export default function Settings() {
   const { user, isAuthenticated, updateUser, logout } = useAuth();
   const addToast = useToast();
-  const [municipioId, setMunicipioId] = useState(user?.municipio?.codigo || '');
+  const [municipioId, setMunicipioId] = useState(() => user?.municipio?.codigo || '');
   const [municipios, setMunicipios] = useState([]);
   const [saving, setSaving] = useState(false);
   const navigate = useNavigate();

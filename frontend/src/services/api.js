@@ -46,27 +46,66 @@ async function request(endpoint, options = {}) {
   return res.json();
 }
 
-// Upload de defeito com FormData (para enviar imagem junto)
+function formDataToObject(formData) {
+  const obj = {};
+  formData.forEach((value, key) => { obj[key] = value; });
+  return obj;
+}
+
+async function salvarOffline(formData) {
+  const db = await openOfflineDB();
+  const tx = db.transaction('defeitos', 'readwrite');
+  tx.objectStore('defeitos').add({
+    dados: formDataToObject(formData),
+    token: localStorage.getItem('token'),
+    criado_em: new Date().toISOString(),
+  });
+  await tx.done;
+  if ('serviceWorker' in navigator && 'SyncManager' in window) {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.sync.register('sync-defeitos');
+  }
+}
+
+async function openOfflineDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('ciu-offline', 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore('defeitos', { keyPath: 'id', autoIncrement: true });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
 async function uploadDefeito(formData) {
   const token = localStorage.getItem('token');
   const csrfToken = await getCsrfToken();
 
-  const res = await fetch(`${API_URL}/api/defeitos`, {
-    method: 'POST',
-    headers: {
-      Authorization: token,
-      'X-XSRF-TOKEN': csrfToken,
-    },
-    body: formData,
-    credentials: 'include',
-  });
+  try {
+    const res = await fetch(`${API_URL}/api/defeitos`, {
+      method: 'POST',
+      headers: {
+        Authorization: token,
+        'X-XSRF-TOKEN': csrfToken,
+      },
+      body: formData,
+      credentials: 'include',
+    });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
-    throw new Error(err.error || 'Erro na requisição');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+      throw new Error(err.error || 'Erro na requisição');
+    }
+
+    return res.json();
+  } catch (err) {
+    if (!navigator.onLine || err.message === 'Failed to fetch') {
+      await salvarOffline(formData);
+      return { offline: true, message: 'Chamado salvo offline. Será enviado quando houver conexão.' };
+    }
+    throw err;
   }
-
-  return res.json();
 }
 
 export const api = {
@@ -95,6 +134,9 @@ export const api = {
 
   listMunicipios: () =>
     request('/api/municipios'),
+
+  getMunicipio: (codigo) =>
+    request(`/api/municipios/${codigo}`),
 
   listCategorias: () =>
     request('/api/categorias'),

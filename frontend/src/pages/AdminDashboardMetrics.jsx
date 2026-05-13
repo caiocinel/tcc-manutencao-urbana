@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line, AreaChart, Area } from 'recharts';
 import { ChartLineUp, Warning, Timer, Buildings, ChartBar, MapPin } from '@phosphor-icons/react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -28,6 +28,25 @@ function ImpactoTag({ impacto }) {
   return <span className={`impacto-tag ${impactoCls[impacto] || 'impacto-media'}`}>{impactoLabel[impacto] || impacto}</span>;
 }
 
+function KpiSparkline({ data }) {
+  if (!data || data.length < 2) return null;
+  return (
+    <div className="kpi-sparkline">
+      <ResponsiveContainer width="100%" height={40}>
+        <AreaChart data={data}>
+          <defs>
+            <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <Area type="monotone" dataKey="total" stroke="#22c55e" strokeWidth={2} fill="url(#sparkGrad)" />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export default function AdminDashboardMetrics() {
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -35,13 +54,7 @@ export default function AdminDashboardMetrics() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!isAuthenticated) { navigate('/login'); return; }
-    if (!user?.admin) { navigate('/'); return; }
-    loadStats();
-  }, [isAuthenticated]);
-
-  async function loadStats() {
+  const loadStats = useCallback(async () => {
     try {
       const data = await api.adminEstatisticas();
       setStats(data);
@@ -50,7 +63,13 @@ export default function AdminDashboardMetrics() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [addToast]);
+
+  useEffect(() => {
+    if (!isAuthenticated) { navigate('/login'); return; }
+    if (!user?.admin) { navigate('/'); return; }
+    loadStats();
+  }, [isAuthenticated, user, navigate, loadStats]);
 
   if (loading) return <div className="admin-page"><div className="loading">Carregando...</div></div>;
   if (!stats) return null;
@@ -88,10 +107,21 @@ export default function AdminDashboardMetrics() {
           <div className="kpi-card">
             <span className="kpi-value">{stats.total}</span>
             <span className="kpi-label">Total de Chamados</span>
+            <KpiSparkline data={tendenciaData} />
           </div>
           <div className="kpi-card">
             <span className="kpi-value">{stats.pendentes}</span>
             <span className="kpi-label">Pendentes</span>
+            {tendenciaData.length > 1 && (
+              <div className="kpi-sparkline">
+                <ResponsiveContainer width="100%" height={40}>
+                  <AreaChart data={tendenciaData}>
+                    <defs><linearGradient id="s2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#eab308" stopOpacity={0.3} /><stop offset="100%" stopColor="#eab308" stopOpacity={0} /></linearGradient></defs>
+                    <Area type="monotone" dataKey="total" stroke="#eab308" strokeWidth={2} fill="url(#s2)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
           <div className="kpi-card">
             <span className="kpi-value">{stats.resolvidos}</span>

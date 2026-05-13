@@ -28,9 +28,9 @@ export default function Login() {
     <div className="auth-container">
       <form onSubmit={handleSubmit} className="auth-form">
         <h1>Login</h1>
-        {error && <p className="error">{error}</p>}
-        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
-        <input type="password" placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} required />
+        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required aria-label="Email" aria-describedby={error ? 'login-error' : undefined} />
+        <input type="password" placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} required aria-label="Senha" aria-describedby={error ? 'login-error' : undefined} />
+        {error && <p id="login-error" className="error" role="alert">{error}</p>}
         <button type="submit">Entrar</button>
         <p className="auth-link">
           Não tem conta? <Link to="/registro">Cadastre-se</Link>
