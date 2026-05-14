@@ -8,89 +8,66 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 });
 
-function computeBbox(ring) {
-  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-  for (const [lng, lat] of ring) {
-    if (lat < minLat) minLat = lat;
-    if (lat > maxLat) maxLat = lat;
-    if (lng < minLng) minLng = lng;
-    if (lng > maxLng) maxLng = lng;
-  }
-  return { minLat, maxLat, minLng, maxLng };
-}
+const TBURGZ_URL = 'https://raw.githubusercontent.com/tbrugz/geodata-br/master/geojson/geojs-100-mun.json';
 
-async function fetchPoligono(codigo) {
-  const url = `https://servicodados.ibge.gov.br/api/v3/malhas/municipios/${codigo}?formato=application/vnd.geo+json`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    console.warn(`  IBGE ${res.status} para ${codigo}`);
-    return null;
-  }
-  const data = await res.json();
-  if (!data.features?.[0]?.geometry) {
-    console.warn(`  Sem geometria para ${codigo}`);
-    return null;
-  }
-  return data.features[0].geometry;
+async function fetchTbrugz() {
+  console.log('Baixando dados do tbrugz/geodata-br...');
+  const res = await fetch(TBURGZ_URL);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  const codigoFilter = args[0] || null;
+  const data = await fetchTbrugz();
+  const features = data.features || [];
+  console.log(`Recebidos ${features.length} municípios. Atualizando...`);
 
-  let rows;
-  if (codigoFilter) {
-    const r = await pool.query('SELECT codigo, nome FROM municipios WHERE codigo = $1', [codigoFilter]);
-    rows = r.rows;
-    if (rows.length === 0) {
-      console.error(`Município ${codigoFilter} não encontrado`);
-      process.exit(1);
-    }
-  } else {
-    const r = await pool.query('SELECT codigo, nome FROM municipios WHERE poligono_json IS NULL ORDER BY codigo');
-    rows = r.rows;
-  }
+  let count = 0;
+  for (const feat of features) {
+    const props = feat.properties || {};
+    const cod = String(props.cd_geocmu || props.id || '');
+    if (!cod) continue;
 
-  console.log(`Processando ${rows.length} municípios...`);
+    const geometry = feat.geometry;
+    if (!geometry) continue;
 
-  let ok = 0, fail = 0;
-  for (let i = 0; i < rows.length; i++) {
-    const { codigo, nome } = rows[i];
-    process.stdout.write(`[${i + 1}/${rows.length}] ${codigo} ${nome}... `);
+    const coords = geometry.coordinates?.[0];
+    if (!coords?.length) continue;
 
-    const geometry = await fetchPoligono(codigo);
-    if (!geometry) {
-      console.log('IGNORADO');
-      fail++;
-      continue;
-    }
+    const lngs = coords.map(c => c[0]);
+    const lats = coords.map(c => c[1]);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
 
-    const outer = geometry.coordinates[0];
-    const bbox = computeBbox(outer);
+    const geomStr = JSON.stringify(geometry);
 
     await pool.query(
       `UPDATE municipios SET
         poligono_json = $1,
         min_lat = $2, max_lat = $3,
         min_lng = $4, max_lng = $5
-       WHERE codigo = $6`,
-      [JSON.stringify(geometry), bbox.minLat, bbox.maxLat, bbox.minLng, bbox.maxLng, codigo]
+       WHERE codigo = $6
+         AND (poligono_json IS NULL OR poligono_json = '' OR min_lat = 0)`,
+      [geomStr, minLat, maxLat, minLng, maxLng, cod]
     );
-
-    console.log('OK');
-    ok++;
-
-    if (i < rows.length - 1) {
-      await new Promise(r => setTimeout(r, 100));
-    }
+    count++;
+    if (count % 500 === 0) console.log(`  ${count} municípios...`);
   }
 
-  console.log(`\nConcluído: ${ok} OK, ${fail} ignorados`);
+  // Update PostGIS geometry column
+  await pool.query(
+    `UPDATE municipios SET polygon_geom = ST_SetSRID(ST_GeomFromGeoJSON(poligono_json), 4326)
+     WHERE poligono_json IS NOT NULL AND poligono_json != ''`
+  );
+
+  console.log(`Concluído! ${count} municípios atualizados com polígonos.`);
   await pool.end();
   process.exit(0);
 }
 
 main().catch(err => {
-  console.error('Erro:', err);
+  console.error('Erro:', err.message);
   process.exit(1);
 });
