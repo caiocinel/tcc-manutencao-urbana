@@ -12,7 +12,7 @@ const { apiLimiter } = require('../middleware/rateLimit');
 const { compressImage } = require('../middleware/imageProcessor');
 const logger = require('../services/logger');
 const ia = require('../services/ia');
-const { createDefeitoSchema, updateDefeitoSchema, batchEncerrarSchema } = require('../validation/defeitos.schema');
+const { createDefeitoSchema, updateDefeitoSchema, batchEncerrarSchema, anexarSchema } = require('../validation/defeitos.schema');
 const { validate } = require('../validation/validate');
 
 const PERIMETER_BUFFER_DEG = parseFloat(process.env.PERIMETER_BUFFER_DEG || '0.01');
@@ -167,7 +167,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-router.post('/', authenticateToken, requireEmailVerified, checkUserRateLimit, apiLimiter, validate(createDefeitoSchema), upload.single('imagem'), handleMulterError, compressImage, validatePerimeter, async (req, res) => {
+router.post('/', authenticateToken, requireEmailVerified, checkUserRateLimit, apiLimiter, upload.single('imagem'), handleMulterError, validate(createDefeitoSchema), compressImage, validatePerimeter, async (req, res) => {
   try {
     const { titulo, descricao, latitude, longitude, rua, bairro, categoria } = req.body;
 
@@ -552,7 +552,7 @@ router.patch('/:id', authenticateToken, apiLimiter, validate(updateDefeitoSchema
   }
 });
 
-router.patch('/:id/anexar', authenticateToken, validate(anexarSchema), upload.single('imagem'), handleMulterError, compressImage, async (req, res) => {
+router.patch('/:id/anexar', authenticateToken, upload.single('imagem'), handleMulterError, validate(anexarSchema), compressImage, async (req, res) => {
   try {
     const { rows: defeitoRows } = await query('SELECT * FROM defeitos WHERE id = $1', [req.params.id]);
     const defeitoRow = defeitoRows[0];
