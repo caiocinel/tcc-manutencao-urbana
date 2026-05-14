@@ -361,3 +361,47 @@ Dark-first theme with CSS custom properties (tokens.css):
 ```
 
 All services communicate over a Docker bridge network (`app-network`). The IA service runs under the `ia` profile (optional start). Nginx serves the SPA build and reverse-proxies `/api/*` to backend.
+
+## Input Validation (Zod Schemas)
+
+All API inputs validated via Zod schemas in `backend/src/validation/`:
+
+| Schema | File | Rules |
+|---|---|---|
+| Auth | `auth.schema.js` | CPF (11 digits, BrasilAPI format), email, password (min 8 chars), name, municipality code |
+| Defeitos | `defeitos.schema.js` | Title (3-100 chars), description (10-2000), lat/lng (-90/90, -180/180), image (base64 max 5MB) |
+| Admin | `admin.schema.js` | Status enum (aberto/em_andamento/resolvido/fechado), priority enum, secretary, user role |
+
+Validation is centralized via `validate.js` — returns 422 with structured error messages on failure.
+
+## Spec
+
+The project spec lives in `SPEC.md` at the repo root, written in caveman-encoded format:
+- **§G** — Goal
+- **§C** — Constraints (RAM, Docker limits, auth, storage, etc.)
+- **§I** — Interfaces (API contracts + env vars + Docker layout)
+- **§V** — Invariants (V1–V10: must-not-break rules verified by CI)
+- **§T** — Tasks (T1–T17: implementation checklist with status)
+- **§B** — Bug log (B1–B2: recorded failures with root cause and fix)
+
+## Scripts
+
+| Script | Location | Purpose |
+|---|---|---|
+| `backup-postgres.sh` | `scripts/` | Daily compressed SQL dump, 30-day retention, optional S3 + Telegram |
+| `zram-setup.sh` | `scripts/` | Enables ZRAM compression (2× compression, 4G max) to stretch 4GB RAM on Hetzner CX11 |
+| `run-migration.js` | `backend/scripts/` | Applies `migration-postgis.sql` (PostGIS extensions, geometry columns, spatial indices) |
+| `download_text_model.py` | `ia/models/` | Downloads all-MiniLM-L6-v2 from HuggingFace and exports to ONNX |
+| `download_image_model.py` | `ia/models/` | Downloads MobileNetV3-small and exports to ONNX |
+
+## Admin Hierarchy
+
+Three admin levels enforced via JWT payload `{ role: 'user' | 'admin' | 'super' }`:
+
+| Level | Permissions |
+|---|---|
+| **User** | Create/edit own defects, toggle support, attach updates |
+| **Admin** | All user + change status/priority/secretaria of any defect, batch close, manage users (name/municipio/status) |
+| **Super** | All admin + promote/remove admin roles |
+
+Route-level checks via `requireAdmin` / `requireSuper` middleware in `backend/src/middleware/`. Frontend conditionally renders AdminDashboard tab for `role !== 'user'`.
