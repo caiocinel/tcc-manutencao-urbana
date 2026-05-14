@@ -258,7 +258,7 @@ export default function MapPage() {
   const [selectedIds, setSelectedIds] = useState({});
   const [encerrando, setEncerrando] = useState(false);
   const [showConfirmEncerrar, setShowConfirmEncerrar] = useState(false);
-  const [heatmapVisible, setHeatmapVisible] = useState(false);
+  const [heatmapVisible, setHeatmapVisible] = useState(!isAuthenticated);
   const [attachDefeito, setAttachDefeito] = useState(null);
   const [attachImagem, setAttachImagem] = useState(null);
   const [attachTexto, setAttachTexto] = useState('');
@@ -621,8 +621,8 @@ export default function MapPage() {
             <Marker position={pinPos} icon={pinIcon} />
           )}
 
-          {heatmapVisible ? (
-            <HeatmapLayer pontos={defeitos} ativo={heatmapVisible} />
+          {!isAuthenticated || heatmapVisible ? (
+            <HeatmapLayer pontos={defeitos} ativo={true} />
           ) : (
             <>
               {renderizarIndividuais()}
@@ -641,6 +641,22 @@ export default function MapPage() {
               <div className="skeleton skeleton-cluster" style={{ margin: '0 auto 8px' }} />
               <div className="skeleton skeleton-line" style={{ width: 160, margin: '0 auto' }} />
               <div className="skeleton skeleton-line" style={{ width: 100, margin: '4px auto 0' }} />
+            </div>
+          </div>
+        )}
+
+        {!isAuthenticated && (
+          <div style={{
+            position: 'absolute', bottom: 100, left: 0, right: 0, zIndex: 1000,
+            display: 'flex', justifyContent: 'center', pointerEvents: 'none',
+          }}>
+            <div style={{
+              background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
+              padding: '8px 16px', borderRadius: 'var(--radius-full)',
+              fontSize: 'var(--text-xs)', boxShadow: 'var(--shadow-md)',
+              border: '1px solid var(--border-default)',
+            }}>
+              Faça login para ver detalhes e interagir com os chamados
             </div>
           </div>
         )}
