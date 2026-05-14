@@ -40,13 +40,12 @@ function MapClickHandler({ creating, onMapClick, setPinPos }) {
   return null;
 }
 
-const pinIcon = L.icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
-  iconRetinaUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
+const pinIcon = L.divIcon({
+  className: '',
+  html: '<span style="font-size:36px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5))">📍</span>',
+  iconSize: [30, 36],
+  iconAnchor: [15, 36],
+  popupAnchor: [0, -36],
 });
 
 import HeatmapLayer from '../components/HeatmapLayer';
