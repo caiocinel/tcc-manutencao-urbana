@@ -44,7 +44,8 @@ async function validatePerimeter(req, res, next) {
         [user.municipio_id, lng, lat]
       );
       if (rows.length > 0) return next();
-    } else if (m.min_lat != null && m.max_lat != null && m.min_lng != null && m.max_lng != null) {
+    } else if (m.min_lat != null && m.max_lat != null && m.min_lng != null && m.max_lng != null &&
+               (m.min_lat !== 0 || m.max_lat !== 0 || m.min_lng !== 0 || m.max_lng !== 0)) {
       if (lat >= m.min_lat && lat <= m.max_lat && lng >= m.min_lng && lng <= m.max_lng) return next();
     } else {
       return next();

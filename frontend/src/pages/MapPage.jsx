@@ -383,7 +383,9 @@ export default function MapPage() {
       }
       return inside;
     }
-    if (hasBounds) return lat >= mun.min_lat && lat <= mun.max_lat && lng >= mun.min_lng && lng <= mun.max_lng;
+    if (hasBounds && (mun.min_lat !== mun.max_lat || mun.min_lng !== mun.max_lng)) {
+      return lat >= mun.min_lat && lat <= mun.max_lat && lng >= mun.min_lng && lng <= mun.max_lng;
+    }
     return true;
   }, [polygonPositions, hasBounds, mun]);
 
