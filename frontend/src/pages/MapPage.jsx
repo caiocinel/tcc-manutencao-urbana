@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, memo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polygon } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Heart, Paperclip, Sun, Fire, MapPin, NotePencil } from '@phosphor-icons/react';
+import { Plus, Heart, Paperclip, Sun, Fire, MapPin, NotePencil, Check, X } from '@phosphor-icons/react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
@@ -687,10 +687,10 @@ export default function MapPage() {
             </p>
             <div className="modal-actions" style={{ justifyContent: 'center' }}>
               <button className="btn-primary" onClick={async () => { setShowConfirmEncerrar(false); await handleEncerrarSelecionados(); }}>
-                Sim, Encerrar
+                <Check size={16} weight="bold" style={{ verticalAlign: 'middle', marginRight: 4 }} /> Sim, Encerrar
               </button>
               <button className="btn-secondary" onClick={() => setShowConfirmEncerrar(false)}>
-                Cancelar
+                <X size={16} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Cancelar
               </button>
             </div>
           </div>
@@ -711,9 +711,13 @@ export default function MapPage() {
               <p className="hint">Máximo 3 imagens por chamado. Formatos: JPEG, PNG, WebP.</p>
               <div className="modal-actions">
                 <button type="submit" className="btn-primary" disabled={attachSaving}>
-                  {attachSaving ? 'Salvando...' : (attachImagem || attachTexto.trim() ? 'Anexar' : 'Selecione algo')}
+                  {attachSaving ? 'Salvando...' : (
+                    <><Paperclip size={16} weight="bold" style={{ verticalAlign: 'middle', marginRight: 4 }} /> {(attachImagem || attachTexto.trim()) ? 'Anexar' : 'Selecione algo'}</>
+                  )}
                 </button>
-                <button type="button" className="btn-secondary" onClick={() => setAttachDefeito(null)}>Cancelar</button>
+                <button type="button" className="btn-secondary" onClick={() => setAttachDefeito(null)}>
+                  <X size={16} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Cancelar
+                </button>
               </div>
             </form>
           </div>
@@ -753,8 +757,12 @@ export default function MapPage() {
               {geocoding && <p className="hint">Obtendo endereço...</p>}
               <p className="hint">Arraste o alfinete no mapa para ajustar a posição</p>
               <div className="modal-actions">
-                <button type="submit" className="btn-primary">Enviar</button>
-                <button type="button" onClick={handleCancel} className="btn-secondary">Cancelar</button>
+                <button type="submit" className="btn-primary">
+                  <Check size={16} weight="bold" style={{ verticalAlign: 'middle', marginRight: 4 }} /> Enviar
+                </button>
+                <button type="button" onClick={handleCancel} className="btn-secondary">
+                  <X size={16} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Cancelar
+                </button>
               </div>
             </form>
           </div>
