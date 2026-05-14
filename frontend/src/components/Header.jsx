@@ -15,17 +15,7 @@ export default function Header({ creating = false }) {
     return (
       <header className="header">
         <div className="brand">
-          <svg className="brand-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
-            <line x1="9" y1="6" x2="9" y2="7" />
-            <line x1="15" y1="6" x2="15" y2="7" />
-            <line x1="9" y1="10" x2="9" y2="11" />
-            <line x1="15" y1="10" x2="15" y2="11" />
-            <line x1="9" y1="14" x2="9" y2="15" />
-            <line x1="15" y1="14" x2="15" y2="15" />
-            <line x1="9" y1="18" x2="15" y2="18" />
-            <polyline points="7 21 10 18 14 18 17 21" />
-          </svg>
+          <img src="/icon.svg" alt="Central de Inteligência Urbana" className="brand-icon" width="28" height="28" style={{ objectFit: 'contain' }} />
           <div>
             <h1>Central de Inteligência Urbana</h1>
             <p>Chamados para Serviços Públicos</p>
@@ -42,17 +32,7 @@ export default function Header({ creating = false }) {
   return (
     <header className="header">
       <div className="brand" role="button" tabIndex={0} onClick={() => navigate('/')} onKeyDown={e => e.key === 'Enter' && navigate('/')} aria-label="Ir para o mapa">
-        <svg className="brand-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
-          <line x1="9" y1="6" x2="9" y2="7" />
-          <line x1="15" y1="6" x2="15" y2="7" />
-          <line x1="9" y1="10" x2="9" y2="11" />
-          <line x1="15" y1="10" x2="15" y2="11" />
-          <line x1="9" y1="14" x2="9" y2="15" />
-          <line x1="15" y1="14" x2="15" y2="15" />
-          <line x1="9" y1="18" x2="15" y2="18" />
-          <polyline points="7 21 10 18 14 18 17 21" />
-        </svg>
+        <img src="/icon.svg" alt="Central de Inteligência Urbana" className="brand-icon" width="28" height="28" style={{ objectFit: 'contain' }} />
         <div>
           <h1>Central de Inteligência Urbana</h1>
           <p>Chamados para Serviços Públicos</p>

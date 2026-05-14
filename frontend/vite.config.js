@@ -15,9 +15,9 @@ export default defineConfig({
         name: 'Central de Inteligência Urbana',
         description: 'Sistema de abertura e gestão de chamados para serviços públicos',
         icons: [
-          { src: '/icon.svg', sizes: '512x512', type: 'image/svg+xml' },
-          { src: '/icon.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any' },
-          { src: '/icon.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'maskable' },
+          { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         start_url: '.',
         display: 'standalone',

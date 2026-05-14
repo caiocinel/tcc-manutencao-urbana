@@ -246,8 +246,8 @@ textarea:focus {
 
 .brand-icon {
   flex-shrink: 0;
-  color: var(--accent-green);
   opacity: 0.9;
+  border-radius: var(--radius-md);
 }
 
 .brand h1 {
