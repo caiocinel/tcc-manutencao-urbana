@@ -22,7 +22,7 @@ Full-stack PWA for reporting and managing urban infrastructure issues (potholes,
 
 ## Features
 
-- **Anonymous browsing** — view defects on map without login
+- **Anonymous browsing** — view heatmap of defects without login (individual markers require login)
 - **Citizen reporting** — photo + GPS + category with AI classification
 - **AI classification** — ONNX embeddings (all-MiniLM-L6-v2) → 7 categories, spam detection, dedup, priority extraction
 - **Duplicate detection** — spatial proximity (ST_DWithin ~1km) + semantic similarity (embedding cosine > 0.3)
@@ -43,6 +43,8 @@ Full-stack PWA for reporting and managing urban infrastructure issues (potholes,
 - **Accessibility** — WCAG AA: aria-labels, skip-link, keyboard navigation, focus-visible, combobox, live regions
 - **Responsive** — mobile-first with bottom sheets, hamburger menu <768px
 - **PWA** — service worker with cache-first for static assets, manifest with splash screen
+- **Privacy** — Gaussian blur on all uploaded photos to protect faces and license plates (configurable sigma)
+- **GPS tolerance** — perimeter validation with ST_Buffer (~1km) + bounding box fallback for city border GPS errors
 
 ## Quick Start (Development)
 
@@ -88,13 +90,17 @@ cp .env.production backend/.env
 docker compose up -d --build
 
 # 4. Run PostGIS migration
-docker compose exec postgres psql -U urbana -d manutencao_urbana \
+docker compose exec -T postgres psql -U urbana -d manutencao_urbana \
   -c "CREATE EXTENSION IF NOT EXISTS postgis;"
-docker compose exec postgres psql -U urbana -d manutencao_urbana \
-  -f /backend/scripts/migration-postgis.sql
+docker compose exec -T postgres psql -U urbana -d manutencao_urbana -c "
+  ALTER TABLE municipios ADD COLUMN IF NOT EXISTS polygon_geom geometry(MultiPolygon, 4326);
+  CREATE INDEX IF NOT EXISTS idx_municipios_polygon_geom ON municipios USING GIST (polygon_geom);
+  ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS geom geometry(Point, 4326)
+    GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)) STORED;
+  CREATE INDEX IF NOT EXISTS idx_defeitos_geom ON defeitos USING GIST (geom);"
 
-# 5. Seed IBGE municipality polygons (first time only)
-docker compose exec backend node backend/scripts/seed-municipios-ibge.js
+# 5. Seed IBGE municipalities (5571 cities, first time only)
+docker compose exec -T backend node seed-municipios-ibge.js
 
 # 6. SSL certificate (first time)
 docker compose run --rm certbot certonly --webroot \
