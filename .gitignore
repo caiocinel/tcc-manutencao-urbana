@@ -7,3 +7,5 @@ backend/.env
 backend/uploads/
 database/
 todo.md
+SPEC.md
+doc.md
