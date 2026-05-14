@@ -25,22 +25,35 @@ async function validatePerimeter(req, res, next) {
     const lat = parseFloat(req.body.latitude);
     const lng = parseFloat(req.body.longitude);
     if (isNaN(lat) || isNaN(lng)) return next();
-    const point = `ST_SetSRID(ST_MakePoint($2, $3), 4326)`;
-    const { rows } = await query(
-      `SELECT 1 FROM municipios
-       WHERE codigo = $1
-         AND polygon_geom IS NOT NULL
-         AND (ST_Within(${point}, polygon_geom)
-           OR ST_Within(${point}, ST_Buffer(polygon_geom, ${PERIMETER_BUFFER_DEG})))`,
-      [user.municipio_id, lng, lat]
+
+    const { rows: munRows } = await query(
+      'SELECT min_lat, max_lat, min_lng, max_lng, polygon_geom FROM municipios WHERE codigo = $1',
+      [user.municipio_id]
     );
-    if (rows.length === 0) {
-      return res.status(403).json({
-        error: 'O chamado está fora do perímetro do seu município.',
-        dica: 'O GPS pode ter pequenos erros. Tente arrastar o marcador para dentro da área do seu município no mapa.',
-      });
+    if (munRows.length === 0) return next();
+
+    const m = munRows[0];
+
+    if (m.polygon_geom) {
+      const point = `ST_SetSRID(ST_MakePoint($2, $3), 4326)`;
+      const { rows } = await query(
+        `SELECT 1 FROM municipios
+         WHERE codigo = $1
+           AND (ST_Within(${point}, polygon_geom)
+             OR ST_Within(${point}, ST_Buffer(polygon_geom, ${PERIMETER_BUFFER_DEG})))`,
+        [user.municipio_id, lng, lat]
+      );
+      if (rows.length > 0) return next();
+    } else if (m.min_lat != null && m.max_lat != null && m.min_lng != null && m.max_lng != null) {
+      if (lat >= m.min_lat && lat <= m.max_lat && lng >= m.min_lng && lng <= m.max_lng) return next();
+    } else {
+      return next();
     }
-    next();
+
+    return res.status(403).json({
+      error: 'O chamado está fora do perímetro do seu município.',
+      dica: 'O GPS pode ter pequenos erros. Tente arrastar o marcador para dentro da área do seu município no mapa.',
+    });
   } catch (error) {
     logger.error({ err: error }, 'Erro ao validar perímetro com PostGIS');
     next();

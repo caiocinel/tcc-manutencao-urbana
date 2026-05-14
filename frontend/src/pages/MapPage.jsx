@@ -236,7 +236,9 @@ export default function MapPage() {
           [...polygonPositions].reverse(),
         ];
       }
-      } catch { /* geocode fail — non-critical */ }
+    } catch { /* geocode fail — non-critical */ }
+  } else if (hasBounds) {
+    centroid = [(mun.min_lat + mun.max_lat) / 2, (mun.min_lng + mun.max_lng) / 2];
   }
 
   const [creating, setCreating] = useState(false);
@@ -371,18 +373,23 @@ export default function MapPage() {
     setSubmitError('');
   }
 
-  const handleMapClick = useCallback(async (latlng) => {
-    if (polygonPositions && user?.municipio_id && !user?.admin) {
+  const checkInsideMunicipio = useCallback((lat, lng) => {
+    if (polygonPositions) {
       let inside = false;
-      const verts = polygonPositions;
-      for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
-        const [lat_i, lng_i] = verts[i];
-        const [lat_j, lng_j] = verts[j];
-        if ((lat_i > latlng.lat) !== (lat_j > latlng.lat) && latlng.lng < (lng_j - lng_i) * (latlng.lat - lat_i) / (lat_j - lat_i) + lng_i) {
-          inside = !inside;
-        }
+      for (let i = 0, j = polygonPositions.length - 1; i < polygonPositions.length; j = i++) {
+        const [lat_i, lng_i] = polygonPositions[i];
+        const [lat_j, lng_j] = polygonPositions[j];
+        if ((lat_i > lat) !== (lat_j > lat) && lng < (lng_j - lng_i) * (lat - lat_i) / (lat_j - lat_i) + lng_i) inside = !inside;
       }
-      if (!inside) {
+      return inside;
+    }
+    if (hasBounds) return lat >= mun.min_lat && lat <= mun.max_lat && lng >= mun.min_lng && lng <= mun.max_lng;
+    return true;
+  }, [polygonPositions, hasBounds, mun]);
+
+  const handleMapClick = useCallback(async (latlng) => {
+    if (user?.municipio_id && !user?.admin) {
+      if (!checkInsideMunicipio(latlng.lat, latlng.lng)) {
         setApiError('O chamado deve estar dentro do perímetro do seu município');
         return;
       }
@@ -392,7 +399,7 @@ export default function MapPage() {
     setShowForm(true);
     setCreating(false);
     geocodeLatLng(latlng);
-  }, [geocodeLatLng, polygonPositions, user]);
+  }, [geocodeLatLng, checkInsideMunicipio, user]);
 
   function handleCancel() {
     setCreating(false);
@@ -420,16 +427,8 @@ export default function MapPage() {
     e.preventDefault();
     setSubmitError('');
     if (!pinPos) return;
-    if (polygonPositions && user?.municipio_id && !user?.admin) {
-      let inside = false;
-      for (let i = 0, j = polygonPositions.length - 1; i < polygonPositions.length; j = i++) {
-        const [lat_i, lng_i] = polygonPositions[i];
-        const [lat_j, lng_j] = polygonPositions[j];
-        if ((lat_i > pinPos.lat) !== (lat_j > pinPos.lat) && pinPos.lng < (lng_j - lng_i) * (pinPos.lat - lat_i) / (lat_j - lat_i) + lng_i) {
-          inside = !inside;
-        }
-      }
-      if (!inside) {
+    if (user?.municipio_id && !user?.admin) {
+      if (!checkInsideMunicipio(pinPos.lat, pinPos.lng)) {
         setSubmitError('O chamado deve estar dentro do perímetro do seu município');
         return;
       }
