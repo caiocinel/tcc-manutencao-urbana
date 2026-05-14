@@ -4,30 +4,32 @@ const crypto = require('crypto');
 const TOKEN_COOKIE = 'XSRF-TOKEN';
 const SESSION_COOKIE = 'XSRF-SESSION';
 
-// Gera token CSRF em requisições GET e define cookies
+// Gera token CSRF apenas se ainda não existir (evita multi-tab race)
 const generateCsrfToken = (req, res, next) => {
   if (req.method !== 'GET') return next();
 
-  // Sessão httpOnly (não acessível via JS) - identifica o cliente
   let sessionId = req.cookies?.[SESSION_COOKIE];
   if (!sessionId) {
     sessionId = crypto.randomBytes(16).toString('hex');
     res.cookie(SESSION_COOKIE, sessionId, {
-      httpOnly: true,       // Invisível para JavaScript
-      sameSite: 'strict',   // Protege contra ataques de outro site
+      httpOnly: true,
+      sameSite: 'strict',
       secure: process.env.NODE_ENV === 'production' || !!process.env.HTTPS,
       path: '/',
     });
   }
 
-  // Token acessível via JS (httpOnly: false) - enviado no header X-XSRF-TOKEN
-  const token = crypto.randomBytes(32).toString('hex');
-  res.cookie(TOKEN_COOKIE, token, {
-    httpOnly: false,
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-    secure: process.env.NODE_ENV === 'production' || !!process.env.HTTPS,
-    path: '/',
-  });
+  // Só gera novo token se não existir um cookie XSRF-TOKEN válido
+  let token = req.cookies?.[TOKEN_COOKIE];
+  if (!token) {
+    token = crypto.randomBytes(32).toString('hex');
+    res.cookie(TOKEN_COOKIE, token, {
+      httpOnly: false,
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      secure: process.env.NODE_ENV === 'production' || !!process.env.HTTPS,
+      path: '/',
+    });
+  }
   req.csrfToken = token;
   next();
 };

@@ -5,6 +5,7 @@ node_modules/
 backend/node_modules/
 backend/.env
 backend/uploads/
+backend/public/
 database/
 todo.md
 SPEC.md

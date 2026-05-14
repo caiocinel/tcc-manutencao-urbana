@@ -15,7 +15,7 @@ const ia = require('../services/ia');
 const { createDefeitoSchema, updateDefeitoSchema, batchEncerrarSchema } = require('../validation/defeitos.schema');
 const { validate } = require('../validation/validate');
 
-const PERIMETER_BUFFER_DEG = 0.01;
+const PERIMETER_BUFFER_DEG = parseFloat(process.env.PERIMETER_BUFFER_DEG || '0.01');
 
 async function validatePerimeter(req, res, next) {
   try {
@@ -70,7 +70,8 @@ const storage = multer.diskStorage({
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
+    const ext = path.extname(file.originalname).toLowerCase().replace(/[^a-z0-9.]/g, '');
+    cb(null, `${Date.now()}${ext}`);
   },
 });
 
@@ -135,19 +136,26 @@ const checkUserRateLimit = async (req, res, next) => {
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(401).json({ error: 'Usuário não encontrado' });
 
-    const now = Date.now();
-    const resetAt = user.requestsResetAt ? new Date(user.requestsResetAt).getTime() : 0;
-    if (now - resetAt > 60 * 60 * 1000) {
-      user.requestsCount = 0;
-      user.requestsResetAt = new Date(now);
+    const now = new Date();
+    const resetAt = user.requestsResetAt ? new Date(user.requestsResetAt) : new Date(0);
+    
+    if (now.getTime() - resetAt.getTime() > 60 * 60 * 1000) {
+      await query(
+        'UPDATE users SET requestsCount = 1, requestsResetAt = $1 WHERE id = $2',
+        [now.toISOString(), req.user.userId]
+      );
+      return next();
     }
 
-    if (user.requestsCount >= 10) {
+    const { rows } = await query(
+      `UPDATE users SET requestsCount = requestsCount + 1 WHERE id = $1 AND requestsCount < 10 RETURNING requestsCount`,
+      [req.user.userId]
+    );
+    
+    if (!rows[0]) {
       return res.status(429).json({ error: 'Limite de requisições excedido. Aguarde 1 hora.' });
     }
 
-    user.requestsCount += 1;
-    await user.save();
     next();
   } catch (error) {
     logger.error({ err: error }, 'Erro no rate limit');
@@ -237,9 +245,10 @@ router.post('/', authenticateToken, requireEmailVerified, checkUserRateLimit, ap
 
       iaEncaminhamento = ia.routing(categoria);
 
-      if (req.file) {
-        const imageBase64 = req.file.buffer ? req.file.buffer.toString('base64') : null;
-        if (imageBase64) {
+      if (req.file && req.file.path) {
+        try {
+          const imageBuffer = await fs.promises.readFile(req.file.path);
+          const imageBase64 = imageBuffer.toString('base64');
           const imgResp = await (await fetch(`${process.env.IA_URL || 'http://ia:8000'}/classify-image`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -249,6 +258,8 @@ router.post('/', authenticateToken, requireEmailVerified, checkUserRateLimit, ap
           if (imgResp && imgResp.category && imgResp.category !== categoria && imgResp.confidence > 0.5) {
             iaSugestao = { categoria: imgResp.category, confianca: imgResp.confidence };
           }
+        } catch (e) {
+          logger.error({ err: e.message }, 'Erro ao classificar imagem via IA');
         }
       }
     }
@@ -541,7 +552,7 @@ router.patch('/:id', authenticateToken, apiLimiter, validate(updateDefeitoSchema
   }
 });
 
-router.patch('/:id/anexar', authenticateToken, upload.single('imagem'), handleMulterError, compressImage, async (req, res) => {
+router.patch('/:id/anexar', authenticateToken, validate(anexarSchema), upload.single('imagem'), handleMulterError, compressImage, async (req, res) => {
   try {
     const { rows: defeitoRows } = await query('SELECT * FROM defeitos WHERE id = $1', [req.params.id]);
     const defeitoRow = defeitoRows[0];

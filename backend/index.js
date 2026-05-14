@@ -16,7 +16,7 @@ const cookieParser = require('cookie-parser');
 const path = require('path');
 const { connectDB } = require('./src/config/database');
 const { globalLimiter } = require('./src/middleware/rateLimit');
-const { generateCsrfToken } = require('./src/middleware/csrf');
+const { generateCsrfToken, validateCsrfToken } = require('./src/middleware/csrf');
 const logger = require('./src/services/logger');
 
 const authRoutes = require('./src/routes/auth');
@@ -48,7 +48,13 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use('/api', globalLimiter);
 
-app.get('/api/csrf-token', generateCsrfToken, (req, res) => {
+// CSRF: gera token em GETs, valida em mutations
+app.use('/api', (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return generateCsrfToken(req, res, next);
+  return validateCsrfToken(req, res, next);
+});
+
+app.get('/api/csrf-token', (req, res) => {
   res.json({ csrfToken: req.csrfToken });
 });
 
