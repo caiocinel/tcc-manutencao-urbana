@@ -1218,7 +1218,21 @@ docker compose --profile backup up -d
 
 **Correção:** `backend/src/models/Defeito.js:179` — `create()` passa `'[]'` (string JSON) em vez de `[]` (array). Também foi adicionada função auxiliar `parseJsonField` que lida com string ou array, tornando `toDefeito` robusta contra ambos os tipos.
 
-### 9.3 Lições Aprendidas
+### 9.3 `backend/src/routes/defeitos.js` — Middleware order: validate() before Multer
+
+**Data:** 14/05/2026
+
+**Problema:** `validate(createDefeitoSchema)` executava antes de `upload.single('imagem')`. Como o formulário de criação de chamado é enviado como `multipart/form-data` (FormData), o Multer é quem faz o parse dos campos textuais para `req.body`. Sem o Multer ter executado, `req.body` estava vazio, e o Zod retornava erro de campo "required" para todos os campos obrigatórios (título, descrição, latitude, longitude, categoria).
+
+**Sintoma:** `POST /api/defeitos` retorna `400` com `Título é obrigatório` (ou outro campo required) mesmo quando todos os campos estão preenchidos no formulário.
+
+**Correção:** `backend/src/routes/defeitos.js:170` e `backend/src/routes/defeitos.js:555` — Movidos `upload.single('imagem')` e `handleMulterError` para **antes** de `validate(...)` em ambas as rotas:
+- `POST /` (criar chamado)
+- `PATCH /:id/anexar` (anexar imagem/texto)
+
+Também foi adicionado o `anexarSchema` faltante na desestruturação do `require` da linha 15, que impedia o servidor de iniciar após a reordenação (referência a `anexarSchema` não definida).
+
+### 9.4 Lições Aprendidas
 
 - Sempre verificar o case das colunas retornadas pelo PostgreSQL (`SELECT *` retorna lowercase).
 - `JSON.parse([])` é um bug silencioso: `[]` é convertido para `""` antes do parse.
@@ -1368,7 +1382,7 @@ docker compose --profile backup up -d
 - Query de dedup em `defeitos.js` trocada de bounding box Manhattan (`ABS(lat)`) para `ST_DWithin(geom, 0.01)`
 - Migration SQL corrigida: `Polygon` → `MultiPolygon` (GeoJSON real contem MultiPolygon)
 
-### Prioridade de Implementacao (atualizado 13/05/2026)
+### Prioridade de Implementacao (atualizado 14/05/2026)
 
 | Ordem | Item | Status | Esforco |
 |---|---|---|---|
@@ -1381,4 +1395,5 @@ docker compose --profile backup up -d
 | 7 | Lint + CI/CD fix | ✅ Feito | 1h |
 | 8 | Backup automatizado | ⏳ Diferido | 2h |
 | 9 | Observabilidade | ⏳ Diferido | 1h |
+| 10 | Fix: validate() antes de Multer (erro required) | ✅ Feito | 15min |
 | — | Stress test + pentest | 📋 Proximo passo | — |
