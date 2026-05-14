@@ -1,6 +1,7 @@
 node_modules/
 .agents/
 .env
+.env.production
 backend/node_modules/
 backend/.env
 backend/uploads/

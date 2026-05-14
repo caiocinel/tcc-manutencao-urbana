@@ -27,7 +27,7 @@ services:
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
   postgres:
-    image: postgres:16-alpine
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_DB: manutencao_urbana
       POSTGRES_USER: urbana
@@ -91,8 +91,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.5'
-          memory: 2048M
+          cpus: '1.0'
+          memory: 1024M
     restart: unless-stopped
 
   ia:
@@ -107,15 +107,51 @@ services:
       - CLASSIFICATION_API_KEY=${HUGGINGFACE_API_TOKEN:-}
       - CLASSIFICATION_API_URL=${CLASSIFICATION_API_URL:-https://api-inference.huggingface.co/models/facebook/bart-large-mnli}
       - CLASSIFICATION_FORMAT=${CLASSIFICATION_FORMAT:-huggingface}
-      - CLASSIFICATION_CATEGORIES=${CLASSIFICATION_CATEGORIES:-Buraco,Iluminação,Semáforo,Árvore Caída,Outro}
+      - CLASSIFICATION_CATEGORIES=${CLASSIFICATION_CATEGORIES:-Buraco,Iluminacao,Semafaro,Arvore Caida,Entulho,Calcada Danificada,Outro}
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; r=urllib.request.urlopen('http://localhost:8000/health'); sys.exit(0 if r.status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 256M
+          cpus: '1.0'
+          memory: 800M
     restart: unless-stopped
+
+  backup:
+    profiles: ["backup"]
+    image: alpine:3.19
+    environment:
+      - DB_NAME=manutencao_urbana
+      - DB_USER=urbana
+      - DB_PASSWORD=${DB_PASSWORD:-urbana123}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - BACKUP_DIR=/backups
+      - RETENTION_DAYS=30
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - RCLONE_DEST=${RCLONE_DEST:-}
+    volumes:
+      - ./scripts/backup-postgres.sh:/usr/local/bin/backup-postgres.sh:ro
+      - backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+    entrypoint: >
+      sh -c "
+        apk add --no-cache postgresql-client curl &&
+        echo '0 3 * * * /bin/sh /usr/local/bin/backup-postgres.sh' | crontab - &&
+        echo 'Servico de backup iniciado — executa diariamente as 03:00' &&
+        crond -f -l 2
+      "
 
 volumes:
   postgres-data:
@@ -123,6 +159,7 @@ volumes:
   backend-logs:
   certbot-data:
   certbot-www:
+  backups:
 
 networks:
   app-network:

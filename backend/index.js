@@ -23,6 +23,7 @@ const authRoutes = require('./src/routes/auth');
 const defeitosRoutes = require('./src/routes/defeitos');
 const municipiosRoutes = require('./src/routes/municipios');
 const categoriasRoutes = require('./src/routes/categorias');
+const iaRoutes = require('./src/routes/ia');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -55,6 +56,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/defeitos', defeitosRoutes);
 app.use('/api/municipios', municipiosRoutes);
 app.use('/api/categorias', categoriasRoutes);
+app.use('/api/ia', iaRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ message: 'API da Central de Inteligência Urbana' });

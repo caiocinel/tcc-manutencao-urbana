@@ -1,0 +1,63 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker images
+        run: docker compose -f docker-compose.yml build
+
+      - name: Start PostgreSQL
+        run: docker compose -f docker-compose.yml up -d postgres
+
+      - name: Wait for PostgreSQL
+        run: |
+          until docker compose -f docker-compose.yml exec -T postgres pg_isready -U urbana; do
+            sleep 2
+          done
+
+      - name: Run backend lint
+        run: docker compose -f docker-compose.yml run --rm backend npx --yes eslint src/ --ext .js || echo "No ESLint config for backend"
+
+      - name: Build frontend
+        run: docker run --rm -v ${{ github.workspace }}/frontend:/app -w /app node:20-alpine sh -c "npm install --silent && npm run lint && npm run build"
+
+      - name: Build nginx with frontend
+        run: docker build -t nginx-frontend:latest -f nginx.Dockerfile .
+
+      - name: Stop services
+        run: docker compose -f docker-compose.yml down
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd /app/tcc-manutencao-urbana
+            git pull origin master
+            docker compose build
+            docker compose up -d postgres
+            docker compose exec -T postgres psql -U urbana -d manutencao_urbana -c "
+              ALTER TABLE municipios ADD COLUMN IF NOT EXISTS polygon_geom geometry(MultiPolygon, 4326);
+              UPDATE municipios SET polygon_geom = ST_SetSRID(ST_GeomFromGeoJSON(poligono_json), 4326) WHERE poligono_json IS NOT NULL AND poligono_json != '';
+              ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS geom geometry(Point, 4326) GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)) STORED;
+              CREATE INDEX IF NOT EXISTS idx_municipios_polygon_geom ON municipios USING GIST (polygon_geom);
+              CREATE INDEX IF NOT EXISTS idx_defeitos_geom ON defeitos USING GIST (geom);
+            " || true
+            docker compose up -d --build
+            docker image prune -f

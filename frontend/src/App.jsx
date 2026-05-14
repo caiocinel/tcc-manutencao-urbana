@@ -3,9 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { IconContext } from '@phosphor-icons/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { ToastProvider } from './components/Toast';
+import { ToastProvider, useToast } from './components/Toast';
 import ErrorBoundary from './components/ErrorBoundary';
-import { ThemeProvider } from './context/ThemeContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { useKeyboardNav } from './hooks/useKeyboardNav';
 import './styles/tokens.css';
 import './App.css';
@@ -45,7 +45,9 @@ function AnimatedRoute({ children }) {
 }
 
 function KeyboardNav() {
-  useKeyboardNav();
+  const addToast = useToast();
+  const { toggle } = useTheme();
+  useKeyboardNav({ addToast, toggleTheme: toggle });
   return null;
 }
 

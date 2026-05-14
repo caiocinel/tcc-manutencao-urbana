@@ -59,20 +59,24 @@ export default function Register() {
     <div className="auth-container">
       <form onSubmit={handleSubmit} className="auth-form">
         <h1>Cadastro</h1>
-        {error && <p className="error">{error}</p>}
-        <input type="text" placeholder="Nome" value={nome} onChange={e => setNome(e.target.value)} required />
-        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
-        <input type="password" placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} required />
+        {error && <p className="error" id="register-error" role="alert">{error}</p>}
+        <input type="text" placeholder="Nome" value={nome} onChange={e => setNome(e.target.value)} required aria-label="Nome completo" aria-describedby={error ? 'register-error' : undefined} />
+        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required aria-label="Email" aria-describedby={error ? 'register-error' : undefined} />
+        <input type="password" placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} required aria-label="Senha" aria-describedby={error ? 'register-error' : undefined} />
         <div style={{ position: 'relative' }}>
           <input
             type="text" placeholder="CPF" value={cpf} maxLength={14}
             onChange={e => { setCpf(mascaraCpf(e.target.value)); setCpfValido(null); }}
             onBlur={handleCpfBlur}
+            aria-label="CPF"
+            aria-describedby={cpfValido !== null ? 'cpf-status' : undefined}
             style={{ borderColor: cpfValido === true ? '#16a34a' : cpfValido === false ? '#dc2626' : '' }}
           />
-          {cpfValidando && <span style={{ position: 'absolute', right: 8, top: 12, fontSize: 11, color: '#888' }}>Validando...</span>}
-          {cpfValido === true && <span style={{ position: 'absolute', right: 8, top: 12, fontSize: 11, color: '#16a34a' }}>OK</span>}
-          {cpfValido === false && <span style={{ position: 'absolute', right: 8, top: 12, fontSize: 11, color: '#dc2626' }}>Inválido</span>}
+          <span id="cpf-status" role="status" style={{ position: 'absolute', right: 8, top: 12, fontSize: 11 }}>
+            {cpfValidando && <span style={{ color: '#888' }}>Validando...</span>}
+            {cpfValido === true && <span style={{ color: '#16a34a' }}>OK</span>}
+            {cpfValido === false && <span style={{ color: '#dc2626' }}>Inválido</span>}
+          </span>
         </div>
         <SearchableSelect
           options={municipios}

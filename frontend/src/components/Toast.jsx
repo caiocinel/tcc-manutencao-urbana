@@ -16,7 +16,7 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={addToast}>
       {children}
-      <div className="toast-container">
+      <div className="toast-container" aria-live="polite" aria-atomic="true">
         {toasts.map(t => (
           <div key={t.id} className={`toast toast-${t.type}`}>
             {t.message}

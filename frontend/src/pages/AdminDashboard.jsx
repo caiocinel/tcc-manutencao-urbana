@@ -131,6 +131,12 @@ export default function AdminDashboard() {
     loadData();
   }, [filterStatus, diasFiltro, loadData]);
 
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') setSelectedDefeito(null); }
+    if (selectedDefeito) window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [selectedDefeito]);
+
   async function handleUpdateDefeito(id, data) {
     try {
       await api.updateDefeito(id, data);
@@ -279,7 +285,7 @@ export default function AdminDashboard() {
                    {selectedDefeito.usuario?.nome && <span style={{ color: '#9ca3af', fontSize: 13 }}>Por: {selectedDefeito.usuario.nome}</span>}
                  </div>
                </div>
-               <button onClick={() => setSelectedDefeito(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
+                <button onClick={() => setSelectedDefeito(null)} aria-label="Fechar" style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
              </div>
 
              {selectedDefeito.descricao && <p className="chamado-desc">{selectedDefeito.descricao}</p>}

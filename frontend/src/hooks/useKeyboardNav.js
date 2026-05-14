@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const HELP_TIMEOUT = 5000;
+const HELP_TIMEOUT = 6000;
 
 const KEY_MAP = {
   m: '/',
@@ -12,6 +12,7 @@ const KEY_MAP = {
   s: '/config',
   c: '/conta',
   i: '/login',
+  r: '/registro',
 };
 
 const KEY_LABELS = {
@@ -23,18 +24,19 @@ const KEY_LABELS = {
   s: 'Config',
   c: 'Conta',
   i: 'Login',
+  r: 'Registro',
+  t: 'Alternar tema',
 };
 
-export function useKeyboardNav() {
+export function useKeyboardNav({ addToast, toggleTheme } = {}) {
   const navigate = useNavigate();
   const bufferRef = useRef('');
   const helpRef = useRef(null);
-  const toastRef = useRef(null);
 
   const showHelp = useCallback(() => {
     if (helpRef.current) return;
-    const lines = Object.entries(KEY_LABELS).map(([k, v]) => `g + ${k} → ${v}`);
-    lines.push(...['? → Esconder esta ajuda', 'Esc → Limpar atalho']);
+    const lines = Object.entries(KEY_LABELS).map(([k, v]) => `g+${k}  →  ${v}`);
+    lines.push('?  →  Ajuda', 'Esc  →  Limpar buffer');
     helpRef.current = true;
 
     const el = document.createElement('div');
@@ -48,10 +50,13 @@ export function useKeyboardNav() {
         max-width:400px;width:90%;
       ">
         <div style="font-weight:600;margin-bottom:10px;color:#22c55e;font-size:14px">
-          ⌨ Atalhos de Navegação
+          Atalhos de Navegação
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px">
-          ${lines.map(l => `<div><code style="background:#22c55e22;padding:2px 6px;border-radius:4px;font-size:12px">${l.split('→')[0].trim()}</code><span style="margin-left:8px;color:#9ca3af">${l.split('→')[1].trim()}</span></div>`).join('')}
+          ${lines.map(l => {
+            const [key, desc] = l.split('  →  ');
+            return `<div><code style="background:#22c55e22;padding:2px 6px;border-radius:4px;font-size:12px">${key}</code><span style="margin-left:8px;color:#9ca3af">${desc}</span></div>`;
+          }).join('')}
         </div>
         <div style="margin-top:8px;font-size:11px;color:#6b7280;text-align:center">
           Pressione g, solte, depois a tecla de destino
@@ -66,11 +71,15 @@ export function useKeyboardNav() {
     }, HELP_TIMEOUT);
   }, []);
 
+  const navigateTo = useCallback((path, label) => {
+    navigate(path);
+    addToast?.(`${label}`);
+  }, [navigate, addToast]);
+
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
 
-      if (e.key === '?' && !e.shiftKey) return;
       if (e.key === '?' && e.shiftKey) {
         e.preventDefault();
         showHelp();
@@ -90,15 +99,22 @@ export function useKeyboardNav() {
 
       if (bufferRef.current === 'g') {
         bufferRef.current = '';
-        const target = KEY_MAP[e.key.toLowerCase()];
+        const key = e.key.toLowerCase();
+        if (key === 't') {
+          e.preventDefault();
+          toggleTheme?.();
+          addToast?.('Tema alternado');
+          return;
+        }
+        const target = KEY_MAP[key];
         if (target) {
           e.preventDefault();
-          navigate(target);
+          navigateTo(target, KEY_LABELS[key]);
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigate, showHelp]);
+  }, [navigateTo, showHelp, toggleTheme, addToast]);
 }

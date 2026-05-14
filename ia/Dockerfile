@@ -1,12 +1,32 @@
-FROM python:3.12-alpine
+# Stage 1: builder — instala torch/transformers, exporta modelos ONNX
+FROM python:3.12 AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY requirements-build.txt ./
+RUN pip install --no-cache-dir -r requirements-build.txt
+
+COPY models/download_text_model.py models/download_image_model.py /build/
+RUN mkdir -p /build/models && python download_text_model.py --output-dir /build/models && python download_image_model.py --output-dir /build/models
+
+# Stage 2: runtime — apenas onnxruntime + inferencia
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY requirements.txt ./
-
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY --from=builder /build/models/ /app/models/
+COPY *.py /app/
 
 EXPOSE 8000
 

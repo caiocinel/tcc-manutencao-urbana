@@ -82,12 +82,18 @@ services:
       - CLASSIFICATION_API_KEY=${HUGGINGFACE_API_TOKEN:-}
       - CLASSIFICATION_API_URL=${CLASSIFICATION_API_URL:-https://api-inference.huggingface.co/models/facebook/bart-large-mnli}
       - CLASSIFICATION_FORMAT=${CLASSIFICATION_FORMAT:-huggingface}
-      - CLASSIFICATION_CATEGORIES=${CLASSIFICATION_CATEGORIES:-Buraco,Iluminação,Semáforo,Árvore Caída,Outro}
+      - CLASSIFICATION_CATEGORIES=${CLASSIFICATION_CATEGORIES:-Buraco,Iluminacao,Semafaro,Arvore Caida,Entulho,Calcada Danificada,Outro}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; r=urllib.request.urlopen('http://localhost:8000/health'); sys.exit(0 if r.status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 256M
+          cpus: '1.0'
+          memory: 800M
     restart: unless-stopped
 
 volumes:

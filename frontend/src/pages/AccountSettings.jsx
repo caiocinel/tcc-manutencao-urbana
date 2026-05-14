@@ -96,7 +96,7 @@ export default function AccountSettings() {
             <input
               type="text" placeholder="Codigo de verificacao" maxLength={6}
               value={codigoVerificacao} onChange={e => setCodigoVerificacao(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              required
+              required aria-label="Codigo de verificacao"
             />
             <button type="submit">Verificar Email</button>
             <button type="button" className="btn-secondary" onClick={handleReenviar} disabled={reenviando}>
@@ -110,9 +110,9 @@ export default function AccountSettings() {
         <h3 style={{ fontSize: 'var(--text-xl)' }}>Alterar Senha</h3>
 
         <form onSubmit={handleChangePassword} className="defect-form">
-          <input type="password" placeholder="Senha atual" value={senhaAtual} onChange={e => setSenhaAtual(e.target.value)} required />
-          <input type="password" placeholder="Nova senha" value={novaSenha} onChange={e => setNovaSenha(e.target.value)} required minLength={6} />
-          <input type="password" placeholder="Confirmar nova senha" value={confirmarSenha} onChange={e => setConfirmarSenha(e.target.value)} required minLength={6} />
+          <input type="password" placeholder="Senha atual" value={senhaAtual} onChange={e => setSenhaAtual(e.target.value)} required aria-label="Senha atual" />
+          <input type="password" placeholder="Nova senha" value={novaSenha} onChange={e => setNovaSenha(e.target.value)} required minLength={6} aria-label="Nova senha" />
+          <input type="password" placeholder="Confirmar nova senha" value={confirmarSenha} onChange={e => setConfirmarSenha(e.target.value)} required minLength={6} aria-label="Confirmar nova senha" />
           <button type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Alterar Senha'}</button>
         </form>
 

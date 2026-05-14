@@ -35,7 +35,7 @@ export default function SearchableSelect({ options, value, onChange, placeholder
   }
 
   return (
-    <div className="searchable-select" ref={wrapperRef}>
+    <div className="searchable-select" ref={wrapperRef} role="combobox" aria-expanded={open} aria-haspopup="listbox">
       <input
         ref={inputRef}
         type="text"
@@ -44,9 +44,12 @@ export default function SearchableSelect({ options, value, onChange, placeholder
         onChange={e => { setSearch(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         className="ss-input"
+        aria-label={placeholder || 'Selecione um município'}
+        aria-autocomplete="list"
+        aria-controls="municipio-listbox"
       />
       {open && (
-        <div className="ss-dropdown">
+        <div className="ss-dropdown" id="municipio-listbox" role="listbox">
           {Object.keys(grouped).length === 0 ? (
             <div className="ss-empty">Nenhum município encontrado</div>
           ) : (
@@ -58,6 +61,8 @@ export default function SearchableSelect({ options, value, onChange, placeholder
                     key={o.codigo}
                     className={`ss-option${o.codigo === value ? ' ss-selected' : ''}`}
                     onClick={() => handleSelect(o)}
+                    role="option"
+                    aria-selected={o.codigo === value}
                   >
                     {o.nome}
                   </div>

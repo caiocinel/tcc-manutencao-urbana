@@ -9,6 +9,8 @@ const { authLimiter } = require('../middleware/rateLimit');
 const { validarDigitos, consultarBrasilAPI } = require('../services/cpfValidator');
 const { sendVerificationCode, send2faCode } = require('../services/email');
 const { getPublicKey, saveSubscription } = require('../services/push');
+const { registerSchema, loginSchema, verify2faSchema, changePasswordSchema } = require('../validation/auth.schema');
+const { validate } = require('../validation/validate');
 
 const router = express.Router();
 
@@ -40,19 +42,9 @@ router.post('/validar-cpf', authLimiter, async (req, res) => {
   }
 });
 
-router.post('/registro', authLimiter, async (req, res) => {
+router.post('/registro', authLimiter, validate(registerSchema), async (req, res) => {
   try {
     const { nome, email, senha, municipio_id, cpf } = req.body;
-
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({ error: 'Email inválido' });
-    }
-    if (!senha || senha.length < 6) {
-      return res.status(400).json({ error: 'Senha deve ter no mínimo 6 caracteres' });
-    }
-    if (!nome || nome.trim().length === 0) {
-      return res.status(400).json({ error: 'Nome é obrigatório' });
-    }
 
     const emailNormalized = email.toLowerCase();
     const existingUser = await User.findOne({ email: emailNormalized });
@@ -103,7 +95,7 @@ router.post('/registro', authLimiter, async (req, res) => {
   }
 });
 
-router.post('/login', authLimiter, async (req, res) => {
+router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
   try {
     const { email, senha } = req.body;
 

@@ -37,6 +37,7 @@ async function connectDB() {
     logger.info('Conectado ao PostgreSQL');
 
     await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
+    await pool.query(`CREATE EXTENSION IF NOT EXISTS postgis`);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS municipios (

@@ -236,7 +236,7 @@ export default function MapPage() {
           [...polygonPositions].reverse(),
         ];
       }
-    } catch {}
+      } catch { /* geocode fail — non-critical */ }
   }
 
   const [creating, setCreating] = useState(false);
@@ -338,6 +338,17 @@ export default function MapPage() {
     }
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    function handleKey(e) {
+      if (e.key !== 'Escape') return;
+      if (showConfirmEncerrar) setShowConfirmEncerrar(false);
+      else if (attachDefeito) setAttachDefeito(null);
+      else if (showForm) handleCancel();
+    }
+    if (showForm || showConfirmEncerrar || attachDefeito) window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [showForm, showConfirmEncerrar, attachDefeito]);
+
   function handleStartCreate() {
     if (!isAuthenticated) { navigate('/login'); return; }
     if (!user?.admin && !user?.email_verificado) {
@@ -399,7 +410,6 @@ export default function MapPage() {
   }
 
   const catSelecionada = categorias.find(c => c.nome === categoria);
-  // eslint-disable-next-line react-hooks/purity
   const previsaoLabel = catSelecionada ? new Date(Date.now() + catSelecionada.prazo_sla_dias * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR') : null;
 
   async function handleSubmit(e) {
@@ -531,7 +541,7 @@ export default function MapPage() {
     <div className="map-page">
       <Header creating={creating} />
 
-      {apiError && <p className="error" style={{ textAlign: 'center', padding: 8 }}>{apiError}</p>}
+      {apiError && <p className="error" style={{ textAlign: 'center', padding: 8 }} role="alert">{apiError}</p>}
 
       <AnimatePresence>
         {isAuthenticated && !creating && (
@@ -542,10 +552,10 @@ export default function MapPage() {
             exit={{ y: -10, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            <button className={filtro === 'todos' ? 'filter-active' : ''} onClick={() => setFiltro('todos')}>Todos</button>
-            <button className={filtro === 'pendentes' ? 'filter-active' : ''} onClick={() => setFiltro('pendentes')}>Pendentes</button>
-            <button className={filtro === 'atendidos' ? 'filter-active' : ''} onClick={() => setFiltro('atendidos')}>Atendidos</button>
-            <button className={filtro === 'meus' ? 'filter-active' : ''} onClick={() => setFiltro('meus')}>Meus Chamados</button>
+            <button className={filtro === 'todos' ? 'filter-active' : ''} onClick={() => setFiltro('todos')} aria-label="Filtrar todos os chamados">Todos</button>
+            <button className={filtro === 'pendentes' ? 'filter-active' : ''} onClick={() => setFiltro('pendentes')} aria-label="Filtrar chamados pendentes">Pendentes</button>
+            <button className={filtro === 'atendidos' ? 'filter-active' : ''} onClick={() => setFiltro('atendidos')} aria-label="Filtrar chamados atendidos">Atendidos</button>
+            <button className={filtro === 'meus' ? 'filter-active' : ''} onClick={() => setFiltro('meus')} aria-label="Filtrar meus chamados">Meus Chamados</button>
             <motion.button
               className={heatmapVisible ? 'filter-active' : ''}
               onClick={() => setHeatmapVisible(v => !v)}
@@ -574,6 +584,7 @@ export default function MapPage() {
           maxBoundsViscosity={1}
           minZoom={12}
           style={{ height: '100%', width: '100%', minHeight: 'inherit' }}
+          ariaLabel={isAuthenticated ? 'Mapa de chamados públicos' : 'Mapa de chamados públicos — faça login para interagir'}
           whenReady={(ev) => {
             mapRef.current = ev.target;
             setTimeout(() => ev.target.invalidateSize(), 350);
@@ -652,10 +663,10 @@ export default function MapPage() {
       </AnimatePresence>
 
       {showConfirmEncerrar && (
-        <div className="defect-overlay" onClick={() => setShowConfirmEncerrar(false)} role="dialog" aria-modal="true" aria-label="Confirmar encerramento">
+        <div className="defect-overlay" onClick={() => setShowConfirmEncerrar(false)} role="dialog" aria-modal="true" aria-label="Confirmar encerramento" aria-describedby="confirm-desc">
           <div className="defect-modal" style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
             <h3>Confirmar Encerramento</h3>
-            <p className="chamado-desc" style={{ marginBottom: 'var(--space-4)' }}>
+            <p id="confirm-desc" className="chamado-desc" style={{ marginBottom: 'var(--space-4)' }}>
               Deseja realmente encerrar {Object.keys(selectedIds).filter(k => selectedIds[k]).length} chamado(s)?
             </p>
             <div className="modal-actions" style={{ justifyContent: 'center' }}>
@@ -671,16 +682,16 @@ export default function MapPage() {
       )}
 
       {attachDefeito && (
-        <div className="defect-overlay" onClick={() => setAttachDefeito(null)} role="dialog" aria-modal="true" aria-label="Anexar ao chamado">
+        <div className="defect-overlay" onClick={() => setAttachDefeito(null)} role="dialog" aria-modal="true" aria-label="Anexar ao chamado" aria-describedby="attach-desc">
           <div className="defect-modal" onClick={e => e.stopPropagation()}>
             <h3>
               <Paperclip size={18} style={{ verticalAlign: 'middle', marginRight: 6 }} />
               Anexar ao Chamado
             </h3>
-            <p className="chamado-meta" style={{ marginBottom: 'var(--space-2)' }}><strong>{attachDefeito.titulo}</strong></p>
+            <p id="attach-desc" className="chamado-meta" style={{ marginBottom: 'var(--space-2)' }}><strong>{attachDefeito.titulo}</strong></p>
             <form onSubmit={handleAnexar} className="defect-form">
-              <textarea placeholder="Adicione uma atualização sobre o chamado..." value={attachTexto} onChange={e => setAttachTexto(e.target.value)} rows={2} />
-              <input type="file" accept="image/*" onChange={e => setAttachImagem(e.target.files[0])} />
+              <textarea placeholder="Adicione uma atualização sobre o chamado..." value={attachTexto} onChange={e => setAttachTexto(e.target.value)} rows={2} aria-label="Texto da atualização" />
+              <input type="file" accept="image/*" onChange={e => setAttachImagem(e.target.files[0])} aria-label="Selecionar imagem para anexar" />
               <p className="hint">Máximo 3 imagens por chamado. Formatos: JPEG, PNG, WebP.</p>
               <div className="modal-actions">
                 <button type="submit" className="btn-primary" disabled={attachSaving}>
@@ -697,11 +708,11 @@ export default function MapPage() {
         <div className="defect-overlay" role="dialog" aria-modal="true" aria-label="Novo chamado">
           <div className="defect-modal">
             <h3>Novo Chamado</h3>
-            {submitError && <p className="error">{submitError}</p>}
-            <form onSubmit={handleSubmit} className="defect-form">
-              <input type="text" placeholder="Título" value={titulo} onChange={e => setTitulo(e.target.value)} required />
-              <textarea placeholder="Descreva o problema em detalhes (mín. 20 caracteres)" value={descricao} onChange={e => setDescricao(e.target.value)} rows={3} required minLength={20} />
-              <select value={categoria} onChange={e => setCategoria(e.target.value)} required className="filter-select" style={{ width: '100%' }}>
+            {submitError && <p className="error" id="submit-error" role="alert">{submitError}</p>}
+            <form onSubmit={handleSubmit} className="defect-form" aria-describedby={submitError ? 'submit-error' : undefined}>
+              <input type="text" placeholder="Título" value={titulo} onChange={e => setTitulo(e.target.value)} required aria-label="Título do chamado" />
+              <textarea placeholder="Descreva o problema em detalhes (mín. 20 caracteres)" value={descricao} onChange={e => setDescricao(e.target.value)} rows={3} required minLength={20} aria-label="Descrição do problema" />
+              <select value={categoria} onChange={e => setCategoria(e.target.value)} required className="filter-select" style={{ width: '100%' }} aria-label="Categoria do chamado">
                 <option value="">Selecione a categoria</option>
                 {categorias.map(c => (
                   <option key={c.id} value={c.nome}>● {c.nome}</option>
@@ -712,9 +723,9 @@ export default function MapPage() {
                   Prioridade: <strong>{catSelecionada.prioridade_base}</strong> | Previsão: <strong>{previsaoLabel}</strong>
                 </p>
               )}
-              <input type="text" placeholder="Rua" value={rua} onChange={e => setRua(e.target.value)} />
-              <input type="text" placeholder="Bairro" value={bairro} onChange={e => setBairro(e.target.value)} />
-              <input type="file" accept="image/*" onChange={e => setImagem(e.target.files[0])} />
+              <input type="text" placeholder="Rua" value={rua} onChange={e => setRua(e.target.value)} aria-label="Rua do chamado" />
+              <input type="text" placeholder="Bairro" value={bairro} onChange={e => setBairro(e.target.value)} aria-label="Bairro do chamado" />
+              <input type="file" accept="image/*" onChange={e => setImagem(e.target.files[0])} aria-label="Selecionar imagem do chamado" />
               <p className="coord-display">
                 <MapPin size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
                 {pinPos.lat.toFixed(5)}, {pinPos.lng.toFixed(5)}

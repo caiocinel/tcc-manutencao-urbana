@@ -3,7 +3,6 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
-const axios = require('axios');
 const Defeito = require('../models/Defeito');
 const User = require('../models/User');
 const Apoio = require('../models/Apoio');
@@ -12,36 +11,31 @@ const { notifyUser } = require('../services/push');
 const { apiLimiter } = require('../middleware/rateLimit');
 const { compressImage } = require('../middleware/imageProcessor');
 const logger = require('../services/logger');
-
-function pointInPolygon(lat, lng, polygon) {
-  let inside = false;
-  const ring = polygon.coordinates[0];
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [lngi, lati] = ring[i];
-    const [lngj, latj] = ring[j];
-    if ((lati > lat) !== (latj > lat) && lng < (lngj - lngi) * (lat - lati) / (latj - lati) + lngi) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
+const ia = require('../services/ia');
+const { createDefeitoSchema, updateDefeitoSchema, batchEncerrarSchema } = require('../validation/defeitos.schema');
+const { validate } = require('../validation/validate');
 
 async function validatePerimeter(req, res, next) {
   try {
     const user = await User.findById(req.user.userId);
     if (!user || !user.municipio_id) return next();
     if (user.admin) return next();
-    const { rows } = await query('SELECT poligono_json FROM municipios WHERE codigo = $1', [user.municipio_id]);
-    if (!rows[0] || !rows[0].poligono_json) return next();
-    const polygon = typeof rows[0].poligono_json === 'string' ? JSON.parse(rows[0].poligono_json) : rows[0].poligono_json;
     const lat = parseFloat(req.body.latitude);
     const lng = parseFloat(req.body.longitude);
-    if (!isNaN(lat) && !isNaN(lng) && !pointInPolygon(lat, lng, polygon)) {
+    if (isNaN(lat) || isNaN(lng)) return next();
+    const { rows } = await query(
+      `SELECT 1 FROM municipios
+       WHERE codigo = $1
+         AND polygon_geom IS NOT NULL
+         AND ST_Within(ST_SetSRID(ST_MakePoint($2, $3), 4326), polygon_geom)`,
+      [user.municipio_id, lng, lat]
+    );
+    if (rows.length === 0) {
       return res.status(403).json({ error: 'O chamado deve estar dentro do perímetro do seu município' });
     }
     next();
   } catch (error) {
-    logger.error({ err: error }, 'Erro ao validar perímetro');
+    logger.error({ err: error }, 'Erro ao validar perímetro com PostGIS');
     next();
   }
 }
@@ -144,22 +138,9 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-router.post('/', authenticateToken, requireEmailVerified, checkUserRateLimit, apiLimiter, upload.single('imagem'), handleMulterError, compressImage, validatePerimeter, async (req, res) => {
+router.post('/', authenticateToken, requireEmailVerified, checkUserRateLimit, apiLimiter, validate(createDefeitoSchema), upload.single('imagem'), handleMulterError, compressImage, validatePerimeter, async (req, res) => {
   try {
     const { titulo, descricao, latitude, longitude, rua, bairro, categoria } = req.body;
-
-    if (!latitude || !longitude) {
-      return res.status(400).json({ error: 'Latitude e longitude são obrigatórios' });
-    }
-    if (!titulo || !titulo.trim()) {
-      return res.status(400).json({ error: 'Título é obrigatório' });
-    }
-    if (!descricao || descricao.trim().length < 20) {
-      return res.status(400).json({ error: 'Descreva o problema em detalhes (mínimo 20 caracteres)' });
-    }
-    if (!categoria) {
-      return res.status(400).json({ error: 'Selecione uma categoria' });
-    }
 
     const { rows: catRows } = await query(
       'SELECT prioridade_base, prazo_sla_dias FROM categorias WHERE nome = $1',
@@ -190,24 +171,73 @@ router.post('/', authenticateToken, requireEmailVerified, checkUserRateLimit, ap
     });
 
     let iaSugestao = null;
-    try {
-      const iaUrl = process.env.IA_URL || 'http://localhost:8000';
-      const response = await axios.post(`${iaUrl}/classify`, {
-        text: descricao,
-      }, { timeout: 10000 });
+    let iaPrioridade = null;
+    let iaDuplicatas = null;
+    let iaSpam = null;
+    let iaEncaminhamento = null;
 
-      const iaCategory = response.data.category;
-      const confidence = response.data.confidence;
-
-      if (iaCategory && iaCategory !== categoria && confidence > 0.5) {
-        iaSugestao = { categoria: iaCategory, confianca: confidence };
+    if (!ia.circuitBreaker.isOpen()) {
+      const full = await ia.classifyFull(descricao);
+      if (full) {
+        if (full.category && full.category !== categoria && full.confidence > 0.5) {
+          iaSugestao = { categoria: full.category, confianca: full.confidence };
+        }
+        iaPrioridade = { prioridade: full.priority, confianca: full.priority_confidence };
       }
-    } catch (error) {
-      logger.error({ err: error.message }, 'Erro ao classificar com IA');
+
+      if (latitude && longitude) {
+        try {
+          const { rows } = await query(`
+            SELECT id, titulo, descricao, latitude, longitude,
+                   ST_Distance(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326)) AS dist
+            FROM defeitos
+            WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($2, $1), 4326), 0.01)
+              AND criado_em::timestamp > NOW() - interval '7 days'
+            ORDER BY dist
+            LIMIT 10
+          `, [parseFloat(latitude), parseFloat(longitude)]);
+          const similares = [];
+          for (const row of rows) {
+            const sim = await ia.textSimilarity(descricao, row.descricao || row.titulo);
+            if (sim && sim.score > 0.3) {
+              similares.push({ id: row.id, titulo: row.titulo, similaridade: sim.score });
+            }
+          }
+          if (similares.length > 0) iaDuplicatas = { duplicatas: similares, total: similares.length };
+        } catch (e) {
+          logger.error({ err: e.message }, 'Erro ao buscar duplicatas');
+        }
+      }
+
+      const spam = await ia.checkSpam(descricao);
+      if (spam) {
+        iaSpam = { is_spam: spam.is_spam, confianca: spam.confidence, motivo: spam.reason };
+      }
+
+      iaEncaminhamento = ia.routing(categoria);
+
+      if (req.file) {
+        const imageBase64 = req.file.buffer ? req.file.buffer.toString('base64') : null;
+        if (imageBase64) {
+          const imgResp = await (await fetch(`${process.env.IA_URL || 'http://ia:8000'}/classify-image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: imageBase64 }),
+            signal: AbortSignal.timeout(3000),
+          })).json().catch(() => null);
+          if (imgResp && imgResp.category && imgResp.category !== categoria && imgResp.confidence > 0.5) {
+            iaSugestao = { categoria: imgResp.category, confianca: imgResp.confidence };
+          }
+        }
+      }
     }
 
     const responseData = { ...defeito };
     if (iaSugestao) responseData.categoria_sugerida_ia = iaSugestao;
+    if (iaPrioridade) responseData.prioridade_sugerida_ia = iaPrioridade;
+    if (iaDuplicatas) responseData.duplicatas_ia = iaDuplicatas;
+    if (iaSpam) responseData.spam_ia = iaSpam;
+    if (iaEncaminhamento) responseData.encaminhamento_ia = iaEncaminhamento;
 
     res.status(201).json(responseData);
   } catch (error) {
@@ -392,12 +422,9 @@ router.get('/clusters', async (req, res) => {
   }
 });
 
-router.post('/encerrar-lote', authenticateToken, async (req, res) => {
+router.post('/encerrar-lote', authenticateToken, validate(batchEncerrarSchema), async (req, res) => {
   try {
     const { ids } = req.body;
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ error: 'Lista de IDs inválida' });
-    }
     const now = new Date().toISOString();
     let count = 0;
     for (const id of ids) {
@@ -453,7 +480,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.patch('/:id', authenticateToken, apiLimiter, async (req, res) => {
+router.patch('/:id', authenticateToken, apiLimiter, validate(updateDefeitoSchema), async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
     if (!user || !user.admin) {
