@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const logger = require('../services/logger');
 
+const PRIVACY_BLUR_SIGMA = parseFloat(process.env.PRIVACY_BLUR_SIGMA || '0.6');
+
 async function compressImage(req, res, next) {
   if (!req.file) return next();
 
@@ -12,10 +14,14 @@ async function compressImage(req, res, next) {
   const outputPath = path.join(req.file.destination, filename);
 
   try {
-    await sharp(inputPath)
-      .resize(1200, undefined, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 80 })
-      .toFile(outputPath);
+    let pipeline = sharp(inputPath)
+      .resize(1200, undefined, { fit: 'inside', withoutEnlargement: true });
+
+    if (PRIVACY_BLUR_SIGMA > 0) {
+      pipeline = pipeline.blur(PRIVACY_BLUR_SIGMA);
+    }
+
+    await pipeline.webp({ quality: 80 }).toFile(outputPath);
 
     await fs.promises.unlink(inputPath);
 

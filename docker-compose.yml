@@ -74,6 +74,8 @@ services:
       - DB_USER=urbana
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_POOL_MAX=10
+      - PRIVACY_BLUR_SIGMA=${PRIVACY_BLUR_SIGMA:-0.6}
+      - PERIMETER_BUFFER_DEG=${PERIMETER_BUFFER_DEG:-0.01}
     volumes:
       - uploads:/app/uploads
       - backend-logs:/app/logs

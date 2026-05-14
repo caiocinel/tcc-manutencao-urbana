@@ -15,6 +15,8 @@ const ia = require('../services/ia');
 const { createDefeitoSchema, updateDefeitoSchema, batchEncerrarSchema } = require('../validation/defeitos.schema');
 const { validate } = require('../validation/validate');
 
+const PERIMETER_BUFFER_DEG = 0.01;
+
 async function validatePerimeter(req, res, next) {
   try {
     const user = await User.findById(req.user.userId);
@@ -23,15 +25,20 @@ async function validatePerimeter(req, res, next) {
     const lat = parseFloat(req.body.latitude);
     const lng = parseFloat(req.body.longitude);
     if (isNaN(lat) || isNaN(lng)) return next();
+    const point = `ST_SetSRID(ST_MakePoint($2, $3), 4326)`;
     const { rows } = await query(
       `SELECT 1 FROM municipios
        WHERE codigo = $1
          AND polygon_geom IS NOT NULL
-         AND ST_Within(ST_SetSRID(ST_MakePoint($2, $3), 4326), polygon_geom)`,
+         AND (ST_Within(${point}, polygon_geom)
+           OR ST_Within(${point}, ST_Buffer(polygon_geom, ${PERIMETER_BUFFER_DEG})))`,
       [user.municipio_id, lng, lat]
     );
     if (rows.length === 0) {
-      return res.status(403).json({ error: 'O chamado deve estar dentro do perímetro do seu município' });
+      return res.status(403).json({
+        error: 'O chamado está fora do perímetro do seu município.',
+        dica: 'O GPS pode ter pequenos erros. Tente arrastar o marcador para dentro da área do seu município no mapa.',
+      });
     }
     next();
   } catch (error) {

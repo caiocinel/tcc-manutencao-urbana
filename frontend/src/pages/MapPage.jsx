@@ -726,6 +726,10 @@ export default function MapPage() {
               <input type="text" placeholder="Rua" value={rua} onChange={e => setRua(e.target.value)} aria-label="Rua do chamado" />
               <input type="text" placeholder="Bairro" value={bairro} onChange={e => setBairro(e.target.value)} aria-label="Bairro do chamado" />
               <input type="file" accept="image/*" onChange={e => setImagem(e.target.files[0])} aria-label="Selecionar imagem do chamado" />
+              <p className="hint" style={{ fontSize: 12, color: '#a1a1aa' }}>
+                🔒 Fotos passam por desfoque de privacidade automático para proteger rostos e placas.
+                Evite incluir pessoas ou informações pessoais na imagem.
+              </p>
               <p className="coord-display">
                 <MapPin size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
                 {pinPos.lat.toFixed(5)}, {pinPos.lng.toFixed(5)}
