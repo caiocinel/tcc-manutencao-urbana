@@ -216,4 +216,7 @@ export const api = {
 
   verificar2fa: (email, codigo) =>
     request('/api/auth/verificar-2fa', { method: 'POST', body: { email, codigo } }),
+
+  updateProfile: (data) =>
+    request('/api/auth/profile', { method: 'PATCH', body: data }),
 };

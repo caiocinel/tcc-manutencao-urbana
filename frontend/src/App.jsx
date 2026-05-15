@@ -15,10 +15,11 @@ const Register = lazy(() => import('./pages/Register'));
 const MapPage = lazy(() => import('./pages/MapPage'));
 const DefectList = lazy(() => import('./pages/DefectList'));
 const Settings = lazy(() => import('./pages/Settings'));
-const AccountSettings = lazy(() => import('./pages/AccountSettings'));
+const ProfileSettings = lazy(() => import('./pages/ProfileSettings'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const AdminDashboardMetrics = lazy(() => import('./pages/AdminDashboardMetrics'));
 const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
+const GeneralSettings = lazy(() => import('./pages/GeneralSettings'));
 
 function PageFallback() {
   return (
@@ -82,7 +83,8 @@ function App() {
                 <Route path="/registro" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><Register /></AnimatedRoute></Suspense>} />
                 <Route path="/lista" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><DefectList /></AnimatedRoute></Suspense>} />
                 <Route path="/config" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><Settings /></AnimatedRoute></Suspense>} />
-                <Route path="/conta" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><AccountSettings /></AnimatedRoute></Suspense>} />
+                <Route path="/conta" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><ProfileSettings /></AnimatedRoute></Suspense>} />
+                <Route path="/configuracoes" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><GeneralSettings /></AnimatedRoute></Suspense>} />
                 <Route path="/admin" element={
                   <Suspense fallback={<PageFallback />}>
                     <AnimatedRoute><AdminDashboard /></AnimatedRoute>

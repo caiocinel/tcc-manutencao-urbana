@@ -142,6 +142,21 @@ function authenticateToken(req, res, next) {
   }
 }
 
+router.patch('/profile', authenticateToken, async (req, res) => {
+  try {
+    const { nome } = req.body;
+    if (nome) {
+      await query('UPDATE users SET nome = $1, atualizado_em = $2 WHERE id = $3',
+        [nome, new Date().toISOString(), req.user.userId]);
+    }
+    const user = await User.findById(req.user.userId);
+    res.json({ nome: user.nome, email: user.email });
+  } catch (error) {
+    logger.error({ err: error }, 'Erro ao atualizar perfil');
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 router.patch('/municipio', authenticateToken, async (req, res) => {
   try {
     const { municipio_id } = req.body;
