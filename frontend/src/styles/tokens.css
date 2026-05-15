@@ -2,6 +2,7 @@
 
 :root {
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: 'DM Sans', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
   --leading-none: 1;
@@ -35,6 +36,12 @@
   --accent-amber: #f59e0b;
   --accent-blue: #3b82f6;
   --accent-blue-bg: rgba(59, 130, 246, 0.1);
+  --accent-purple: #7c6fff;
+  --border-purple: #7c6fff;
+  --accent-purple-dim: rgba(124, 111, 255, 0.15);
+  --success-green: #2ec4a0;
+  --success-green-dim: rgba(46, 196, 160, 0.12);
+  --danger-red: #ff6b6b;
 
   --overlay: rgba(0, 0, 0, 0.6);
 
