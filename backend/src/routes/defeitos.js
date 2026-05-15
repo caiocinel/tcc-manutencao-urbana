@@ -470,6 +470,24 @@ router.post('/encerrar-lote', authenticateToken, validate(batchEncerrarSchema), 
   }
 });
 
+router.patch('/:id/atender', authenticateToken, async (req, res) => {
+  try {
+    const defeito = await Defeito.findById(req.params.id);
+    if (!defeito) return res.status(404).json({ error: 'Chamado não encontrado' });
+    if (defeito.atendente_id) return res.status(400).json({ error: 'Chamado já possui atendente' });
+
+    await query(
+      `UPDATE defeitos SET atendente_id = $1, status = 'vinculado_sem_resposta', atendido_em = $2, atualizado_em = $2 WHERE id = $3`,
+      [req.user.userId, new Date().toISOString(), req.params.id]
+    );
+
+    res.json({ message: 'Chamado vinculado com sucesso' });
+  } catch (error) {
+    logger.error({ err: error }, 'Erro ao atender chamado');
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 router.post('/:id/apoiar', authenticateToken, async (req, res) => {
   try {
     const defeito = await Defeito.findById(req.params.id);

@@ -22,6 +22,7 @@ function toDefeito(row) {
     status: row.status, prioridade: row.prioridade,
     previsao_conclusao: row.previsao_conclusao,
     atendido_em: row.atendido_em, usuario_email: row.usuario_email,
+    atendente_id: row.atendente_id,
     imagem_thumbnail: thumbnailBase64,
     _imagem_thumbnail: rawBlob,
     imagens_extra: parseJsonField(row.imagens_extra),
@@ -200,7 +201,7 @@ const Defeito = {
     const existing = rows[0];
     if (!existing) return null;
 
-    const allowed = ['titulo', 'descricao', 'latitude', 'longitude', 'rua', 'bairro', 'imagem_url', 'categoria', 'status', 'prioridade', 'previsao_conclusao', 'atendido_em', 'usuario_email', 'imagem_thumbnail', 'imagens_extra', 'atualizacoes'];
+    const allowed = ['titulo', 'descricao', 'latitude', 'longitude', 'rua', 'bairro', 'imagem_url', 'categoria', 'status', 'prioridade', 'previsao_conclusao', 'atendido_em', 'usuario_email', 'imagem_thumbnail', 'imagens_extra', 'atualizacoes', 'atendente_id'];
     const sanitized = {};
     for (const key of allowed) {
       sanitized[key] = key in update ? update[key] : existing[key];

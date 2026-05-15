@@ -219,4 +219,7 @@ export const api = {
 
   updateProfile: (data) =>
     request('/api/auth/profile', { method: 'PATCH', body: data }),
+
+  atenderDefeito: (id) =>
+    request(`/api/defeitos/${id}/atender`, { method: 'PATCH' }),
 };

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { ThumbsUp, Crosshair, Target } from '@phosphor-icons/react';
+import { useEffect, useState, useCallback } from 'react';
+import { ThumbsUp, Crosshair, Target, Handshake } from '@phosphor-icons/react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
+import { useToast } from '../components/Toast';
 import { getStatusConfig } from '../constants';
 
 function ScorePill({ score }) {
@@ -21,7 +22,9 @@ export default function DefectList() {
   const [filtro, setFiltro] = useState('todos');
   const [ordenarScore, setOrdenarScore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [atendendo, setAtendendo] = useState(null);
   const { isAuthenticated, user } = useAuth();
+  const addToast = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +44,19 @@ export default function DefectList() {
       });
     return () => { cancelled = true; };
   }, [isAuthenticated, ordenarScore]);
+
+  const handleAtender = useCallback(async (id) => {
+    setAtendendo(id);
+    try {
+      await api.atenderDefeito(id);
+      addToast('Chamado vinculado com sucesso!');
+      setDefeitos(prev => prev.map(d => d.id === id ? { ...d, status: 'vinculado_sem_resposta', atendente_id: user?.id } : d));
+    } catch (err) {
+      addToast('Erro: ' + err.message, 'error');
+    } finally {
+      setAtendendo(null);
+    }
+  }, [addToast, user?.id]);
 
   const prioridadeCores = { baixa: '#22c55e', media: '#f59e0b', alta: '#dc2626' };
   const prioridadeLabels = { baixa: 'Baixa', media: 'Média', alta: 'Alta' };
@@ -98,6 +114,17 @@ export default function DefectList() {
                 <h3>{d.titulo}</h3>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <ScorePill score={d.score_urgencia} />
+                  {user?.admin && !d.atendente_id && !['atendido', 'encerrado', 'concluido'].includes(d.status) && (
+                    <button
+                      onClick={() => handleAtender(d.id)}
+                      disabled={atendendo === d.id}
+                      className="btn-sm btn-apoiar"
+                      style={{ fontSize: 11, whiteSpace: 'nowrap', background: 'rgba(124,111,255,0.15)', border: '0.5px solid rgba(124,111,255,0.3)', color: '#7c6fff' }}
+                    >
+                      <Handshake size={11} style={{ verticalAlign: 'middle', marginRight: 2 }} />
+                      {atendendo === d.id ? '...' : 'Atender'}
+                    </button>
+                  )}
                   <span className="badge" style={{ background: getStatusConfig(d.status).bg, color: getStatusConfig(d.status).color, border: `0.5px solid ${getStatusConfig(d.status).color}40` }}>{getStatusConfig(d.status).label}</span>
                 </div>
               </div>

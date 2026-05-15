@@ -130,6 +130,8 @@ async function connectDB() {
       )
     `);
 
+    await pool.query(`ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS atendente_id UUID REFERENCES users(id)`);
+
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_defeitos_categoria ON defeitos(categoria)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_defeitos_status ON defeitos(status)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_defeitos_usuario ON defeitos(usuario)`);
