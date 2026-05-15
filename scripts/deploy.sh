@@ -5,7 +5,7 @@ set -e
 
 VPS_SSH_KEY="$HOME/ssh-hetzner.key"
 VPS_USER="root"
-VPS_HOST="tcc.josemurilors.com.br"
+VPS_HOST="178.105.83.187"
 
 echo "=== Build frontend ==="
 cd frontend
