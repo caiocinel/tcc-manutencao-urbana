@@ -66,6 +66,7 @@ services:
       - NODE_ENV=production
       - JWT_SECRET=${JWT_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL}
       - FRONTEND_URL=https://${DOMAIN:-localhost}
       - IA_URL=http://ia:8000
       - DB_HOST=postgres

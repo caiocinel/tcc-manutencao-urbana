@@ -69,13 +69,13 @@ export default function SuperAdmin() {
                 <span style={{ fontSize: 12, color: '#9ca3af' }}>{u.email}</span>
                 <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                   {u.admin && <span className="badge badge-admin">Admin</span>}
-                  {u.email === 'josemurilorodriguessabalo@gmail.com' && (
+                  {u.super_admin && (
                     <span className="badge badge-super">Supremo</span>
                   )}
                 </div>
               </div>
               <div className="usuario-municipio" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {u.email !== 'josemurilorodriguessabalo@gmail.com' && (
+                {!u.super_admin && (
                   <button
                     onClick={() => handleToggleAdmin(u.id, !u.admin)}
                     className={`btn-sm ${u.admin ? 'btn-remover-admin' : 'btn-promover'}`}

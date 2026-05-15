@@ -296,7 +296,7 @@ router.get('/', async (req, res) => {
       filter.status = statusList.length === 1 ? statusList[0] : statusList;
     }
     let defeitos = await Defeito.find(filter)
-      .populate('usuario', 'nome email')
+      .populate('usuario', 'nome')
       .sort({ criado_em: -1 });
     if (dias) {
       const cutoff = new Date(Date.now() - parseInt(dias) * 24 * 60 * 60 * 1000);
@@ -423,7 +423,7 @@ router.get('/clusters', async (req, res) => {
       filter.status = statusList.length === 1 ? statusList[0] : statusList;
     }
     if (usuario) filter.usuario = usuario;
-    let todos = await Defeito.find(filter).populate('usuario', 'nome email');
+    let todos = await Defeito.find(filter).populate('usuario', 'nome');
     if (dias) {
       const cutoff = new Date(Date.now() - parseInt(dias) * 24 * 60 * 60 * 1000);
       todos = todos.filter(d => new Date(d.criado_em) >= cutoff);
@@ -487,7 +487,7 @@ router.post('/:id/apoiar', authenticateToken, async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const defeito = await Defeito.findById(req.params.id)
-      .populate('usuario', 'nome email');
+      .populate('usuario', 'nome');
 
     if (!defeito) {
       return res.status(404).json({ error: 'Defeito não encontrado' });
@@ -593,7 +593,7 @@ router.patch('/:id/anexar', authenticateToken, upload.single('imagem'), handleMu
       [JSON.stringify(imagensExtra), JSON.stringify(atualizacoes), new Date().toISOString(), req.params.id]
     );
 
-    const updated = await Defeito.findById(req.params.id).populate('usuario', 'nome email');
+    const updated = await Defeito.findById(req.params.id).populate('usuario', 'nome');
     res.json(updated);
   } catch (error) {
     logger.error({ err: error }, 'Erro ao anexar ao defeito');

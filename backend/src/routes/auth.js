@@ -308,7 +308,11 @@ function requireAdmin(req, res, next) {
 }
 
 function requireSuperAdmin(req, res, next) {
-  if (!req.user || !req.user.admin || req.user.email !== 'josemurilorodriguessabalo@gmail.com') {
+  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+  if (!superAdminEmail) {
+    return res.status(500).json({ error: 'SUPER_ADMIN_EMAIL não configurado' });
+  }
+  if (!req.user || !req.user.admin || req.user.email !== superAdminEmail) {
     return res.status(403).json({ error: 'Acesso negado. Apenas o administrador supremo pode executar esta ação.' });
   }
   next();
@@ -316,12 +320,14 @@ function requireSuperAdmin(req, res, next) {
 
 router.get('/admin/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
     const { rows: users } = await query('SELECT id, nome, email, admin, municipio_id FROM users ORDER BY nome');
     const { rows: municipios } = await query('SELECT codigo, nome, uf_sigla FROM municipios');
     const munMap = {};
     for (const m of municipios) munMap[m.codigo] = m;
     for (const u of users) {
       u.admin = !!u.admin;
+      u.super_admin = superAdminEmail ? u.email === superAdminEmail : false;
       if (u.municipio_id) u.municipio = munMap[u.municipio_id] || null;
     }
     res.json(users);
@@ -638,7 +644,7 @@ router.patch('/admin/users/:id/admin', authenticateToken, requireSuperAdmin, asy
 
     const { rows } = await query('SELECT id, email, admin FROM users WHERE id = $1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Usuário não encontrado' });
-    if (rows[0].email === 'josemurilorodriguessabalo@gmail.com') {
+    if (rows[0].email === process.env.SUPER_ADMIN_EMAIL) {
       return res.status(400).json({ error: 'Não é possível alterar o próprio status de admin' });
     }
 

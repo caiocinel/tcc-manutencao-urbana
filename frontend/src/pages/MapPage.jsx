@@ -251,6 +251,7 @@ export default function MapPage() {
   const [categorias, setCategorias] = useState([]);
   const [categoria, setCategoria] = useState('');
   const [submitError, setSubmitError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const [filtro, setFiltro] = useState('pendentes');
   const [diasFiltro, setDiasFiltro] = useState('');
@@ -414,6 +415,7 @@ export default function MapPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (submitting) return;
     setSubmitError('');
     if (!pinPos) return;
     if (polygonPositions && user?.municipio_id && !user?.admin) {
@@ -430,6 +432,7 @@ export default function MapPage() {
         return;
       }
     }
+    setSubmitting(true);
     const formData = new FormData();
     formData.append('titulo', titulo);
     formData.append('descricao', descricao);
@@ -450,6 +453,8 @@ export default function MapPage() {
       handleCancel();
     } catch (err) {
       setSubmitError(err.message);
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -757,8 +762,8 @@ export default function MapPage() {
               {geocoding && <p className="hint">Obtendo endereço...</p>}
               <p className="hint">Arraste o alfinete no mapa para ajustar a posição</p>
               <div className="modal-actions">
-                <button type="submit" className="btn-primary">
-                  <Check size={16} weight="bold" style={{ verticalAlign: 'middle', marginRight: 4 }} /> Enviar
+                <button type="submit" className="btn-primary" disabled={submitting} style={submitting ? { opacity: 0.5, cursor: 'not-allowed', background: '#6b7280', borderColor: '#6b7280' } : {}}>
+                  <Check size={16} weight="bold" style={{ verticalAlign: 'middle', marginRight: 4 }} /> {submitting ? 'Enviando...' : 'Enviar'}
                 </button>
                 <button type="button" onClick={handleCancel} className="btn-secondary">
                   <X size={16} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Cancelar
