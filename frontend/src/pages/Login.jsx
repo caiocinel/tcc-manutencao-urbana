@@ -6,31 +6,12 @@ import { useAuth } from '../context/AuthContext';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
-  const [step, setStep] = useState('email');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  async function handleCheckEmail(e) {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const data = await api.checkEmail(email);
-      if (data.exists) {
-        setStep('password');
-      } else {
-        navigate('/registro?email=' + encodeURIComponent(email));
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleLogin(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setLoading(true);
@@ -45,83 +26,35 @@ export default function Login() {
     }
   }
 
-  function handleBack() {
-    setStep('email');
-    setError('');
-  }
-
-  const inputClass = "w-full bg-[#111114] border border-[rgba(255,255,255,0.08)] rounded-[8px] px-3 py-[10px] text-[14px] text-[#f0eff5] outline-none transition-[border-color,box-shadow] duration-150 focus:border-[#7c6fff] focus:shadow-[0_0_0_3px_rgba(124,111,255,0.12)] placeholder:text-[#5c5b6e]";
-
   return (
-    <div className="min-h-dvh flex items-center justify-center bg-[#0f0f11] px-4">
-      <div className="w-full max-w-[420px] bg-[#1a1a1e] border border-[rgba(255,255,255,0.08)] rounded-[16px] p-8 shadow-[0_32px_80px_rgba(0,0,0,0.6)]">
-        <div className="text-center mb-8">
-          <img src="/icon.svg" alt="CIU" className="w-10 h-10 mx-auto mb-3" />
-          <h1 className="text-[17px] font-semibold text-[#f0eff5]">Entrar</h1>
-          <p className="text-[12.5px] text-[#9998a8] mt-1">Central de Inteligência Urbana</p>
+    <div className="auth-container">
+      <form onSubmit={handleSubmit} className="auth-form">
+        <div className="auth-form-header">
+          <img src="/icon.svg" alt="CIU" width="36" height="36" style={{ marginBottom: 12 }} />
+          <h1>Entrar</h1>
+          <p>Central de Inteligência Urbana</p>
         </div>
 
-        {step === 'email' ? (
-          <form onSubmit={handleCheckEmail}>
-            <div className="mb-4">
-              <label className="block text-[12.5px] font-medium text-[#9998a8] mb-1.5">Email</label>
-              <input
-                type="email" placeholder="seu@email.com" value={email}
-                onChange={e => setEmail(e.target.value)} required autoFocus
-                className={inputClass}
-              />
-            </div>
+        <div className="field">
+          <label>Email</label>
+          <input type="email" placeholder="seu@email.com" value={email} onChange={e => setEmail(e.target.value)} required />
+        </div>
 
-            {error && <p className="text-[#ff6b6b] text-[12.5px] mb-4" role="alert">{error}</p>}
+        <div className="field">
+          <label>Senha</label>
+          <input type="password" placeholder="••••••" value={senha} onChange={e => setSenha(e.target.value)} required />
+        </div>
 
-            <button type="submit" disabled={loading}
-              className="w-full bg-[#7c6fff] text-white rounded-[8px] py-[10px] text-[13.5px] font-medium cursor-pointer transition-opacity duration-150 hover:opacity-85 disabled:opacity-60"
-            >
-              {loading ? 'Verificando...' : 'Continuar'}
-            </button>
+        {error && <p className="auth-error" role="alert">{error}</p>}
 
-            <p className="text-[12.5px] text-[#9998a8] text-center mt-4">
-              Não tem conta?{' '}
-              <Link to="/registro" className="text-[#7c6fff] no-underline hover:underline">Cadastre-se</Link>
-            </p>
-          </form>
-        ) : (
-          <form onSubmit={handleLogin}>
-            <div className="mb-1">
-              <label className="block text-[12.5px] font-medium text-[#9998a8] mb-1.5">Email</label>
-              <p className="text-[14px] text-[#f0eff5] mb-4">{email}</p>
-            </div>
+        <button type="submit" disabled={loading}>
+          {loading ? 'Entrando...' : 'Entrar'}
+        </button>
 
-            <div className="mb-4">
-              <label className="block text-[12.5px] font-medium text-[#9998a8] mb-1.5">Senha</label>
-              <input
-                type="password" placeholder="••••••" value={senha}
-                onChange={e => setSenha(e.target.value)} required autoFocus
-                className={inputClass}
-              />
-            </div>
-
-            {error && <p className="text-[#ff6b6b] text-[12.5px] mb-4" role="alert">{error}</p>}
-
-            <button type="submit" disabled={loading}
-              className="w-full bg-[#7c6fff] text-white rounded-[8px] py-[10px] text-[13.5px] font-medium cursor-pointer transition-opacity duration-150 hover:opacity-85 disabled:opacity-60"
-            >
-              {loading ? 'Entrando...' : 'Entrar'}
-            </button>
-
-            <button type="button" onClick={handleBack}
-              className="w-full mt-2 bg-transparent text-[#9998a8] border border-[rgba(255,255,255,0.12)] rounded-[8px] py-[10px] text-[13.5px] font-medium cursor-pointer transition-colors duration-150 hover:text-[#f0eff5] hover:border-[rgba(255,255,255,0.25)]"
-            >
-              Voltar
-            </button>
-
-            <p className="text-[12.5px] text-[#9998a8] text-center mt-4">
-              Não tem conta?{' '}
-              <Link to="/registro" className="text-[#7c6fff] no-underline hover:underline">Cadastre-se</Link>
-            </p>
-          </form>
-        )}
-      </div>
+        <p className="auth-link">
+          Não tem conta? <Link to="/registro">Cadastre-se</Link>
+        </p>
+      </form>
     </div>
   );
 }

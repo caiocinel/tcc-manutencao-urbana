@@ -518,30 +518,114 @@ textarea:focus {
   padding: 16px;
 }
 .auth-form {
-  background: var(--bg-surface);
-  padding: 32px;
-  border-radius: var(--radius-2xl);
-  border: 1px solid var(--border-default);
   width: 100%;
-  max-width: 380px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  box-shadow: var(--shadow-diffusion);
+  max-width: 420px;
+  background: #1a1a1e;
+  border: 0.5px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.6);
 }
-.auth-form h1 { font-size: var(--text-3xl); font-weight: 700; letter-spacing: -0.02em; margin-bottom: 4px; }
-.auth-form label { font-size: var(--text-sm); color: var(--text-secondary); font-weight: var(--weight-medium); }
-.auth-form input, .auth-form select { width: 100%; padding: 10px 14px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); font-size: var(--text-md); background: var(--bg-input); color: var(--text-primary); outline: none; transition: border-color var(--transition-fast); }
-.auth-form input:focus, .auth-form select:focus { border-color: var(--accent-green); }
-.auth-form input::placeholder { color: var(--text-muted); }
-.auth-form button { width: 100%; padding: 10px; border: none; border-radius: var(--radius-lg); font-size: var(--text-md); font-weight: var(--weight-semibold); cursor: pointer; background: var(--accent-green); color: #0a0a0b; transition: all var(--transition-fast); }
-.auth-form button:hover { background: #16a34a; }
+.auth-form-header {
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
+.auth-form-header h1 {
+  font-size: 17px;
+  font-weight: 600;
+  color: #f0eff5;
+}
+.auth-form-header p {
+  font-size: 12.5px;
+  color: #9998a8;
+  margin-top: 4px;
+}
+.auth-form .field {
+  margin-bottom: 1rem;
+}
+.auth-form label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #9998a8;
+  margin-bottom: 6px;
+}
+.auth-form label .req {
+  color: #ff6b6b;
+  margin-left: 2px;
+}
+.auth-form input, .auth-form select {
+  width: 100%;
+  background: #111114;
+  border: 0.5px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #f0eff5;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.auth-form input::placeholder, .auth-form select::placeholder {
+  color: #5c5b6e;
+}
+.auth-form input:focus, .auth-form select:focus {
+  border-color: #7c6fff;
+  box-shadow: 0 0 0 3px rgba(124,111,255,0.12);
+}
+.auth-form button {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  background: #7c6fff;
+  color: #fff;
+  transition: opacity .15s;
+}
+.auth-form button:hover { opacity: .88; }
 .auth-form button:active { transform: scale(0.98); }
 .auth-form button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-.auth-link { font-size: var(--text-base); text-align: center; color: var(--text-tertiary); }
-.auth-link a { color: var(--accent-green); text-decoration: none; font-weight: var(--weight-medium); }
+.auth-form .btn-ghost {
+  background: transparent;
+  border: 0.5px solid rgba(255,255,255,0.08);
+  color: #9998a8;
+  margin-top: 6px;
+}
+.auth-form .btn-ghost:hover { background: rgba(255,255,255,0.04); opacity: 1; }
+.auth-link {
+  font-size: 12.5px;
+  text-align: center;
+  color: #9998a8;
+  margin-top: 1rem;
+}
+.auth-link a {
+  color: #7c6fff;
+  text-decoration: none;
+}
 .auth-link a:hover { text-decoration: underline; }
-.error { color: var(--accent-red); font-size: var(--text-base); }
+.auth-error {
+  color: #ff6b6b;
+  font-size: 12.5px;
+  margin-bottom: 1rem;
+}
+.auth-success-banner {
+  background: rgba(46,196,160,0.12);
+  border: 0.5px solid rgba(46,196,160,0.3);
+  border-radius: 8px;
+  padding: 9px 11px;
+  margin-bottom: 1rem;
+}
+.auth-success-banner p {
+  font-size: 12px;
+  color: #2ec4a0;
+  line-height: 1.45;
+}
 
 hr { border: none; border-top: 1px solid var(--border-default); }
 

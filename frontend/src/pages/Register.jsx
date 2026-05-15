@@ -67,84 +67,74 @@ export default function Register() {
     }
   }
 
-  const inputClass = "w-full bg-[#111114] border border-[rgba(255,255,255,0.08)] rounded-[8px] px-3 py-[10px] text-[14px] text-[#f0eff5] outline-none transition-[border-color,box-shadow] duration-150 focus:border-[#7c6fff] focus:shadow-[0_0_0_3px_rgba(124,111,255,0.12)] placeholder:text-[#5c5b6e]";
-
   return (
-    <div className="min-h-dvh flex items-center justify-center bg-[#0f0f11] px-4 py-8">
-      <div className="w-full max-w-[420px] bg-[#1a1a1e] border border-[rgba(255,255,255,0.08)] rounded-[16px] p-8 shadow-[0_32px_80px_rgba(0,0,0,0.6)]">
-        <div className="text-center mb-6">
-          <img src="/icon.svg" alt="CIU" className="w-10 h-10 mx-auto mb-3" />
-          <h1 className="text-[17px] font-semibold text-[#f0eff5]">Criar conta</h1>
-          <p className="text-[12.5px] text-[#9998a8] mt-1">Central de Inteligência Urbana</p>
+    <div className="auth-container">
+      <form onSubmit={handleSubmit} className="auth-form">
+        <div className="auth-form-header">
+          <img src="/icon.svg" alt="CIU" width="36" height="36" style={{ marginBottom: 12 }} />
+          <h1>Criar conta</h1>
+          <p>Central de Inteligência Urbana</p>
         </div>
 
         {prefillMessage && (
-          <div className="bg-[rgba(46,196,160,0.12)] border border-[rgba(46,196,160,0.3)] rounded-[8px] px-3 py-2.5 mb-4">
-            <p className="text-[12px] text-[#2ec4a0] leading-relaxed">
-              Parece que você ainda não tem uma conta. Complete seu cadastro abaixo!
-            </p>
+          <div className="auth-success-banner">
+            <p>Parece que você ainda não tem uma conta. Complete seu cadastro abaixo!</p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          {error && <p className="text-[#ff6b6b] text-[12.5px] mb-4" role="alert">{error}</p>}
+        {error && <p className="auth-error" role="alert">{error}</p>}
 
-          <div className="mb-3">
-            <label className="block text-[12.5px] font-medium text-[#9998a8] mb-1.5">Nome <span className="text-[#ff6b6b]">*</span></label>
-            <input type="text" placeholder="Seu nome" value={nome} onChange={e => setNome(e.target.value)} required className={inputClass} />
-          </div>
+        <div className="field">
+          <label>Nome <span className="req">*</span></label>
+          <input type="text" placeholder="Seu nome" value={nome} onChange={e => setNome(e.target.value)} required />
+        </div>
 
-          <div className="mb-3">
-            <label className="block text-[12.5px] font-medium text-[#9998a8] mb-1.5">Email <span className="text-[#ff6b6b]">*</span></label>
-            <input type="email" placeholder="seu@email.com" value={email} onChange={e => setEmail(e.target.value)} required className={inputClass} />
-          </div>
+        <div className="field">
+          <label>Email <span className="req">*</span></label>
+          <input type="email" placeholder="seu@email.com" value={email} onChange={e => setEmail(e.target.value)} required />
+        </div>
 
-          <div className="mb-3">
-            <label className="block text-[12.5px] font-medium text-[#9998a8] mb-1.5">Senha <span className="text-[#ff6b6b]">*</span></label>
-            <input type="password" placeholder="Mínimo 6 caracteres" value={senha} onChange={e => setSenha(e.target.value)} required minLength={6} className={inputClass} />
-          </div>
+        <div className="field">
+          <label>Senha <span className="req">*</span></label>
+          <input type="password" placeholder="Mínimo 6 caracteres" value={senha} onChange={e => setSenha(e.target.value)} required minLength={6} />
+        </div>
 
-          <div className="mb-3">
-            <label className="block text-[12.5px] font-medium text-[#9998a8] mb-1.5">CPF</label>
-            <div className="relative">
-              <input
-                type="text" placeholder="000.000.000-00" value={cpf} maxLength={14}
-                onChange={e => { setCpf(mascaraCpf(e.target.value)); setCpfValido(null); }}
-                onBlur={handleCpfBlur}
-                className={inputClass}
-                style={{ borderColor: cpfValido === true ? '#2ec4a0' : cpfValido === false ? '#ff6b6b' : '' }}
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px]">
-                {cpfValidando && <span className="text-[#9998a8]">Validando...</span>}
-                {cpfValido === true && <span className="text-[#2ec4a0]">OK</span>}
-                {cpfValido === false && <span className="text-[#ff6b6b]">Inválido</span>}
-              </span>
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-[12.5px] font-medium text-[#9998a8] mb-1.5">Município <span className="text-[#ff6b6b]">*</span></label>
-            <SearchableSelect
-              options={municipios}
-              value={municipioId}
-              onChange={setMunicipioId}
-              placeholder="Pesquise um município..."
-              groupBy="uf_sigla"
+        <div className="field">
+          <label>CPF</label>
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text" placeholder="000.000.000-00" value={cpf} maxLength={14}
+              onChange={e => { setCpf(mascaraCpf(e.target.value)); setCpfValido(null); }}
+              onBlur={handleCpfBlur}
+              style={{ borderColor: cpfValido === true ? '#2ec4a0' : cpfValido === false ? '#ff6b6b' : undefined }}
             />
+            <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 11 }}>
+              {cpfValidando && <span style={{ color: '#9998a8' }}>Validando...</span>}
+              {cpfValido === true && <span style={{ color: '#2ec4a0' }}>OK</span>}
+              {cpfValido === false && <span style={{ color: '#ff6b6b' }}>Inválido</span>}
+            </span>
           </div>
+        </div>
 
-          <button type="submit" disabled={loading}
-            className="w-full bg-[#7c6fff] text-white rounded-[8px] py-[10px] text-[13.5px] font-medium cursor-pointer transition-opacity duration-150 hover:opacity-85 disabled:opacity-60"
-          >
-            {loading ? 'Cadastrando...' : 'Criar conta'}
-          </button>
+        <div className="field">
+          <label>Município <span className="req">*</span></label>
+          <SearchableSelect
+            options={municipios}
+            value={municipioId}
+            onChange={setMunicipioId}
+            placeholder="Pesquise um município..."
+            groupBy="uf_sigla"
+          />
+        </div>
 
-          <p className="text-[12.5px] text-[#9998a8] text-center mt-4">
-            Já tem conta?{' '}
-            <Link to="/login" className="text-[#7c6fff] no-underline hover:underline">Faça login</Link>
-          </p>
-        </form>
-      </div>
+        <button type="submit" disabled={loading}>
+          {loading ? 'Cadastrando...' : 'Criar conta'}
+        </button>
+
+        <p className="auth-link">
+          Já tem conta? <Link to="/login">Faça login</Link>
+        </p>
+      </form>
     </div>
   );
 }
