@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
 import Header from '../components/Header';
+import { getStatusConfig } from '../constants';
 import L from 'leaflet';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -88,7 +89,7 @@ function IndividualMarker({ d, isAuthenticated, onApoiar, onAttach }) {
             <Heart size={13} weight={d.usuario_apoiou ? 'fill' : 'regular'} style={{ verticalAlign: 'middle', marginRight: 2 }} />
             Apoiar ({d.apoios_total || 0})
           </button>
-          {isAuthenticated && d.status === 'pendente' && (
+          {isAuthenticated && ['pendente', 'em_andamento', 'vinculado_sem_resposta'].includes(d.status) && (
             <button className="btn-sm btn-apoiar" onClick={() => onAttach(d)}>
               <Paperclip size={13} style={{ verticalAlign: 'middle', marginRight: 2 }} />
               Anexar
@@ -168,7 +169,7 @@ function ClusterMarker({ c, selectedIds, isAuthenticated, encerrando, onToggleSe
                           <Heart size={11} weight={d.usuario_apoiou ? 'fill' : 'regular'} style={{ verticalAlign: 'middle', marginRight: 1 }} />
                           {d.apoios_total || 0}
                         </button>
-                        {isAuthenticated && d.status === 'pendente' && (
+                        {isAuthenticated && ['pendente', 'em_andamento', 'vinculado_sem_resposta'].includes(d.status) && (
                           <button className="btn-sm btn-apoiar" style={{ fontSize: 11 }} onClick={() => onAttach(d)}>
                             <Paperclip size={11} style={{ verticalAlign: 'middle' }} />
                           </button>
@@ -292,8 +293,8 @@ export default function MapPage() {
     setApiError('');
     const params = {};
     if (isAuthenticated) {
-      if (filtro === 'pendentes') params.status = 'pendente,em_andamento';
-      else if (filtro === 'atendidos') params.status = 'atendido,encerrado';
+      if (filtro === 'pendentes') params.status = 'pendente,em_andamento,vinculado_sem_resposta,vinculado_com_resposta';
+      else if (filtro === 'atendidos') params.status = 'atendido,encerrado,concluido';
       else if (filtro === 'meus' && user?.id) params.usuario = user.id;
     }
     if (diasFiltro) params.dias = diasFiltro;

@@ -6,13 +6,12 @@ import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import { useToast } from '../components/Toast';
+import { STATUS_CONFIG } from '../constants';
 
-const statusCores = {
-  pendente: '#eab308',
-  em_andamento: '#f97316',
-  atendido: '#22c55e',
-  encerrado: '#16a34a',
-};
+const statusCores = {};
+for (const [k, v] of Object.entries(STATUS_CONFIG)) {
+  statusCores[k] = v.color;
+}
 
 const impactoLabel = { alta: 'Alto', media: 'Médio', baixa: 'Baixo' };
 const impactoCls = { alta: 'impacto-alto', media: 'impacto-media', baixa: 'impacto-baixa' };

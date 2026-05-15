@@ -3,6 +3,7 @@ import { ThumbsUp, Crosshair, Target } from '@phosphor-icons/react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
+import { getStatusConfig } from '../constants';
 
 function ScorePill({ score }) {
   if (score == null) return null;
@@ -41,20 +42,13 @@ export default function DefectList() {
     return () => { cancelled = true; };
   }, [isAuthenticated, ordenarScore]);
 
-  const statusLabel = {
-    pendente: 'Pendente',
-    em_andamento: 'Em Andamento',
-    atendido: 'Atendido',
-    encerrado: 'Encerrado',
-  };
-
   const prioridadeCores = { baixa: '#22c55e', media: '#f59e0b', alta: '#dc2626' };
   const prioridadeLabels = { baixa: 'Baixa', media: 'Média', alta: 'Alta' };
 
   const filtrados = defeitos.filter(d => {
     if (filtro === 'todos') return true;
-    if (filtro === 'pendentes') return d.status === 'pendente' || d.status === 'em_andamento';
-    if (filtro === 'atendidos') return d.status === 'atendido' || d.status === 'encerrado';
+    if (filtro === 'pendentes') return ['pendente', 'em_andamento', 'vinculado_sem_resposta', 'vinculado_com_resposta'].includes(d.status);
+    if (filtro === 'atendidos') return ['atendido', 'encerrado', 'concluido'].includes(d.status);
     if (filtro === 'meus') return meusDefeitos.some(m => m.id === d.id);
     return true;
   });
@@ -104,7 +98,7 @@ export default function DefectList() {
                 <h3>{d.titulo}</h3>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <ScorePill score={d.score_urgencia} />
-                  <span className={`badge badge-${d.status}`}>{statusLabel[d.status] || d.status}</span>
+                  <span className="badge" style={{ background: getStatusConfig(d.status).bg, color: getStatusConfig(d.status).color, border: `0.5px solid ${getStatusConfig(d.status).color}40` }}>{getStatusConfig(d.status).label}</span>
                 </div>
               </div>
               <p className="chamado-desc">{d.descricao}</p>
