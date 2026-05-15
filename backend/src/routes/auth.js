@@ -95,6 +95,18 @@ router.post('/registro', authLimiter, validate(registerSchema), async (req, res)
   }
 });
 
+router.post('/check-email', authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email é obrigatório' });
+    const user = await User.findOne({ email: email.toLowerCase() });
+    res.json({ exists: !!user });
+  } catch (error) {
+    logger.error({ err: error }, 'Erro ao verificar email');
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
   try {
     const { email, senha } = req.body;
@@ -387,10 +399,14 @@ router.get('/admin/estatisticas', authenticateToken, requireAdmin, async (req, r
       SELECT status, COUNT(*) as total FROM defeitos GROUP BY status
     `);
 
-    const pendentes = (porStatus.find(s => s.status === 'pendente')?.total || 0) +
-                      (porStatus.find(s => s.status === 'em_andamento')?.total || 0);
-    const resolvidos = (porStatus.find(s => s.status === 'atendido')?.total || 0) +
-                       (porStatus.find(s => s.status === 'encerrado')?.total || 0);
+    const statusPendentes = ['pendente', 'em_andamento', 'vinculado_sem_resposta', 'vinculado_com_resposta'];
+    const pendentes = porStatus
+      .filter(s => statusPendentes.includes(s.status))
+      .reduce((sum, s) => sum + parseInt(s.total, 10), 0);
+    const statusResolvidos = ['atendido', 'encerrado', 'concluido'];
+    const resolvidos = porStatus
+      .filter(s => statusResolvidos.includes(s.status))
+      .reduce((sum, s) => sum + parseInt(s.total, 10), 0);
 
     const { rows: slaRow } = await query(`
       SELECT AVG(
@@ -399,7 +415,9 @@ router.get('/admin/estatisticas', authenticateToken, requireAdmin, async (req, r
       FROM defeitos WHERE status IN ('atendido', 'encerrado')
     `);
 
-    const resolucaoRate = total > 0 ? Math.round((resolvidos / total) * 100) : 0;
+    const resolucaoRate = total > 0 ? Math.min(Math.round((resolvidos / total) * 100), 100) : 0;
+
+    logger.info({ pendentes, resolvidos, total, taxa: resolucaoRate }, 'Métricas calculadas');
 
     const now = new Date();
     const mesInicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();

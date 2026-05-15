@@ -109,6 +109,9 @@ async function uploadDefeito(formData) {
 }
 
 export const api = {
+  checkEmail: (email) =>
+    request('/api/auth/check-email', { method: 'POST', body: { email } }),
+
   login: (email, senha) =>
     request('/api/auth/login', { method: 'POST', body: { email, senha } }),
 
