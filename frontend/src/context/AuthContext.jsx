@@ -46,12 +46,20 @@ export function AuthProvider({ children }) {
         admin: payload.admin || userData.admin || false,
         municipio: userData.municipio || null,
         nome: userData.nome || '',
+        cpf: userData.cpf || null,
         email_verificado: userData.email_verificado || false,
       };
       setUser(userBase);
       subscribeToPush();
-      const precisaMunicipio = !userBase.municipio || !userBase.municipio.poligono_json;
-      if (precisaMunicipio && userBase.municipio_id) {
+      const precisaMunicipio = userBase.municipio_id && (
+        !userBase.municipio ||
+        !userBase.municipio.poligono_json ||
+        typeof userBase.municipio.min_lat !== 'number' ||
+        typeof userBase.municipio.max_lat !== 'number' ||
+        typeof userBase.municipio.min_lng !== 'number' ||
+        typeof userBase.municipio.max_lng !== 'number'
+      );
+      if (precisaMunicipio) {
         api.getMunicipio(userBase.municipio_id).then(mun => {
           setUser(prev => ({ ...prev, municipio: mun }));
           const stored2 = JSON.parse(localStorage.getItem('userData') || '{}');

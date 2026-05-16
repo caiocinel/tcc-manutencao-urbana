@@ -1,778 +1,547 @@
-import { useEffect, useState, useCallback, memo, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polygon } from 'react-leaflet';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Heart, Paperclip, Sun, Fire, MapPin, NotePencil, Check, X } from '@phosphor-icons/react';
-import { api } from '../services/api';
+import { motion } from 'framer-motion';
+import { MapPin, Plus, X, Camera, ThumbsUp, Sun, Moon, MagnifyingGlass, Fire, Funnel, Handshake } from '@phosphor-icons/react';
+import { MapContainer, TileLayer, Marker, Polygon, useMapEvents } from 'react-leaflet';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { api } from '../services/api';
+import { StatusBadge, getStatusColor } from '../components/ui/status-badge';
+import UserDropdown from '../components/ui/user-dropdown';
+import { CommandMenu } from '../components/ui/command-menu';
 import { useTheme } from '../context/ThemeContext';
-import Header from '../components/Header';
-import { getStatusConfig } from '../constants';
-import L from 'leaflet';
+import { createPlacementPinIcon, createDefectIcon } from '../utils/map-markers';
+import HeatmapLayer from '../components/HeatmapLayer';
 
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+const LIGHT_TILES = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+const BRAZIL_BOUNDS = [[-33.75, -73.99], [5.27, -28.85]];
 
-const statusColors = {
-  pendente: '#eab308',
-  em_andamento: '#f97316',
-  resolvido: '#22c55e',
-};
-
-function censurarNome(nome) {
-  if (!nome || nome.length <= 6) return nome || 'Anônimo';
-  return nome.slice(0, 3) + '*'.repeat(nome.length - 6) + nome.slice(-3);
+function pointInPolygon(point, vs) {
+  const [x, y] = point;
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const [xi, yi] = vs[i], [xj, yj] = vs[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
 }
 
-function MapClickHandler({ creating, onMapClick, setPinPos }) {
+function MapClickHandler({ creatingRef, polygonCoordsRef, setCoords, setShowForm, addToast }) {
   useMapEvents({
     click(e) {
-      if (creating) onMapClick(e.latlng);
-    },
-    mousemove(e) {
-      if (creating) setPinPos(e.latlng);
+      if (!creatingRef.current) return;
+      const point = [e.latlng.lng, e.latlng.lat];
+      const dentro = !polygonCoordsRef.current || pointInPolygon(point, polygonCoordsRef.current);
+      if (!dentro) {
+        addToast('Localização fora do perímetro municipal.', 'error');
+        return;
+      }
+      setCoords({ lat: e.latlng.lat, lng: e.latlng.lng });
+      setShowForm(true);
     },
   });
   return null;
 }
 
-const pinIcon = L.icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
-  iconRetinaUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-});
-
-import HeatmapLayer from '../components/HeatmapLayer';
-
-function IndividualMarker({ d, isAuthenticated, onApoiar, onAttach }) {
-  if (!d.latitude || !d.longitude) return null;
-  const color = statusColors[d.status] || 'gray';
-  const icon = L.divIcon({
-    className: 'custom-marker',
-    html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
-  });
-  const imagens = [];
-  if (d.imagem_url || d.imagem_thumbnail) imagens.push(d.imagem_thumbnail || d.imagem_url);
-  if (d.imagens_extra?.length > 0) imagens.push(...d.imagens_extra);
-
-  return (
-    <Marker position={[d.latitude, d.longitude]} icon={icon}>
-      <Popup>
-        <strong>{d.titulo}</strong>
-        <p>{d.descricao}</p>
-        <p>Status: <strong>{d.status}</strong></p>
-        {d.usuario?.nome && <p style={{ fontSize: 12, color: '#9ca3af' }}>Por: {censurarNome(d.usuario.nome)}</p>}
-        {imagens.map((url, i) => (
-          <img key={i} src={url} alt={`${d.titulo} - ${i + 1}`} style={{ width: '100%', maxWidth: 200, borderRadius: 4, marginTop: i > 0 ? 4 : 0 }} />
-        ))}
-        {d.atualizacoes?.length > 0 && (
-          <div style={{ marginTop: 6, fontSize: 12, color: '#9ca3af' }}>
-            {d.atualizacoes.map((a, i) => (
-              <p key={i} style={{ marginTop: 2 }}>
-                <NotePencil size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} /> {a.texto} <em>({new Date(a.criado_em).toLocaleDateString()})</em>
-              </p>
-            ))}
-          </div>
-        )}
-        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <button className="btn-sm btn-apoiar" onClick={() => onApoiar(d.id)}>
-            <Heart size={13} weight={d.usuario_apoiou ? 'fill' : 'regular'} style={{ verticalAlign: 'middle', marginRight: 2 }} />
-            Apoiar ({d.apoios_total || 0})
-          </button>
-          {isAuthenticated && ['pendente', 'em_andamento', 'vinculado_sem_resposta'].includes(d.status) && (
-            <button className="btn-sm btn-apoiar" onClick={() => onAttach(d)}>
-              <Paperclip size={13} style={{ verticalAlign: 'middle', marginRight: 2 }} />
-              Anexar
-            </button>
-          )}
-        </div>
-      </Popup>
-    </Marker>
-  );
-}
-
-const IndividualMarkerMemo = memo(IndividualMarker);
-
-function ClusterMarker({ c, selectedIds, isAuthenticated, encerrando, onToggleSelect, onConfirmEncerrar, onApoiar, onAttach }) {
-  const [visibleCount, setVisibleCount] = useState(() => 5);
-  useEffect(() => { setVisibleCount(5); }, [c.id]);
-  const selecionados = Object.keys(selectedIds).filter(k => selectedIds[k]).length;
-  const clusterIcon = L.divIcon({
-    className: 'custom-marker',
-    html: `<div style="background:#22c55e;width:36px;height:36px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#000;font-weight:700;font-size:13px">${c.total}</div>`,
-    iconSize: [36, 36],
-    iconAnchor: [18, 18],
-  });
-  const visibleDefeitos = c.defeitos.slice(0, visibleCount);
-  const hasMore = c.defeitos.length > visibleCount;
-  return (
-    <Marker position={[c.centro.latitude, c.centro.longitude]} icon={clusterIcon}>
-      <Popup>
-        <div className="cluster-popup">
-          <div className="cluster-popup-header">{c.total} chamados nesta região</div>
-          {isAuthenticated && selecionados > 0 && (
-            <button
-              onClick={() => onConfirmEncerrar(true)}
-              disabled={encerrando}
-              className="cluster-encerrar-btn"
-            >
-              {encerrando ? 'Encerrando...' : `Encerrar Selecionados (${selecionados})`}
-            </button>
-          )}
-          <div className="cluster-popup-list">
-            {visibleDefeitos.map((d) => {
-              const imagens = [];
-              if (d.imagem_url || d.imagem_thumbnail) imagens.push(d.imagem_thumbnail || d.imagem_url);
-              if (d.imagens_extra?.length > 0) imagens.push(...d.imagens_extra);
-              return (
-                <div key={d.id} className="cluster-item">
-                  <label className="cluster-item-label">
-                    {isAuthenticated && (
-                      <input
-                        type="checkbox"
-                        checked={!!selectedIds[d.id]}
-                        onChange={() => onToggleSelect(d.id)}
-                        className="cluster-item-checkbox"
-                      />
-                    )}
-                    <div className="cluster-item-content">
-                      <div className="cluster-item-title">{d.titulo}</div>
-                      <div className="cluster-item-desc">{d.descricao}</div>
-                      <div className="cluster-item-meta">
-                        <span className={`status-badge status-${d.status}`}>{d.status}</span>
-                        {d.usuario?.nome && <span>{censurarNome(d.usuario.nome)}</span>}
-                      </div>
-                      {imagens.map((url, i) => (
-                        <img key={i} src={url} alt={`${d.titulo} - ${i + 1}`} className="cluster-item-img" />
-                      ))}
-                      {d.atualizacoes?.length > 0 && (
-                        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
-                          {d.atualizacoes.map((a, j) => (
-                            <p key={j}>
-                              <NotePencil size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} /> {a.texto}
-                            </p>
-                          ))}
-                        </div>
-                      )}
-                      <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
-                        <button className="btn-sm btn-apoiar" style={{ fontSize: 11 }} onClick={() => onApoiar(d.id)}>
-                          <Heart size={11} weight={d.usuario_apoiou ? 'fill' : 'regular'} style={{ verticalAlign: 'middle', marginRight: 1 }} />
-                          {d.apoios_total || 0}
-                        </button>
-                        {isAuthenticated && ['pendente', 'em_andamento', 'vinculado_sem_resposta'].includes(d.status) && (
-                          <button className="btn-sm btn-apoiar" style={{ fontSize: 11 }} onClick={() => onAttach(d)}>
-                            <Paperclip size={11} style={{ verticalAlign: 'middle' }} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </label>
-                </div>
-              );
-            })}
-          </div>
-          {hasMore && (
-            <button
-              onClick={() => setVisibleCount(prev => prev + 5)}
-              className="btn-secondary"
-              style={{ width: '100%', marginTop: 8, fontSize: 'var(--text-sm)' }}
-            >
-              Ver mais {Math.min(5, c.defeitos.length - visibleCount)} de {c.defeitos.length}
-            </button>
-          )}
-        </div>
-      </Popup>
-    </Marker>
-  );
-}
-
-const ClusterMarkerMemo = memo(ClusterMarker);
-
 export default function MapPage() {
-  const [defeitos, setDefeitos] = useState([]);
-  const [clusters, setClusters] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [apiError, setApiError] = useState('');
   const { isAuthenticated, user } = useAuth();
-  const { theme } = useTheme();
-  const tileUrl = theme === 'light'
-    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-    : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-  const boundaryColor = theme === 'light' ? '#22c55e' : '#16a34a';
   const navigate = useNavigate();
   const addToast = useToast();
-  const geoTimeoutRef = useRef(null);
   const mapRef = useRef(null);
-  const mun = user?.municipio;
-  const hasBounds = mun &&
-    typeof mun.min_lat === 'number' && isFinite(mun.min_lat) &&
-    typeof mun.min_lng === 'number' && isFinite(mun.min_lng) &&
-    typeof mun.max_lat === 'number' && isFinite(mun.max_lat) &&
-    typeof mun.max_lng === 'number' && isFinite(mun.max_lng);
-  const mapBounds = hasBounds ? L.latLngBounds([mun.min_lat, mun.min_lng], [mun.max_lat, mun.max_lng]) : null;
-  const defaultCenter = hasBounds ? [(mun.min_lat + mun.max_lat) / 2, (mun.min_lng + mun.max_lng) / 2] : [-22.6069, -46.9190];
+  const mapViewRef = useRef(null);
+  const [defeitos, setDefeitos] = useState([]);
+  const [filtro, setFiltro] = useState('todos');
+  const [heatmap, setHeatmap] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
+  useEffect(() => { creatingRef.current = creating; }, [creating]);
+  const [coords, setCoords] = useState(null);
+  const [formData, setFormData] = useState({ titulo: '', descricao: '', categoria: 'Buraco', rua: '', bairro: '' });
+  const [file, setFile] = useState(null);
+  const fileRef = useRef(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const [categorias, setCategorias] = useState([]);
+  const [polygonCoords, setPolygonCoords] = useState(null);
+  const polygonCoordsRef = useRef(null);
+  useEffect(() => { polygonCoordsRef.current = polygonCoords; }, [polygonCoords]);
+  const [atendendo, setAtendendo] = useState(null);
+  const [userLocation, setUserLocation] = useState(null);
+  const { theme, toggle: toggleTheme } = useTheme();
 
-  let polygonPositions = null;
-  let centroid = null;
-  let overlayPositions = null;
-  if (mun?.poligono_json) {
+  const hasMunicipio = !!user?.municipio?.min_lat && user.municipio.min_lat !== 0;
+  const mapCenter = hasMunicipio
+    ? [(user.municipio.min_lat + user.municipio.max_lat) / 2, (user.municipio.min_lng + user.municipio.max_lng) / 2]
+    : (userLocation || [-28.67, -49.38]);
+
+  const filteredDefeitos = useMemo(() => {
+    let f = defeitos;
+    if (filtro === 'pendentes') f = f.filter(d => ['pendente','em_andamento','vinculado_sem_resposta','vinculado_com_resposta'].includes(d.status));
+    if (filtro === 'atendidos') f = f.filter(d => ['atendido','encerrado','concluido'].includes(d.status));
+    if (filtro === 'meus' && user) f = f.filter(d => d.usuario?.id === user.id);
+    return f;
+  }, [defeitos, filtro, user]);
+
+  const leafletPolyCoords = useMemo(() => {
+    if (!polygonCoords) return [];
+    return polygonCoords.map(([lng, lat]) => [lat, lng]);
+  }, [polygonCoords]);
+
+  const leafletMaskCoords = useMemo(() => {
+    if (!leafletPolyCoords.length) return null;
+    const worldRing = [[90, -180], [90, 180], [-90, 180], [-90, -180], [90, -180]];
+    return [worldRing, [...leafletPolyCoords].reverse()];
+  }, [leafletPolyCoords]);
+
+  const handleMapReady = useCallback((ev) => {
+    const m = ev.target;
+    mapRef.current = m;
+    m.on('moveend', () => {
+      const c = m.getCenter();
+      mapViewRef.current = { center: [c.lat, c.lng], zoom: m.getZoom() };
+    });
+  }, []);
+
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || !hasMunicipio) return;
+    const center = [(user.municipio.min_lat + user.municipio.max_lat) / 2, (user.municipio.min_lng + user.municipio.max_lng) / 2];
+    const current = m.getCenter();
+    if (Math.abs(current.lat - center[0]) > 0.001 || Math.abs(current.lng - center[1]) > 0.001) {
+      m.setView(center, 12, { animate: true });
+    }
+  }, [hasMunicipio, user?.municipio?.min_lat, user?.municipio?.max_lat, user?.municipio?.min_lng, user?.municipio?.max_lng]);
+
+  useEffect(() => {
+    if (!user?.municipio?.poligono_json) { setPolygonCoords(null); return; }
+    const raw = user.municipio.poligono_json;
+    const poly = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const coords = poly.type === 'Polygon' ? poly.coordinates[0] : poly.coordinates?.[0]?.[0];
+    if (coords) setPolygonCoords(coords); else setPolygonCoords(null);
+  }, [user?.municipio?.poligono_json]);
+
+  useEffect(() => {
+    if (showForm && coords) reverseGeocode(coords.lat, coords.lng);
+  }, [showForm]);
+
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m) return;
+    const timer = setTimeout(() => m.invalidateSize(), 100);
+    return () => clearTimeout(timer);
+  }, [isAuthenticated, showForm, creating, theme]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.listDefeitos().then(d => { if (!cancelled) setDefeitos(d); }).catch(() => {});
+    api.listCategorias().then(c => { if (!cancelled) setCategorias(c); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) return;
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setUserLocation([latitude, longitude]);
+      },
+      () => {
+        // falha silenciosa — mantém fallback
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 }
+    );
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || !userLocation) return;
+    m.setView(userLocation, 12, { animate: true });
+  }, [userLocation]);
+
+  async function reverseGeocode(lat, lng) {
+    setGeocoding(true);
     try {
-      const parsed = typeof mun.poligono_json === 'string' ? JSON.parse(mun.poligono_json) : mun.poligono_json;
-      if (parsed?.coordinates?.[0]) {
-        polygonPositions = parsed.coordinates[0].map(([lng, lat]) => [lat, lng]);
-        const n = polygonPositions.length;
-        centroid = polygonPositions.reduce(([al, an], [lat, lng]) => [al + lat / n, an + lng / n], [0, 0]);
-        overlayPositions = [
-          [[90, -180], [90, 180], [-90, 180], [-90, -180], [90, -180]],
-          [...polygonPositions].reverse(),
-        ];
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
+        { headers: { 'User-Agent': 'CentralInteligenciaUrbana/1.0' } }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.address) {
+        const rua = data.address.road || data.address.street || '';
+        const bairro = data.address.suburb || data.address.neighbourhood || data.address.city_district || '';
+        setFormData(p => ({ ...p, rua, bairro }));
       }
-      } catch { /* geocode fail — non-critical */ }
+    } catch {} finally {
+      setGeocoding(false);
+    }
   }
 
-  const [creating, setCreating] = useState(false);
-  const [pinPos, setPinPos] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [titulo, setTitulo] = useState('');
-  const [descricao, setDescricao] = useState('');
-  const [imagem, setImagem] = useState(null);
-  const [rua, setRua] = useState('');
-  const [bairro, setBairro] = useState('');
-  const [geocoding, setGeocoding] = useState(false);
-  const [categorias, setCategorias] = useState([]);
-  const [categoria, setCategoria] = useState('');
-  const [submitError, setSubmitError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const [filtro, setFiltro] = useState('pendentes');
-  const [diasFiltro, setDiasFiltro] = useState('');
-  const [, setMeusDefeitos] = useState([]);
-  const [selectedIds, setSelectedIds] = useState({});
-  const [encerrando, setEncerrando] = useState(false);
-  const [showConfirmEncerrar, setShowConfirmEncerrar] = useState(false);
-  const [heatmapVisible, setHeatmapVisible] = useState(!isAuthenticated);
-  const [attachDefeito, setAttachDefeito] = useState(null);
-  const [attachImagem, setAttachImagem] = useState(null);
-  const [attachTexto, setAttachTexto] = useState('');
-  const [attachSaving, setAttachSaving] = useState(false);
-
-  const geocodeLatLng = useCallback(async (latlng) => {
-    if (geoTimeoutRef.current) clearTimeout(geoTimeoutRef.current);
-    geoTimeoutRef.current = setTimeout(async () => {
-      setGeocoding(true);
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}&zoom=18&addressdetails=1`,
-          { headers: { 'User-Agent': 'CentralInteligenciaUrbana/1.0' } }
-        );
-        const data = await res.json();
-        if (data.address) {
-          setRua(data.address.road || data.address.path || '');
-          setBairro(data.address.suburb || data.address.neighbourhood || data.address.district || '');
-        }
-      } catch {
-        // erro de geocodificação ignorado - não crítico
-      } finally {
-        setGeocoding(false);
-      }
-    }, 300);
-  }, []);
-
-  const carregarDados = useCallback(() => {
-    setLoading(true);
-    setApiError('');
-    const params = {};
-    if (isAuthenticated) {
-      if (filtro === 'pendentes') params.status = 'pendente,em_andamento,vinculado_sem_resposta,vinculado_com_resposta';
-      else if (filtro === 'atendidos') params.status = 'atendido,encerrado,concluido';
-      else if (filtro === 'meus' && user?.id) params.usuario = user.id;
-    }
-    if (diasFiltro) params.dias = diasFiltro;
-    api.listClusters(params)
-      .then((data) => {
-        setClusters(data);
-        setDefeitos(data.flatMap(c => c.defeitos));
-      })
-      .catch((err) => {
-        setApiError('Erro ao carregar: ' + err.message);
-        api.listDefeitos().then(setDefeitos).catch(() => {});
-      })
-      .finally(() => setLoading(false));
-  }, [isAuthenticated, filtro, diasFiltro, user]);
-
-  useEffect(() => {
-    carregarDados();
-  }, [carregarDados]);
-
-  useEffect(() => {
-    const el = document.querySelector('.map-container');
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      if (mapRef.current) mapRef.current.invalidateSize();
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (mapRef.current) {
-      setTimeout(() => mapRef.current.invalidateSize(), 200);
-    }
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    api.listCategorias().then(setCategorias).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      api.meusDefeitos().then(setMeusDefeitos).catch(() => {});
-    }
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    function handleKey(e) {
-      if (e.key !== 'Escape') return;
-      if (showConfirmEncerrar) setShowConfirmEncerrar(false);
-      else if (attachDefeito) setAttachDefeito(null);
-      else if (showForm) handleCancel();
-    }
-    if (showForm || showConfirmEncerrar || attachDefeito) window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [showForm, showConfirmEncerrar, attachDefeito]);
-
-  function handleStartCreate() {
-    if (!isAuthenticated) { navigate('/login'); return; }
-    if (!user?.admin && !user?.email_verificado) {
-      setApiError('Verifique seu email na página "Conta" antes de criar um chamado.');
+  const handleSubmit = useCallback(async () => {
+    if (!formData.titulo || formData.descricao.length < 20) {
+      addToast('Título obrigatório e descrição mínima de 20 caracteres.', 'error');
       return;
     }
-    setCreating(true);
-    setPinPos(null);
-    setShowForm(false);
-    setTitulo('');
-    setDescricao('');
-    setImagem(null);
-    setRua('');
-    setBairro('');
-    setCategoria('');
-    setSubmitError('');
-  }
-
-  const handleMapClick = useCallback(async (latlng) => {
-    if (polygonPositions && user?.municipio_id && !user?.admin) {
-      let inside = false;
-      const verts = polygonPositions;
-      for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
-        const [lat_i, lng_i] = verts[i];
-        const [lat_j, lng_j] = verts[j];
-        if ((lat_i > latlng.lat) !== (lat_j > latlng.lat) && latlng.lng < (lng_j - lng_i) * (latlng.lat - lat_i) / (lat_j - lat_i) + lng_i) {
-          inside = !inside;
-        }
-      }
-      if (!inside) {
-        setApiError('O chamado deve estar dentro do perímetro do seu município');
-        return;
-      }
+    if (!coords) {
+      addToast('Selecione uma localização no mapa.', 'error');
+      return;
     }
-    setApiError('');
-    setPinPos(latlng);
-    setShowForm(true);
-    setCreating(false);
-    geocodeLatLng(latlng);
-  }, [geocodeLatLng, polygonPositions, user]);
-
-  function handleCancel() {
-    setCreating(false);
-    setPinPos(null);
-    setShowForm(false);
-    setTitulo('');
-    setDescricao('');
-    setImagem(null);
-    setRua('');
-    setBairro('');
-    setCategoria('');
-    setSubmitError('');
-  }
-
-  function handlePinDrag(e) {
-    const latlng = e.target.getLatLng();
-    setPinPos(latlng);
-    geocodeLatLng(latlng);
-  }
-
-  const catSelecionada = categorias.find(c => c.nome === categoria);
-  const previsaoLabel = catSelecionada ? new Date(Date.now() + catSelecionada.prazo_sla_dias * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR') : null;
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (submitting) return;
-    setSubmitError('');
-    if (!pinPos) return;
-    if (polygonPositions && user?.municipio_id && !user?.admin) {
-      let inside = false;
-      for (let i = 0, j = polygonPositions.length - 1; i < polygonPositions.length; j = i++) {
-        const [lat_i, lng_i] = polygonPositions[i];
-        const [lat_j, lng_j] = polygonPositions[j];
-        if ((lat_i > pinPos.lat) !== (lat_j > pinPos.lat) && pinPos.lng < (lng_j - lng_i) * (pinPos.lat - lat_i) / (lat_j - lat_i) + lng_i) {
-          inside = !inside;
-        }
-      }
-      if (!inside) {
-        setSubmitError('O chamado deve estar dentro do perímetro do seu município');
-        return;
-      }
+    if (!formData.categoria) {
+      addToast('Selecione uma categoria.', 'error');
+      return;
     }
     setSubmitting(true);
-    const formData = new FormData();
-    formData.append('titulo', titulo);
-    formData.append('descricao', descricao);
-    formData.append('latitude', pinPos.lat);
-    formData.append('longitude', pinPos.lng);
-    formData.append('rua', rua);
-    formData.append('bairro', bairro);
-    formData.append('categoria', categoria);
-    if (imagem) formData.append('imagem', imagem);
-
     try {
-      const res = await api.createDefeito(formData);
-      if (res.offline) {
-        addToast(res.message, 'success');
-      } else {
-        carregarDados();
-      }
-      handleCancel();
+      const fd = new FormData();
+      fd.append('titulo', formData.titulo);
+      fd.append('descricao', formData.descricao);
+      fd.append('categoria', formData.categoria);
+      fd.append('rua', formData.rua);
+      fd.append('bairro', formData.bairro);
+      fd.append('latitude', coords.lat);
+      fd.append('longitude', coords.lng);
+      if (file) fd.append('imagem', file);
+      await api.createDefeito(fd);
+      addToast('Chamado criado com sucesso!');
+      setShowForm(false);
+      setCreating(false);
+      setCoords(null);
+      setFile(null);
+      setFormData({ titulo: '', descricao: '', categoria: 'Buraco', rua: '', bairro: '' });
+      const d = await api.listDefeitos();
+      setDefeitos(d);
     } catch (err) {
-      setSubmitError(err.message);
+      addToast('Erro: ' + (err.message || 'Erro ao criar chamado'), 'error');
     } finally {
       setSubmitting(false);
     }
-  }
+  }, [formData, coords, file, addToast]);
 
-  async function handleApoiar(id) {
+  const handleAtender = useCallback(async (id, e) => {
+    e?.stopPropagation();
+    setAtendendo(id);
     try {
-      await api.apoiarDefeito(id);
-      carregarDados();
-    } catch (err) {
-      addToast('Erro ao apoiar: ' + err.message, 'error');
-    }
-  }
+      await api.atenderDefeito(id);
+      addToast('Chamado vinculado com sucesso!');
+      setDefeitos(prev => prev.map(d => d.id === id ? { ...d, status: 'vinculado_sem_resposta', atendente_id: user?.id } : d));
+      setSelected(prev => prev?.id === id ? { ...prev, status: 'vinculado_sem_resposta', atendente_id: user?.id } : prev);
+    } catch (err) { addToast('Erro: ' + err.message, 'error'); }
+    finally { setAtendendo(null); }
+  }, [addToast, user?.id]);
 
-  function toggleSelect(id) {
-    setSelectedIds(prev => ({ ...prev, [id]: !prev[id] }));
-  }
-
-  async function handleAnexar(e) {
-    e.preventDefault();
-    if (!attachImagem && !attachTexto.trim()) return;
-    setAttachSaving(true);
-    try {
-      const fd = new FormData();
-      if (attachImagem) fd.append('imagem', attachImagem);
-      if (attachTexto.trim()) fd.append('atualizacao', attachTexto);
-      await api.anexarDefeito(attachDefeito.id, fd);
-      addToast('Anexado com sucesso!', 'success');
-      setAttachDefeito(null);
-      setAttachImagem(null);
-      setAttachTexto('');
-      carregarDados();
-    } catch (err) {
-      addToast('Erro: ' + err.message, 'error');
-    } finally {
-      setAttachSaving(false);
-    }
-  }
-
-  async function handleEncerrarSelecionados() {
-    const ids = Object.keys(selectedIds).filter(k => selectedIds[k]);
-    if (ids.length === 0) return;
-    setEncerrando(true);
-    try {
-      await api.encerrarLote(ids);
-      setSelectedIds({});
-      carregarDados();
-    } catch (err) {
-      setApiError('Erro ao encerrar: ' + err.message);
-    } finally {
-      setEncerrando(false);
-    }
-  }
-
-  const renderizarIndividuais = () => {
-    const lista = clusters.length > 0
-      ? clusters.flatMap(c => c.defeitos)
-      : defeitos;
-    return lista
-      .filter(d => clusters.length === 0 || clusters.some(c => c.total < 3 && c.defeitos.some(x => x.id === d.id)))
-      .map((d) => (
-        <IndividualMarkerMemo
-          key={d.id}
-          d={d}
-          isAuthenticated={isAuthenticated}
-          onApoiar={handleApoiar}
-          onAttach={(def) => { setAttachDefeito(def); setAttachImagem(null); setAttachTexto(''); }}
-        />
-      ));
-  };
-
-  const renderizarClusters = () => {
-    return clusters
-      .filter(c => c.total >= 3)
-      .map((c) => (
-        <ClusterMarkerMemo
-          key={'c-' + c.id}
-          c={c}
-          selectedIds={selectedIds}
-          isAuthenticated={isAuthenticated}
-          encerrando={encerrando}
-          onToggleSelect={toggleSelect}
-          onConfirmEncerrar={setShowConfirmEncerrar}
-          onApoiar={handleApoiar}
-          onAttach={(def) => { setAttachDefeito(def); setAttachImagem(null); setAttachTexto(''); }}
-        />
-      ));
-  };
+  const mapKey = `${theme}-${hasMunicipio ? `${user?.municipio_id}-${user?.municipio?.min_lat}-${user?.municipio?.min_lng}` : 'default'}`;
 
   return (
-    <div className="map-page">
-      <Header creating={creating} />
-
-      {apiError && <p className="error" style={{ textAlign: 'center', padding: 8 }} role="alert">{apiError}</p>}
-
-      <AnimatePresence>
-        {isAuthenticated && !creating && (
-          <motion.div
-            className="map-filters"
-            initial={{ y: -10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -10, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <button className={filtro === 'todos' ? 'filter-active' : ''} onClick={() => setFiltro('todos')} aria-label="Filtrar todos os chamados">Todos</button>
-            <button className={filtro === 'pendentes' ? 'filter-active' : ''} onClick={() => setFiltro('pendentes')} aria-label="Filtrar chamados pendentes">Pendentes</button>
-            <button className={filtro === 'atendidos' ? 'filter-active' : ''} onClick={() => setFiltro('atendidos')} aria-label="Filtrar chamados atendidos">Atendidos</button>
-            <button className={filtro === 'meus' ? 'filter-active' : ''} onClick={() => setFiltro('meus')} aria-label="Filtrar meus chamados">Meus Chamados</button>
-            <motion.button
-              className={heatmapVisible ? 'filter-active' : ''}
-              onClick={() => setHeatmapVisible(v => !v)}
-              whileTap={{ scale: 0.95 }}
-            >
-              {heatmapVisible ? <Sun size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> : <Fire size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />}
-              {heatmapVisible ? 'Mapa Normal' : 'Mapa de Calor'}
-            </motion.button>
-            <select className="filter-select" value={diasFiltro} onChange={e => setDiasFiltro(e.target.value)}>
-              <option value="">Todo período</option>
-              <option value="7">Últimos 7 dias</option>
-              <option value="15">Últimos 15 dias</option>
-              <option value="30">Últimos 30 dias</option>
-              <option value="90">Últimos 90 dias</option>
-            </select>
-          </motion.div>
+    <div className="flex flex-col" style={{ height: '100%', minHeight: 0, position: 'relative' }}>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56, padding: '0 16px', flexShrink: 0, borderBottom: '1px solid var(--color-border-default)', background: 'var(--color-bg-elevated)', zIndex: 1000 }}>
+        <div className="flex items-center gap-2">
+          <img src="/icon.svg" alt="" className="w-7 h-7" />
+          <div className="max-sm:hidden">
+            <h1 className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>Central de Inteligência Urbana</h1>
+            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Chamados para Serviços Públicos</p>
+          </div>
+        </div>
+        {creating ? (
+          <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-gold-500)' }}>
+            <MapPin size={14} /> Clique no mapa para posicionar o alfinete
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            {isAuthenticated && (
+              <button onClick={() => setCmdOpen(true)} className="flex items-center gap-1.5 h-8 px-3 rounded-md text-xs transition-colors"
+                style={{ color: 'var(--color-text-secondary)', background: 'transparent' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                aria-label="Buscar (Cmd+K)">
+                <MagnifyingGlass size={14} />
+                <span className="hidden sm:inline opacity-60">Cmd+K</span>
+              </button>
+            )}
+            <button onClick={toggleTheme} className="flex items-center justify-center w-8 h-8 rounded-md transition-colors"
+              style={{ color: 'var(--color-text-secondary)' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              aria-label={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}>
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            {isAuthenticated ? <UserDropdown /> : (
+              <button onClick={() => navigate('/login')} className="text-xs font-medium h-8 px-3 rounded-md transition-colors"
+                style={{ color: 'var(--color-text-secondary)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-hover)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>
+                Entrar
+              </button>
+            )}
+          </div>
         )}
-      </AnimatePresence>
+      </header>
 
-      <div style={{ position: 'relative', flex: 1, width: '100%', minHeight: 300 }}>
+      <div className="flex-1 relative" style={{ minHeight: 0 }}>
+        {!isAuthenticated && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1500] px-4 py-2 rounded-lg text-xs border"
+            style={{ background: 'var(--color-bg-elevated)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}>
+            Faça login para ver detalhes
+          </div>
+        )}
         <MapContainer
-          center={centroid || defaultCenter}
-          zoom={14}
-          className="map-container"
-          maxBounds={mapBounds}
-          maxBoundsViscosity={1}
-          minZoom={12}
-          style={{ height: '100%', width: '100%', minHeight: 'inherit' }}
-          ariaLabel={isAuthenticated ? 'Mapa de chamados públicos' : 'Mapa de chamados públicos — faça login para interagir'}
-          whenReady={(ev) => {
-            mapRef.current = ev.target;
-            setTimeout(() => ev.target.invalidateSize(), 350);
-            setTimeout(() => ev.target.invalidateSize(), 900);
-          }}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-            url={tileUrl}
+          key={mapKey}
+          center={mapCenter}
+          zoom={12}
+          className=""
+          style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, background: '#1a1a14' }}
+          maxBounds={BRAZIL_BOUNDS}
+          minZoom={3}
+          maxBoundsViscosity={1.0}
+          zoomControl={true}
+          whenReady={handleMapReady}>
+          <TileLayer url={theme === 'dark' ? DARK_TILES : LIGHT_TILES} noWrap />
+          <MapClickHandler
+            creatingRef={creatingRef}
+            polygonCoordsRef={polygonCoordsRef}
+            setCoords={setCoords}
+            setShowForm={setShowForm}
+            addToast={addToast}
           />
-
-          {overlayPositions && (
-            <Polygon
-              positions={overlayPositions}
-              pathOptions={{ color: 'none', fillColor: '#000', fillOpacity: 0.4, interactive: false, fillRule: 'evenodd' }}
-            />
+          {coords && (
+            <Marker position={[coords.lat, coords.lng]} icon={createPlacementPinIcon()} />
           )}
-          {polygonPositions && (
-            <Polygon
-              positions={polygonPositions}
-              pathOptions={{ color: boundaryColor, weight: 2, fillColor: 'transparent', interactive: false }}
-            />
-          )}
-
-          {creating && (
-            <MapClickHandler creating={creating} onMapClick={handleMapClick} setPinPos={setPinPos} />
-          )}
-
-          {pinPos && showForm && (
-            <Marker position={pinPos} icon={pinIcon} draggable={true} eventHandlers={{ dragend: handlePinDrag }} />
-          )}
-
-          {creating && pinPos && !showForm && (
-            <Marker position={pinPos} icon={pinIcon} />
-          )}
-
-          {!isAuthenticated || heatmapVisible ? (
-            <HeatmapLayer pontos={defeitos} ativo={true} />
-          ) : (
+          {leafletPolyCoords.length > 0 && (
             <>
-              {renderizarIndividuais()}
-              {renderizarClusters()}
+              <Polygon positions={leafletPolyCoords} pathOptions={{ color: '#D4A017', weight: 2, fillColor: 'rgb(180,140,50)', fillOpacity: 0.15, interactive: false }} />
+              {leafletMaskCoords && (
+                <Polygon positions={leafletMaskCoords} pathOptions={{ color: 'none', fillColor: 'rgba(0,0,0,0.55)', fillRule: 'evenodd', interactive: false }} />
+              )}
             </>
           )}
+          {(heatmap || !isAuthenticated) ? (
+            <HeatmapLayer pontos={filteredDefeitos} ativo={true} />
+          ) : (
+            filteredDefeitos.map(d => (
+              <Marker
+                key={d.id}
+                position={[d.latitude, d.longitude]}
+                icon={createDefectIcon(d.status, d.atendido_em || d.atualizado_em)}
+                eventHandlers={{
+                  click: () => setSelected(d),
+                }}
+              />
+            ))
+          )}
         </MapContainer>
-
-        {loading && (
-          <div style={{
-            position: 'absolute', inset: 0, zIndex: 1000, pointerEvents: 'none',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,0.3)',
-          }}>
-            <div style={{ textAlign: 'center' }}>
-              <div className="skeleton skeleton-cluster" style={{ margin: '0 auto 8px' }} />
-              <div className="skeleton skeleton-line" style={{ width: 160, margin: '0 auto' }} />
-              <div className="skeleton skeleton-line" style={{ width: 100, margin: '4px auto 0' }} />
-            </div>
+        {isAuthenticated && (
+          <div className="fixed right-5 z-[1500]" style={{ bottom: '5.5rem' }}>
+            <MapControlsDropdown filtro={filtro} setFiltro={setFiltro} heatmap={heatmap} setHeatmap={setHeatmap} direction="up" />
           </div>
         )}
 
-        {!isAuthenticated && (
-          <div style={{
-            position: 'absolute', bottom: 100, left: 0, right: 0, zIndex: 1000,
-            display: 'flex', justifyContent: 'center', pointerEvents: 'none',
-          }}>
-            <div style={{
-              background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
-              padding: '8px 16px', borderRadius: 'var(--radius-full)',
-              fontSize: 'var(--text-xs)', boxShadow: 'var(--shadow-md)',
-              border: '1px solid var(--border-default)',
-            }}>
-              Faça login para ver detalhes e interagir com os chamados
+        {!creating && isAuthenticated && (
+          <button onClick={() => setCreating(true)}
+            className="fixed bottom-6 right-5 z-[1500] w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
+            style={{ background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)' }}>
+            <Plus size={22} weight="bold" />
+          </button>
+        )}
+
+        {creating && (
+          <button onClick={() => { setCreating(false); setShowForm(false); setCoords(null); }}
+            className="fixed bottom-6 right-5 z-[1500] w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+            style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-secondary)' }}>
+            <X size={20} />
+          </button>
+        )}
+
+        {showForm && coords && (
+          <motion.div initial={{ y: 300, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="fixed bottom-0 left-0 right-0 z-[2000] max-h-[85vh] overflow-y-auto rounded-t-2xl border p-6 pb-safe"
+            style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
+            <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--color-text-primary)' }}>Novo Chamado</h3>
+            <div className="space-y-3">
+              <input placeholder="Título" value={formData.titulo} onChange={e => setFormData(p => ({ ...p, titulo: e.target.value }))}
+                className="w-full h-11 px-4 rounded-lg border text-sm outline-none transition-colors bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
+                style={{ borderColor: 'var(--color-border-default)' }}
+                onFocus={e => e.target.style.borderColor = 'var(--color-gold-500)'}
+                onBlur={e => e.target.style.borderColor = 'var(--color-border-default)'} />
+              <textarea placeholder="Descrição (mín. 20 caracteres)" value={formData.descricao} onChange={e => setFormData(p => ({ ...p, descricao: e.target.value }))} rows={3}
+                className="w-full px-4 py-3 rounded-lg border text-sm outline-none transition-colors resize-none bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
+                style={{ borderColor: 'var(--color-border-default)' }}
+                onFocus={e => e.target.style.borderColor = 'var(--color-gold-500)'}
+                onBlur={e => e.target.style.borderColor = 'var(--color-border-default)'} />
+              <select value={formData.categoria} onChange={e => setFormData(p => ({ ...p, categoria: e.target.value }))}
+                className="w-full h-11 px-4 rounded-lg border text-sm outline-none bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
+                style={{ borderColor: 'var(--color-border-default)' }}>
+                {categorias.map(c => (
+                  <option key={c.nome} value={c.nome}>{c.icone} {c.nome}</option>
+                ))}
+              </select>
+              <div className="flex flex-col sm:flex-row gap-2 flex-1">
+                <input placeholder="Rua" value={formData.rua} onChange={e => setFormData(p => ({ ...p, rua: e.target.value }))}
+                  className="flex-1 h-11 px-4 rounded-lg border text-sm outline-none bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
+                  style={{ borderColor: 'var(--color-border-default)' }} />
+                <input placeholder="Bairro" value={formData.bairro} onChange={e => setFormData(p => ({ ...p, bairro: e.target.value }))}
+                  className="flex-1 h-11 px-4 rounded-lg border text-sm outline-none bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
+                  style={{ borderColor: 'var(--color-border-default)' }} />
+              </div>
+              {geocoding && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--color-text-muted)', borderTopColor: 'transparent' }} />
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Buscando endereço...</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 px-4 h-11 rounded-lg border text-sm cursor-pointer transition-colors"
+                  style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-gold-500)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--color-border-default)'}>
+                  <Camera size={16} /> {file ? file.name.slice(0, 20) : 'Foto'}
+                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                    onChange={e => setFile(e.target.files?.[0] || null)} />
+                </label>
+                <span className="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>{coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}</span>
+              </div>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Ao enviar, você autoriza o uso da imagem para fins de serviço público.</p>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => { setShowForm(false); setCoords(null); }}
+                  className="h-10 px-6 rounded-md text-sm font-medium transition-all"
+                  style={{ background: 'transparent', color: 'var(--color-text-secondary)' }}>Cancelar</button>
+                <button onClick={handleSubmit} disabled={submitting || formData.descricao.length < 20}
+                  className="h-10 px-6 rounded-md text-sm font-semibold transition-all disabled:opacity-50"
+                  style={{ background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)' }}>
+                  {submitting ? 'Enviando...' : 'Enviar'}
+                </button>
+              </div>
             </div>
+          </motion.div>
+        )}
+
+        {selected && (
+          <div className="fixed inset-0 z-[2000] bg-black/50 backdrop-blur-sm flex items-end justify-center"
+            onClick={() => setSelected(null)}>
+            <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
+              className="w-full max-w-md rounded-t-2xl border p-5 pb-safe"
+              style={{ background: 'var(--color-bg-surface)', borderColor: 'rgba(180,140,50,0.3)' }}
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1 min-w-0 pr-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: getStatusColor(selected.status, selected.atendido_em || selected.atualizado_em) }} />
+                    <h3 className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{selected.titulo}</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={selected.status} concluido_em={selected.atendido_em || selected.atualizado_em} />
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      {selected.usuario?.nome ? `${selected.usuario.nome.charAt(0)}${'*'.repeat(selected.usuario.nome.length - 1)}` : 'Anônimo'}
+                    </span>
+                  </div>
+                </div>
+                <button onClick={() => setSelected(null)} className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors"
+                  style={{ color: 'var(--color-text-muted)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <X size={14} />
+                </button>
+              </div>
+              <p className="text-xs mb-3 line-clamp-2" style={{ color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>{selected.descricao}</p>
+              {selected.imagem_thumbnail && (
+                <img src={selected.imagem_thumbnail} alt="" className="w-full h-32 object-cover rounded-lg mb-3" />
+              )}
+              <div className="flex items-center gap-3 text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>
+                <span>{new Date(selected.criado_em).toLocaleDateString()}</span>
+                {selected.apoios_total > 0 && <span className="flex items-center gap-1"><ThumbsUp size={12} /> {selected.apoios_total}</span>}
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                {user?.admin && !selected.atendente_id && !['atendido','encerrado','concluido'].includes(selected.status) && (
+                  <button onClick={e => handleAtender(selected.id, e)} disabled={atendendo === selected.id}
+                    className="w-full sm:w-auto h-9 px-4 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                    style={{ background: 'rgba(59,130,246,0.12)', color: '#3B82F6' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.2)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(59,130,246,0.12)'}>
+                    <Handshake size={14} /> {atendendo === selected.id ? '...' : 'Atender Chamado'}
+                  </button>
+                )}
+                <button className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                  style={{ background: 'rgba(212,160,23,0.12)', color: 'var(--color-gold-500)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,160,23,0.2)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(212,160,23,0.12)'}>
+                  <ThumbsUp size={14} /> Apoiar
+                </button>
+                <button className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                  style={{ background: 'transparent', border: '1px solid var(--color-border-default)', color: 'var(--color-text-secondary)' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--color-gold-500)'; e.currentTarget.style.color = 'var(--color-gold-500)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--color-border-default)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>
+                  <Camera size={14} /> Anexar
+                </button>
+              </div>
+            </motion.div>
           </div>
         )}
       </div>
+      <CommandMenu open={cmdOpen} onClose={() => setCmdOpen(false)} isAdmin={user?.admin} />
+    </div>
+  );
+}
 
-      <AnimatePresence>
-        {isAuthenticated && !creating && (
-          <motion.button
-            className="fab"
-            onClick={handleStartCreate}
-            aria-label="Criar novo chamado"
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-          >
-            <Plus size={24} weight="bold" />
-          </motion.button>
-        )}
-      </AnimatePresence>
+function MapControlsDropdown({ filtro, setFiltro, heatmap, setHeatmap, direction = 'down' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
 
-      {showConfirmEncerrar && (
-        <div className="defect-overlay" onClick={() => setShowConfirmEncerrar(false)} role="dialog" aria-modal="true" aria-label="Confirmar encerramento" aria-describedby="confirm-desc">
-          <div className="defect-modal" style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-            <h3>Confirmar Encerramento</h3>
-            <p id="confirm-desc" className="chamado-desc" style={{ marginBottom: 'var(--space-4)' }}>
-              Deseja realmente encerrar {Object.keys(selectedIds).filter(k => selectedIds[k]).length} chamado(s)?
-            </p>
-            <div className="modal-actions" style={{ justifyContent: 'center' }}>
-              <button className="btn-primary" onClick={async () => { setShowConfirmEncerrar(false); await handleEncerrarSelecionados(); }}>
-                <Check size={16} weight="bold" style={{ verticalAlign: 'middle', marginRight: 4 }} /> Sim, Encerrar
-              </button>
-              <button className="btn-secondary" onClick={() => setShowConfirmEncerrar(false)}>
-                <X size={16} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+  useEffect(() => {
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    if (open) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
 
-      {attachDefeito && (
-        <div className="defect-overlay" onClick={() => setAttachDefeito(null)} role="dialog" aria-modal="true" aria-label="Anexar ao chamado" aria-describedby="attach-desc">
-          <div className="defect-modal" onClick={e => e.stopPropagation()}>
-            <h3>
-              <Paperclip size={18} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-              Anexar ao Chamado
-            </h3>
-            <p id="attach-desc" className="chamado-meta" style={{ marginBottom: 'var(--space-2)' }}><strong>{attachDefeito.titulo}</strong></p>
-            <form onSubmit={handleAnexar} className="defect-form">
-              <textarea placeholder="Adicione uma atualização sobre o chamado..." value={attachTexto} onChange={e => setAttachTexto(e.target.value)} rows={2} aria-label="Texto da atualização" />
-              <input type="file" accept="image/*" onChange={e => setAttachImagem(e.target.files[0])} aria-label="Selecionar imagem para anexar" />
-              <p className="hint">Máximo 3 imagens por chamado. Formatos: JPEG, PNG, WebP.</p>
-              <div className="modal-actions">
-                <button type="submit" className="btn-primary" disabled={attachSaving}>
-                  {attachSaving ? 'Salvando...' : (
-                    <><Paperclip size={16} weight="bold" style={{ verticalAlign: 'middle', marginRight: 4 }} /> {(attachImagem || attachTexto.trim()) ? 'Anexar' : 'Selecione algo'}</>
-                  )}
-                </button>
-                <button type="button" className="btn-secondary" onClick={() => setAttachDefeito(null)}>
-                  <X size={16} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Cancelar
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+  const dropdownPos = direction === 'up'
+    ? 'absolute right-0 bottom-full mb-2'
+    : 'absolute right-0 top-full mt-2';
 
-      {showForm && pinPos && (
-        <div className="defect-overlay" role="dialog" aria-modal="true" aria-label="Novo chamado">
-          <div className="defect-modal">
-            <h3>Novo Chamado</h3>
-            {submitError && <p className="error" id="submit-error" role="alert">{submitError}</p>}
-            <form onSubmit={handleSubmit} className="defect-form" aria-describedby={submitError ? 'submit-error' : undefined}>
-              <input type="text" placeholder="Título" value={titulo} onChange={e => setTitulo(e.target.value)} required aria-label="Título do chamado" />
-              <textarea placeholder="Descreva o problema em detalhes (mín. 20 caracteres)" value={descricao} onChange={e => setDescricao(e.target.value)} rows={3} required minLength={20} aria-label="Descrição do problema" />
-              <select value={categoria} onChange={e => setCategoria(e.target.value)} required className="filter-select" style={{ width: '100%' }} aria-label="Categoria do chamado">
-                <option value="">Selecione a categoria</option>
-                {categorias.map(c => (
-                  <option key={c.id} value={c.nome}>● {c.nome}</option>
-                ))}
-              </select>
-              {catSelecionada && (
-                <p className="hint" style={{ marginTop: -4 }}>
-                  Prioridade: <strong>{catSelecionada.prioridade_base}</strong> | Previsão: <strong>{previsaoLabel}</strong>
-                </p>
-              )}
-              <input type="text" placeholder="Rua" value={rua} onChange={e => setRua(e.target.value)} aria-label="Rua do chamado" />
-              <input type="text" placeholder="Bairro" value={bairro} onChange={e => setBairro(e.target.value)} aria-label="Bairro do chamado" />
-              <input type="file" accept="image/*" onChange={e => setImagem(e.target.files[0])} aria-label="Selecionar imagem do chamado" />
-              <p className="hint" style={{ fontSize: 12, color: '#a1a1aa' }}>
-                🔒 Fotos passam por desfoque de privacidade automático para proteger rostos e placas.
-                Evite incluir pessoas ou informações pessoais na imagem.
-              </p>
-              <p className="coord-display">
-                <MapPin size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                {pinPos.lat.toFixed(5)}, {pinPos.lng.toFixed(5)}
-              </p>
-              {geocoding && <p className="hint">Obtendo endereço...</p>}
-              <p className="hint">Arraste o alfinete no mapa para ajustar a posição</p>
-              <div className="modal-actions">
-                <button type="submit" className="btn-primary" disabled={submitting} style={submitting ? { opacity: 0.5, cursor: 'not-allowed', background: '#6b7280', borderColor: '#6b7280' } : {}}>
-                  <Check size={16} weight="bold" style={{ verticalAlign: 'middle', marginRight: 4 }} /> {submitting ? 'Enviando...' : 'Enviar'}
-                </button>
-                <button type="button" onClick={handleCancel} className="btn-secondary">
-                  <X size={16} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Cancelar
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+  function activeDot(isActive) {
+    return isActive
+      ? <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: 'var(--color-gold-500)' }} />
+      : <span className="w-1.5 h-1.5 shrink-0" />;
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(o => !o)}
+        className="flex items-center justify-center w-8 h-8 rounded-full border text-xs font-semibold transition-colors select-none"
+        style={{
+          borderColor: open ? 'var(--color-gold-500)' : 'var(--color-border-default)',
+          color: 'var(--color-text-secondary)',
+          background: open ? 'var(--color-bg-surface)' : 'var(--color-bg-surface)',
+        }}>
+        <Funnel size={14} weight={open ? 'fill' : 'regular'} />
+      </button>
+      {open && (
+        <motion.div initial={{ opacity: 0, y: direction === 'up' ? 4 : -4, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: direction === 'up' ? 4 : -4, scale: 0.96 }} transition={{ duration: 0.15, ease: [0.16,1,0.3,1] }}
+          className={`${dropdownPos} min-w-[180px] rounded-xl border p-1.5 shadow-lg z-[3000]`}
+          style={{ background: 'var(--color-bg-elevated)', borderColor: 'var(--color-border-default)' }}>
+          <button onClick={() => { setHeatmap(h => !h); setOpen(false); }}
+            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors"
+            style={{ color: heatmap ? 'var(--color-gold-500)' : 'var(--color-text-secondary)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-hover)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = heatmap ? 'var(--color-gold-500)' : 'var(--color-text-secondary)'; }}>
+            <Fire size={16} weight={heatmap ? 'fill' : 'regular'} /> Mapa de Calor
+          </button>
+          <div className="h-px mx-2 my-1" style={{ background: 'var(--color-border-default)' }} />
+          <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Filtros</p>
+          {['todos','pendentes','atendidos', 'meus'].map(f => (
+            <button key={f} onClick={() => { setFiltro(f); setOpen(false); }}
+              className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors"
+              style={{ color: filtro === f ? 'var(--color-gold-500)' : 'var(--color-text-secondary)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-hover)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = filtro === f ? 'var(--color-gold-500)' : 'var(--color-text-secondary)'; }}>
+              {activeDot(filtro === f)}
+              {f === 'todos' ? 'Todos' : f === 'pendentes' ? 'Pendentes' : f === 'atendidos' ? 'Atendidos' : 'Meus Chamados'}
+            </button>
+          ))}
+        </motion.div>
       )}
     </div>
   );
