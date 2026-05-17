@@ -49,7 +49,6 @@ export default function MapPage() {
   const navigate = useNavigate();
   const addToast = useToast();
   const mapRef = useRef(null);
-  const mapViewRef = useRef(null);
   const [defeitos, setDefeitos] = useState([]);
   const [filtro, setFiltro] = useState('todos');
   const [heatmap, setHeatmap] = useState(true);
@@ -98,12 +97,7 @@ export default function MapPage() {
   }, [leafletPolyCoords]);
 
   const handleMapReady = useCallback((ev) => {
-    const m = ev.target;
-    mapRef.current = m;
-    m.on('moveend', () => {
-      const c = m.getCenter();
-      mapViewRef.current = { center: [c.lat, c.lng], zoom: m.getZoom() };
-    });
+    mapRef.current = ev.target;
   }, []);
 
   useEffect(() => {

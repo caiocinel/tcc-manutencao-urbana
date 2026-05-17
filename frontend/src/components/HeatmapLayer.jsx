@@ -28,7 +28,7 @@ export default function HeatmapLayer({ pontos, ativo }) {
         blur: 15,
         maxZoom: 17,
         max: 1.0,
-        gradient: { 0.4: '#22c55e', 0.6: '#eab308', 0.8: '#f97316', 1.0: '#dc2626' },
+        gradient: { 0.4: 'rgb(34,197,94)', 0.6: 'rgb(212,160,23)', 0.8: 'rgb(255,140,0)', 1.0: 'rgb(239,68,68)' },
       });
       heat.addTo(map);
       heatRef.current = heat;

@@ -1,14 +1,16 @@
-import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { IconContext } from '@phosphor-icons/react';
+import { IconContext, Sun, Moon, MagnifyingGlass } from '@phosphor-icons/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider, useToast } from './components/Toast';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { useKeyboardNav } from './hooks/useKeyboardNav';
+import UserDropdown from './components/ui/user-dropdown';
+import { CommandMenu } from './components/ui/command-menu';
 import './styles/tokens.css';
-import './App.css';
+import './styles/globals.css';
 
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
@@ -21,12 +23,19 @@ const AdminDashboardMetrics = lazy(() => import('./pages/AdminDashboardMetrics')
 const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
 const GeneralSettings = lazy(() => import('./pages/GeneralSettings'));
 
+function ProtectedRoute({ children }) {
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return <div className="flex items-center justify-center min-h-dvh bg-[var(--color-bg-primary)]"><div className="animate-pulse text-sm" style={{ color: 'var(--color-text-muted)' }}>Carregando...</div></div>;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return children;
+}
+
 function PageFallback() {
   return (
-    <div className="admin-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div className="skeleton skeleton-cluster" style={{ margin: '0 auto 8px' }} />
-        <div className="skeleton skeleton-line" style={{ width: 160, margin: '0 auto' }} />
+    <div className="flex items-center justify-center min-h-dvh bg-[var(--color-bg-primary)]">
+      <div className="text-center">
+        <div className="w-9 h-9 rounded-full mx-auto mb-2 animate-pulse" style={{ background: 'var(--color-bg-elevated)' }} />
+        <div className="h-3 w-40 rounded mx-auto animate-pulse" style={{ background: 'var(--color-bg-elevated)' }} />
       </div>
     </div>
   );
@@ -34,12 +43,7 @@ function PageFallback() {
 
 function AnimatedRoute({ children }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      style={{ height: '100%' }}
-    >
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} style={{ height: '100%' }}>
       {children}
     </motion.div>
   );
@@ -52,17 +56,108 @@ function KeyboardNav() {
   return null;
 }
 
-function MapPageGuard() {
-  const { loading, isAuthenticated } = useAuth();
-  if (loading) return <PageFallback />;
-  return <MapPage key={String(isAuthenticated)} />;
+function AppHeader({ onToggleTheme, onOpenCmd, theme }) {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  return (
+    <header style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      height: 56, padding: '0 20px', flexShrink: 0,
+      borderBottom: '1px solid var(--color-border-default)',
+      background: 'var(--color-bg-elevated)', zIndex: 1000,
+    }}>
+      <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')} role="button" aria-label="Ir para o mapa">
+        <img src="/icon.svg" alt="" className="w-7 h-7" />
+        <div className="max-sm:hidden">
+          <h1 className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>Central de Inteligência Urbana</h1>
+          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Chamados para Serviços Públicos</p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {isAuthenticated && (
+          <button onClick={onOpenCmd} className="flex items-center gap-1.5 h-8 px-3 rounded-md text-xs transition-colors"
+            style={{ color: 'var(--color-text-secondary)', background: 'transparent' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg-hover)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            aria-label="Buscar (Cmd+K)">
+            <MagnifyingGlass size={14} />
+            <span className="hidden sm:inline opacity-60">Cmd+K</span>
+          </button>
+        )}
+        <button onClick={onToggleTheme} className="flex items-center justify-center w-8 h-8 rounded-md transition-colors"
+          style={{ color: 'var(--color-text-secondary)' }}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg-hover)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          aria-label={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}>
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
+        {isAuthenticated ? <UserDropdown /> : (
+          <button onClick={() => navigate('/login')} className="text-xs font-medium h-8 px-3 rounded-md transition-colors"
+            style={{ color: 'var(--color-text-secondary)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-hover)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>
+            Entrar
+          </button>
+        )}
+      </div>
+    </header>
+  );
 }
 
-function SkipLink() {
+function AppLayout() {
+  const { user, isAuthenticated } = useAuth();
+  const location = useLocation();
+  const { theme, toggle } = useTheme();
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const isMapPage = location.pathname === '/';
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/registro';
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (!isAuthenticated) return;
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setCmdOpen(o => !o);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAuthenticated]);
+
+  const shouldRenderHeader = isAuthenticated && !isAuthPage && !isMapPage;
+
   return (
-    <a href="#main-content" className="skip-link">
-      Ir para o conteúdo principal
-    </a>
+    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--color-bg-primary)' }}>
+      {shouldRenderHeader && (
+        <AppHeader
+          theme={theme}
+          onToggleTheme={toggle}
+          onOpenCmd={() => setCmdOpen(true)}
+        />
+      )}
+
+      <main id="main-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
+        <Suspense fallback={<PageFallback />}>
+          <Routes>
+            <Route path="/" element={<div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}><MapPage /></div>} />
+            <Route path="/login" element={<AnimatedRoute><Login /></AnimatedRoute>} />
+            <Route path="/registro" element={<AnimatedRoute><Register /></AnimatedRoute>} />
+            <Route path="/lista" element={<ProtectedRoute><AnimatedRoute><DefectList /></AnimatedRoute></ProtectedRoute>} />
+            <Route path="/config" element={<ProtectedRoute><AnimatedRoute><Settings /></AnimatedRoute></ProtectedRoute>} />
+            <Route path="/conta" element={<ProtectedRoute><AnimatedRoute><ProfileSettings /></AnimatedRoute></ProtectedRoute>} />
+            <Route path="/configuracoes" element={<ProtectedRoute><AnimatedRoute><GeneralSettings /></AnimatedRoute></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><AnimatedRoute><AdminDashboard /></AnimatedRoute></ProtectedRoute>} />
+            <Route path="/admin/dashboard" element={<ProtectedRoute><AnimatedRoute><AdminDashboardMetrics /></AnimatedRoute></ProtectedRoute>} />
+            <Route path="/admin/usuarios" element={<ProtectedRoute><AnimatedRoute><SuperAdmin /></AnimatedRoute></ProtectedRoute>} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </Suspense>
+      </main>
+
+      <CommandMenu open={cmdOpen} onClose={() => setCmdOpen(false)} isAdmin={user?.admin} />
+    </div>
   );
 }
 
@@ -74,35 +169,8 @@ function App() {
         <AuthProvider>
           <ToastProvider>
             <BrowserRouter>
-              <SkipLink />
               <KeyboardNav />
-              <main id="main-content" style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
-              <Routes>
-                <Route path="/" element={<Suspense fallback={<PageFallback />}><div style={{ height: '100%', display: 'flex', flexDirection: 'column', flex: 1 }}><MapPageGuard /></div></Suspense>} />
-                <Route path="/login" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><Login /></AnimatedRoute></Suspense>} />
-                <Route path="/registro" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><Register /></AnimatedRoute></Suspense>} />
-                <Route path="/lista" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><DefectList /></AnimatedRoute></Suspense>} />
-                <Route path="/config" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><Settings /></AnimatedRoute></Suspense>} />
-                <Route path="/conta" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><ProfileSettings /></AnimatedRoute></Suspense>} />
-                <Route path="/configuracoes" element={<Suspense fallback={<PageFallback />}><AnimatedRoute><GeneralSettings /></AnimatedRoute></Suspense>} />
-                <Route path="/admin" element={
-                  <Suspense fallback={<PageFallback />}>
-                    <AnimatedRoute><AdminDashboard /></AnimatedRoute>
-                  </Suspense>
-                } />
-                <Route path="/admin/dashboard" element={
-                  <Suspense fallback={<PageFallback />}>
-                    <AnimatedRoute><AdminDashboardMetrics /></AnimatedRoute>
-                  </Suspense>
-                } />
-                <Route path="/admin/usuarios" element={
-                  <Suspense fallback={<PageFallback />}>
-                    <AnimatedRoute><SuperAdmin /></AnimatedRoute>
-                  </Suspense>
-                } />
-                <Route path="*" element={<Navigate to="/" />} />
-              </Routes>
-              </main>
+              <AppLayout />
             </BrowserRouter>
           </ToastProvider>
         </AuthProvider>

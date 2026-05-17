@@ -1,439 +1,193 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Camera, CheckCircle, WarningCircle } from '@phosphor-icons/react';
 import { useAuth } from '../context/AuthContext';
-import { api } from '../services/api';
 import { useToast } from '../components/Toast';
-import Header from '../components/Header';
+import { api } from '../services/api';
+import { Button } from '../components/ui/button';
+import SearchableSelect from '../components/ui/searchable-select';
 
 export default function ProfileSettings() {
   const { user, isAuthenticated, updateUser } = useAuth();
   const navigate = useNavigate();
   const addToast = useToast();
-  const fileInputRef = useRef(null);
-
-  const [nome, setNome] = useState(user?.nome || '');
-  const [bio, setBio] = useState('');
-  const [localizacao, setLocalizacao] = useState('');
-  const [website, setWebsite] = useState('');
-  const [twitter, setTwitter] = useState('');
-  const [github, setGithub] = useState('');
-  const [linkedin, setLinkedin] = useState('');
-  const [avatarPreview, setAvatarPreview] = useState(null);
+  const fileRef = useRef(null);
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [senhaAtual, setSenhaAtual] = useState('');
+  const [novaSenha, setNovaSenha] = useState('');
+  const [fotoPreview, setFotoPreview] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [dragging, setDragging] = useState(false);
+  const [municipios, setMunicipios] = useState([]);
+  const [municipioId, setMunicipioId] = useState('');
+  const municipioOptions = municipios.map(m => ({ value: m.codigo, label: m.nome, group: m.uf_sigla }));
+  const [codigoVerificacao, setCodigoVerificacao] = useState('');
+  const [verificando, setVerificando] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated) { navigate('/login'); }
-  }, [isAuthenticated, navigate]);
+    if (!isAuthenticated) { navigate('/login'); return; }
+    if (user) { setNome(user.nome || ''); setEmail(user.email || ''); setMunicipioId(user.municipio_id || ''); }
+    api.listMunicipios().then(setMunicipios).catch(() => {});
+  }, [isAuthenticated, user, navigate]);
 
-  function getInitials() {
-    if (!user?.nome) return '?';
-    return user.nome.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-  }
-
-  function handleAvatarClick() {
-    fileInputRef.current?.click();
-  }
-
-  function handleFileChange(e) {
+  const handleFoto = useCallback((e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      addToast('Formato não suportado. Use JPG, PNG ou WEBP.', 'error');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      addToast('Arquivo muito grande. Máximo 5MB.', 'error');
-      return;
-    }
+    if (file.size > 5 * 1024 * 1024) { addToast('Arquivo muito grande. Máximo 5MB.', 'error'); return; }
     const reader = new FileReader();
-    reader.onload = (ev) => setAvatarPreview(ev.target.result);
+    reader.onload = () => setFotoPreview(reader.result);
     reader.readAsDataURL(file);
-  }
+  }, [addToast]);
 
-  function handleDragOver(e) {
-    e.preventDefault();
-    setDragging(true);
-  }
+  const handleVerificarEmail = useCallback(async () => {
+    if (!codigoVerificacao) { addToast('Digite o código de verificação.', 'error'); return; }
+    setVerificando(true);
+    try {
+      await api.verificarEmail(codigoVerificacao);
+      updateUser({ email_verificado: true });
+      addToast('Email verificado com sucesso!');
+      setCodigoVerificacao('');
+    } catch (err) { addToast('Erro: ' + err.message, 'error'); }
+    finally { setVerificando(false); }
+  }, [codigoVerificacao, addToast, updateUser]);
 
-  function handleDragLeave() {
-    setDragging(false);
-  }
+  const handleReenviarCodigo = useCallback(async () => {
+    try {
+      await api.reenviarCodigo();
+      addToast('Código reenviado para seu email.');
+    } catch (err) { addToast('Erro: ' + err.message, 'error'); }
+  }, [addToast]);
 
-  function handleDrop(e) {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      addToast('Formato não suportado. Use JPG, PNG ou WEBP.', 'error');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      addToast('Arquivo muito grande. Máximo 5MB.', 'error');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (ev) => setAvatarPreview(ev.target.result);
-    reader.readAsDataURL(file);
-  }
-
-  async function handleSave() {
-    if (!nome.trim()) {
-      addToast('Nome é obrigatório', 'error');
-      return;
-    }
+  const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      const data = await api.updateProfile({ nome: nome.trim() });
-      updateUser({ nome: data.nome });
-      addToast('Perfil atualizado com sucesso!');
-    } catch (err) {
-      addToast('Erro: ' + err.message, 'error');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (!isAuthenticated) return null;
+      if (nome !== user?.nome) {
+        await api.updateProfile({ nome });
+      }
+      if (senhaAtual && novaSenha) {
+        await api.updatePassword(senhaAtual, novaSenha);
+        setSenhaAtual('');
+        setNovaSenha('');
+      }
+      if (municipioId !== user?.municipio_id && municipioId) {
+        const res = await api.updateMunicipio(municipioId);
+        updateUser({ municipio_id: municipioId, municipio: res.municipio });
+      }
+      addToast('Alterações salvas com sucesso!');
+    } catch (err) { addToast('Erro ao salvar: ' + err.message, 'error'); }
+    finally { setSaving(false); }
+  }, [nome, senhaAtual, novaSenha, municipioId, user, addToast, updateUser]);
 
   return (
-    <div className="admin-page" style={{ background: '#0f0f11' }}>
-      <Header />
-      <div className="settings-wrapper" style={{ background: '#0f0f11', padding: '32px 24px', alignItems: 'flex-start' }}>
-        <div style={{
-          maxWidth: '720px',
-          width: '100%',
-          margin: '0 auto',
-          background: '#1a1a1e',
-          borderRadius: '16px',
-          border: '0.5px solid rgba(255,255,255,0.08)',
-          padding: '32px',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
-            <div>
-              <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#f0eff5', letterSpacing: '-0.02em', margin: 0 }}>
-                Profile Settings
-              </h1>
-              <p style={{ fontSize: '14px', color: '#9998a8', marginTop: '4px', marginBottom: 0 }}>
-                Manage your profile information and avatar
-              </p>
+    <div className="p-5 max-w-2xl mx-auto">
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-lg font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>Configurações de Perfil</h1>
+        <p className="text-sm mb-6" style={{ color: 'var(--color-text-muted)' }}>Gerencie suas informações pessoais</p>
+
+        <div className="rounded-xl border p-6 space-y-6" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
+          <div className="flex items-center gap-4">
+            <div className="relative w-16 h-16 rounded-full overflow-hidden cursor-pointer group" style={{ background: 'var(--color-bg-elevated)' }}
+              onClick={() => fileRef.current?.click()}>
+              {fotoPreview ? <img src={fotoPreview} alt="" className="w-full h-full object-cover" />
+                : <div className="w-full h-full flex items-center justify-center text-lg font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                    {user?.nome?.charAt(0)?.toUpperCase() || '?'}
+                  </div>}
+              <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera size={20} weight="bold" style={{ color: 'white' }} />
+              </div>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFoto} />
             </div>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              style={{
-                padding: '10px 24px',
-                background: '#7c6fff',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: saving ? 'not-allowed' : 'pointer',
-                opacity: saving ? 0.6 : 1,
-                transition: 'opacity 0.15s',
-              }}
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
+            <div>
+              <p className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>{user?.nome || 'Usuário'}</p>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Arraste ou clique para enviar</p>
+            </div>
           </div>
 
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '24px',
-            marginBottom: '32px',
-            padding: '24px',
-            background: '#111114',
-            borderRadius: '12px',
-            border: dragging ? '2px dashed #7c6fff' : '0.5px solid rgba(255,255,255,0.06)',
-            transition: 'border-color 0.15s',
-          }}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <div style={{
-              width: '80px',
-              height: '80px',
-              borderRadius: '50%',
-              background: avatarPreview ? `url(${avatarPreview}) center/cover no-repeat` : '#7c6fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '28px',
-              fontWeight: 700,
-              color: '#fff',
-              flexShrink: 0,
-              overflow: 'hidden',
-            }}>
-              {!avatarPreview && getInitials()}
-            </div>
-            <div>
-              <button
-                onClick={handleAvatarClick}
-                style={{
-                  padding: '8px 16px',
-                  background: 'transparent',
-                  color: '#7c6fff',
-                  border: '0.5px solid rgba(124,111,255,0.3)',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
-                Upload Photo
-              </button>
-              <p style={{ fontSize: '12px', color: '#66657a', marginTop: '6px', marginBottom: 0 }}>
-                Drag & drop or click to upload. JPG, PNG or WEBP. Max 5MB.
-              </p>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={handleFileChange}
-              style={{ display: 'none' }}
-            />
-          </div>
-
-          <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#f0eff5', marginBottom: '16px', marginTop: 0 }}>
-            Personal Info
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '32px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '13px', color: '#9998a8', fontWeight: 500, marginBottom: '6px' }}>
-                Name <span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <input
-                type="text"
-                value={nome}
-                onChange={e => setNome(e.target.value)}
-                placeholder="Your full name"
-                required
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  border: '0.5px solid rgba(255,255,255,0.08)',
-                  borderRadius: '8px',
-                  fontSize: '15px',
-                  background: '#111114',
-                  color: '#f0eff5',
-                  outline: 'none',
-                  minHeight: '44px',
-                  transition: 'border-color 0.15s, box-shadow 0.15s',
-                }}
-                onFocus={e => { e.target.style.borderColor = '#7c6fff'; e.target.style.boxShadow = '0 0 0 3px rgba(124,111,255,0.15)'; }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.08)'; e.target.style.boxShadow = 'none'; }}
-              />
+          <div className="space-y-4">
+            <div className="relative">
+              <input id="nome" type="text" value={nome} onChange={e => setNome(e.target.value)}
+                className="peer w-full h-12 px-4 pt-4 rounded-lg border text-sm outline-none transition-colors bg-[var(--color-bg-input)]"
+                style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                onFocus={e => e.target.style.borderColor = 'var(--color-gold-500)'}
+                onBlur={e => e.target.style.borderColor = 'var(--color-border-default)'} placeholder=" " />
+              <label htmlFor="nome" className="absolute left-4 top-0 text-xs transition-all peer-placeholder-shown:text-sm peer-placeholder-shown:top-3.5 peer-focus:top-0 peer-focus:text-xs"
+                style={{ color: nome ? 'var(--color-gold-500)' : 'var(--color-text-muted)' }}>Nome completo</label>
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '13px', color: '#9998a8', fontWeight: 500, marginBottom: '6px' }}>
-                Email
-              </label>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <input
-                  type="email"
-                  value={user?.email || ''}
-                  readOnly
-                  style={{
-                    flex: 1,
-                    padding: '10px 14px',
-                    border: '0.5px solid rgba(255,255,255,0.08)',
-                    borderRadius: '8px',
-                    fontSize: '15px',
-                    background: '#0d0d0f',
-                    color: '#66657a',
-                    outline: 'none',
-                    minHeight: '44px',
-                    cursor: 'not-allowed',
-                  }}
-                />
-                <a href="/login" style={{
-                  color: '#7c6fff',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  textDecoration: 'none',
-                  whiteSpace: 'nowrap',
-                  padding: '10px 16px',
-                  borderRadius: '8px',
-                  border: '0.5px solid rgba(124,111,255,0.3)',
-                  transition: 'all 0.15s',
-                }}>Change Email</a>
+            <div className="relative">
+              <input id="email" type="email" value={email} disabled
+                className="peer w-full h-12 px-4 pt-4 rounded-lg border text-sm outline-none bg-[var(--color-bg-input)] opacity-70 cursor-not-allowed"
+                style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }} placeholder=" " />
+              <label htmlFor="email" className="absolute left-4 top-0 text-xs"
+                style={{ color: 'var(--color-text-muted)' }}>E-mail</label>
+              <div className="absolute right-3 top-3">
+                {user?.email_verificado ? (
+                  <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--color-success)' }}>
+                    <CheckCircle size={14} /> Verificado
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--color-gold-500)' }}>
+                    <WarningCircle size={14} /> Não verificado
+                  </span>
+                )}
               </div>
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '13px', color: '#9998a8', fontWeight: 500, marginBottom: '6px' }}>
-                Bio
-              </label>
-              <textarea
-                value={bio}
-                onChange={e => setBio(e.target.value.slice(0, 500))}
-                placeholder="Tell us a little about yourself"
-                maxLength={500}
-                rows={3}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  border: '0.5px solid rgba(255,255,255,0.08)',
-                  borderRadius: '8px',
-                  fontSize: '15px',
-                  background: '#111114',
-                  color: '#f0eff5',
-                  outline: 'none',
-                  fontFamily: 'inherit',
-                  resize: 'vertical',
-                  minHeight: '80px',
-                  transition: 'border-color 0.15s, box-shadow 0.15s',
-                }}
-                onFocus={e => { e.target.style.borderColor = '#7c6fff'; e.target.style.boxShadow = '0 0 0 3px rgba(124,111,255,0.15)'; }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.08)'; e.target.style.boxShadow = 'none'; }}
-              />
-              <p style={{ fontSize: '12px', color: '#66657a', marginTop: '4px', marginBottom: 0, textAlign: 'right' }}>
-                {bio.length}/500
-              </p>
-            </div>
+            {user?.cpf && (
+              <div className="relative">
+                <input id="cpf" type="text" value={user.cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')} disabled
+                  className="peer w-full h-12 px-4 pt-4 rounded-lg border text-sm outline-none bg-[var(--color-bg-input)] opacity-70 cursor-not-allowed"
+                  style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }} placeholder=" " />
+                <label htmlFor="cpf" className="absolute left-4 top-0 text-xs"
+                  style={{ color: 'var(--color-text-muted)' }}>CPF</label>
+              </div>
+            )}
 
-            <div>
-              <label style={{ display: 'block', fontSize: '13px', color: '#9998a8', fontWeight: 500, marginBottom: '6px' }}>
-                Location
-              </label>
-              <input
-                type="text"
-                value={localizacao}
-                onChange={e => setLocalizacao(e.target.value)}
-                placeholder="City, State"
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  border: '0.5px solid rgba(255,255,255,0.08)',
-                  borderRadius: '8px',
-                  fontSize: '15px',
-                  background: '#111114',
-                  color: '#f0eff5',
-                  outline: 'none',
-                  minHeight: '44px',
-                  transition: 'border-color 0.15s, box-shadow 0.15s',
-                }}
-                onFocus={e => { e.target.style.borderColor = '#7c6fff'; e.target.style.boxShadow = '0 0 0 3px rgba(124,111,255,0.15)'; }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.08)'; e.target.style.boxShadow = 'none'; }}
-              />
-            </div>
+            <SearchableSelect options={municipioOptions} value={municipioId} onChange={setMunicipioId}
+              placeholder="Selecione um município" label="Município" />
 
-            <div>
-              <label style={{ display: 'block', fontSize: '13px', color: '#9998a8', fontWeight: 500, marginBottom: '6px' }}>
-                Website
-              </label>
-              <input
-                type="url"
-                value={website}
-                onChange={e => setWebsite(e.target.value)}
-                placeholder="https://example.com"
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  border: '0.5px solid rgba(255,255,255,0.08)',
-                  borderRadius: '8px',
-                  fontSize: '15px',
-                  background: '#111114',
-                  color: '#f0eff5',
-                  outline: 'none',
-                  minHeight: '44px',
-                  transition: 'border-color 0.15s, box-shadow 0.15s',
-                }}
-                onFocus={e => { e.target.style.borderColor = '#7c6fff'; e.target.style.boxShadow = '0 0 0 3px rgba(124,111,255,0.15)'; }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.08)'; e.target.style.boxShadow = 'none'; }}
-              />
+            {!user?.email_verificado && (
+              <div className="rounded-lg border p-4" style={{ borderColor: 'var(--color-gold-500)', background: 'rgba(212,160,23,0.06)' }}>
+                <h4 className="text-xs font-semibold mb-2" style={{ color: 'var(--color-gold-500)' }}>Verificação de Email</h4>
+                <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>Digite o código enviado para seu email.</p>
+                <div className="flex gap-2">
+                  <input type="text" placeholder="000000" maxLength={6} value={codigoVerificacao}
+                    onChange={e => setCodigoVerificacao(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="flex-1 h-10 px-3 rounded-lg border text-sm outline-none text-center tracking-widest font-mono bg-[var(--color-bg-input)]"
+                    style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }} />
+                  <Button variant="primary" size="sm" onClick={handleVerificarEmail} disabled={verificando || codigoVerificacao.length < 6}>
+                    {verificando ? '...' : 'Verificar'}
+                  </Button>
+                </div>
+                <button onClick={handleReenviarCodigo} className="text-xs mt-2 hover:underline"
+                  style={{ color: 'var(--color-gold-500)' }}>Reenviar código</button>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-default)' }}>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>Alterar Senha</h3>
+            <div className="space-y-3">
+              <input type="password" placeholder="Senha atual" value={senhaAtual} onChange={e => setSenhaAtual(e.target.value)}
+                className="w-full h-11 px-4 rounded-lg border text-sm outline-none bg-[var(--color-bg-input)]"
+                style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                onFocus={e => e.target.style.borderColor = 'var(--color-gold-500)'}
+                onBlur={e => e.target.style.borderColor = 'var(--color-border-default)'} />
+              <input type="password" placeholder="Nova senha" value={novaSenha} onChange={e => setNovaSenha(e.target.value)}
+                className="w-full h-11 px-4 rounded-lg border text-sm outline-none bg-[var(--color-bg-input)]"
+                style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                onFocus={e => e.target.style.borderColor = 'var(--color-gold-500)'}
+                onBlur={e => e.target.style.borderColor = 'var(--color-border-default)'} />
             </div>
           </div>
 
-          <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#f0eff5', marginBottom: '16px', marginTop: 0 }}>
-            Social Links
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '13px', color: '#9998a8', fontWeight: 500, marginBottom: '6px' }}>
-                Twitter / X
-              </label>
-              <input
-                type="text"
-                value={twitter}
-                onChange={e => setTwitter(e.target.value)}
-                placeholder="https://x.com/username"
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  border: '0.5px solid rgba(255,255,255,0.08)',
-                  borderRadius: '8px',
-                  fontSize: '15px',
-                  background: '#111114',
-                  color: '#f0eff5',
-                  outline: 'none',
-                  minHeight: '44px',
-                  transition: 'border-color 0.15s, box-shadow 0.15s',
-                }}
-                onFocus={e => { e.target.style.borderColor = '#7c6fff'; e.target.style.boxShadow = '0 0 0 3px rgba(124,111,255,0.15)'; }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.08)'; e.target.style.boxShadow = 'none'; }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '13px', color: '#9998a8', fontWeight: 500, marginBottom: '6px' }}>
-                GitHub
-              </label>
-              <input
-                type="text"
-                value={github}
-                onChange={e => setGithub(e.target.value)}
-                placeholder="https://github.com/username"
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  border: '0.5px solid rgba(255,255,255,0.08)',
-                  borderRadius: '8px',
-                  fontSize: '15px',
-                  background: '#111114',
-                  color: '#f0eff5',
-                  outline: 'none',
-                  minHeight: '44px',
-                  transition: 'border-color 0.15s, box-shadow 0.15s',
-                }}
-                onFocus={e => { e.target.style.borderColor = '#7c6fff'; e.target.style.boxShadow = '0 0 0 3px rgba(124,111,255,0.15)'; }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.08)'; e.target.style.boxShadow = 'none'; }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '13px', color: '#9998a8', fontWeight: 500, marginBottom: '6px' }}>
-                LinkedIn
-              </label>
-              <input
-                type="text"
-                value={linkedin}
-                onChange={e => setLinkedin(e.target.value)}
-                placeholder="https://linkedin.com/in/username"
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  border: '0.5px solid rgba(255,255,255,0.08)',
-                  borderRadius: '8px',
-                  fontSize: '15px',
-                  background: '#111114',
-                  color: '#f0eff5',
-                  outline: 'none',
-                  minHeight: '44px',
-                  transition: 'border-color 0.15s, box-shadow 0.15s',
-                }}
-                onFocus={e => { e.target.style.borderColor = '#7c6fff'; e.target.style.boxShadow = '0 0 0 3px rgba(124,111,255,0.15)'; }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.08)'; e.target.style.boxShadow = 'none'; }}
-              />
-            </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => navigate('/')}>Cancelar</Button>
+            <Button variant="primary" onClick={handleSave} disabled={saving}>{saving ? 'Salvando...' : 'Salvar Alterações'}</Button>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

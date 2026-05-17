@@ -121,6 +121,11 @@ class Apoio(models.Model):
     criado_em: DateTimeField(auto_now_add=True)
     class Meta: unique_together = ('usuario', 'defeito')
 
+# Note: Existing database stores dates as TEXT (ISO 8601 strings).
+# Initial Django migration keeps criado_em/atualizado_em as DateTimeField
+# and converts existing text dates via data migration (parse ISO → timestamp).
+# Django saves DateTimeField as `timestamp with time zone` internally.
+
 # municipios/models.py
 class Municipio(models.Model):
     codigo: CharField(primary_key)          # IBGE 7 digits

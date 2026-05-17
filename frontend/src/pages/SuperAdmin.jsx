@@ -1,100 +1,53 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../services/api';
+import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
-import { useToast } from '../components/Toast';
-import Header from '../components/Header';
-import SearchableSelect from '../components/SearchableSelect';
+import { api } from '../services/api';
+import { Button } from '../components/ui/button';
 
 export default function SuperAdmin() {
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const addToast = useToast();
-
-  const [usuarios, setUsuarios] = useState([]);
-  const [municipios, setMunicipios] = useState([]);
-
-  const loadData = useCallback(async () => {
-    try {
-      const [u, m] = await Promise.all([
-        api.adminListUsers(),
-        api.listMunicipios(),
-      ]);
-      setUsuarios(u);
-      setMunicipios(m);
-    } catch (err) {
-      addToast('Erro ao carregar dados: ' + err.message, 'error');
-    }
-  }, [addToast]);
+  const [users, setUsers] = useState([]);
 
   useEffect(() => {
-    if (!isAuthenticated || !user?.admin) { navigate('/login'); return; }
-    loadData();
-  }, [isAuthenticated, user, navigate, loadData]);
+    if (!isAuthenticated) { navigate('/login'); return; }
+    if (!user?.admin) { navigate('/'); return; }
+    api.adminListUsers().then(setUsers).catch(() => {});
+  }, [isAuthenticated, user, navigate]);
 
-  async function handleUpdateUser(userId, municipioId) {
+  const toggleAdmin = async (id, current) => {
     try {
-      await api.adminUpdateUserMunicipio(userId, municipioId || null);
-      addToast('Usuário atualizado!');
-      loadData();
-    } catch (err) {
-      addToast('Erro: ' + err.message, 'error');
-    }
-  }
-
-  async function handleToggleAdmin(userId, tornarAdmin) {
-    try {
-      await api.adminToggleAdmin(userId, tornarAdmin);
-      addToast(tornarAdmin ? 'Usuário promovido a admin!' : 'Admin removido!');
-      loadData();
-    } catch (err) {
-      addToast('Erro: ' + err.message, 'error');
-    }
-  }
+      await api.adminToggleAdmin(id, !current);
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, admin: !current } : u));
+    } catch { /**/ }
+  };
 
   return (
-    <div className="admin-page">
-      <Header />
-
-      <div className="admin-usuarios">
-        <h2>Gerenciar Usuários</h2>
-        <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 16 }}>
-          Atribua municípios e gerencie permissões de admin.
-        </p>
-        <div className="usuarios-grid">
-          {usuarios.map(u => (
-            <div key={u.id} className="usuario-card">
-              <div className="usuario-info">
-                <strong>{u.nome}</strong>
-                <span style={{ fontSize: 12, color: '#9ca3af' }}>{u.email}</span>
-                <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                  {u.admin && <span className="badge badge-admin">Admin</span>}
-                  {u.super_admin && (
-                    <span className="badge badge-super">Supremo</span>
-                  )}
+    <div className="p-5 max-w-3xl mx-auto">
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-lg font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>Gerenciar Usuários</h1>
+        <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>Administre os usuários do sistema</p>
+        <div className="space-y-2">
+          {users.map(u => (
+            <div key={u.id} className="flex items-center justify-between p-4 rounded-xl border" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
+              <div>
+                <span className="text-sm font-semibold block" style={{ color: 'var(--color-text-primary)' }}>{u.nome}</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{u.email}</span>
+                <div className="flex gap-1 mt-1">
+                  {u.admin && <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'rgba(76,175,125,0.12)', color: 'var(--color-success)' }}>Admin</span>}
+                  {u.super_admin && <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'rgba(212,160,23,0.12)', color: 'var(--color-gold-500)' }}>Super Admin</span>}
                 </div>
               </div>
-              <div className="usuario-municipio" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {!u.super_admin && (
-                  <button
-                    onClick={() => handleToggleAdmin(u.id, !u.admin)}
-                    className={`btn-sm ${u.admin ? 'btn-remover-admin' : 'btn-promover'}`}
-                  >
-                    {u.admin ? 'Remover Admin' : 'Promover Admin'}
-                  </button>
-                )}
-                <SearchableSelect
-                  options={municipios}
-                  value={u.municipio_id || ''}
-                  onChange={(val) => handleUpdateUser(u.id, val)}
-                  placeholder="Atribuir município..."
-                  groupBy="uf_sigla"
-                />
-              </div>
+              {!u.super_admin && (
+                <Button variant={u.admin ? 'danger' : 'secondary'} size="xs" onClick={() => toggleAdmin(u.id, u.admin)}>
+                  {u.admin ? 'Remover Admin' : 'Promover Admin'}
+                </Button>
+              )}
             </div>
           ))}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

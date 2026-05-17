@@ -6,7 +6,7 @@ function Toggle({ label, description, checked, onChange }) {
       <div>
         <span style={{ fontSize: 14, color: '#f0eff5', fontWeight: 500 }}>{label}</span>
         {description && (
-          <p style={{ fontSize: 12, color: '#9998a8', margin: '2px 0 0', lineHeight: 1.4 }}>{description}</p>
+          <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: '2px 0 0', lineHeight: 1.4 }}>{description}</p>
         )}
       </div>
       <button
@@ -18,7 +18,7 @@ function Toggle({ label, description, checked, onChange }) {
           borderRadius: 11,
           border: 'none',
           cursor: 'pointer',
-          background: checked ? '#7c6fff' : 'rgba(255,255,255,0.12)',
+          background: checked ? 'var(--color-gold-500)' : 'rgba(255,255,255,0.12)',
           transition: 'background 0.2s',
           flexShrink: 0,
         }}
@@ -50,7 +50,7 @@ export default function NotificationsBlock() {
       <h2 style={{ fontSize: 17, fontWeight: 600, color: '#f0eff5', marginBottom: 4, letterSpacing: '-0.02em' }}>
         Notificações
       </h2>
-      <p style={{ fontSize: 13, color: '#9998a8', marginBottom: 8 }}>
+      <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', marginBottom: 8 }}>
         Gerencie como você recebe notificações
       </p>
       <div>

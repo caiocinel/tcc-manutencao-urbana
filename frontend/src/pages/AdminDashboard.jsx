@@ -1,335 +1,197 @@
-import { useEffect, useState, useCallback, memo } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import { Camera, ChatCircle, Download, Calendar } from '@phosphor-icons/react';
-import { api } from '../services/api';
-import { useAuth } from '../context/AuthContext';
-import Header from '../components/Header';
-import { useToast } from '../components/Toast';
-import { useTheme } from '../context/ThemeContext';
-import 'leaflet/dist/leaflet.css';
+import { MapPin, Target } from '@phosphor-icons/react';
 import L from 'leaflet';
+import { MapContainer, TileLayer, Marker, Polygon, useMap } from 'react-leaflet';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { api } from '../services/api';
+import { StatusBadge, getStatusColor } from '../components/ui/status-badge';
+import { createDefectIcon } from '../utils/map-markers';
 
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+const LIGHT_TILES = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+const BRAZIL_BOUNDS = [[-33.75, -73.99], [5.27, -28.85]];
 
-const statusColors = {
-  pendente: '#eab308',
-  em_andamento: '#f97316',
-  atendido: '#22c55e',
-  encerrado: '#16a34a',
-};
-
-const prioridadeLabels = { baixa: 'Baixa', media: 'Média', alta: 'Alta' };
-const prioridadeCores = { baixa: '#22c55e', media: '#f59e0b', alta: '#dc2626' };
-
-function imagensDoDefeito(d) {
-  const urls = [];
-  if (d.imagem_url || d.imagem_thumbnail) urls.push(d.imagem_thumbnail || d.imagem_url);
-  if (d.imagens_extra?.length > 0) urls.push(...d.imagens_extra);
-  return urls;
+function FitBounds({ pontos, filtroRegiao }) {
+  const map = useMap();
+  useEffect(() => {
+    if (filtroRegiao || pontos.length === 0) return;
+    const bounds = L.latLngBounds(pontos.map(p => [p.latitude, p.longitude]));
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 14, duration: 800 });
+    }
+  }, [map, pontos, filtroRegiao]);
+  return null;
 }
 
-const DefeitoPin = memo(function DefeitoPin({ d }) {
-  if (!d.latitude || !d.longitude) return null;
-  const color = statusColors[d.status] || 'gray';
-  const icon = L.divIcon({
-    className: 'custom-marker',
-    html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
-  });
-  const imagensExtra = d.imagens_extra || [];
-  const atualizacoes = d.atualizacoes || [];
+function PerimeterLayer({ poligono_json }) {
+  const leafletCoords = useMemo(() => {
+    if (!poligono_json) return null;
+    const raw = typeof poligono_json === 'string' ? JSON.parse(poligono_json) : poligono_json;
+    const coords = raw.type === 'Polygon' ? raw.coordinates[0] : raw.coordinates?.[0]?.[0];
+    if (!coords) return null;
+    return coords.map(([lng, lat]) => [lat, lng]);
+  }, [poligono_json]);
+
+  if (!leafletCoords) return null;
   return (
-    <Marker position={[d.latitude, d.longitude]} icon={icon}>
-      <Popup>
-        <strong>{d.titulo}</strong>
-        <p>{d.descricao}</p>
-        <p>Status: <strong>{d.status}</strong></p>
-        <p>Prioridade: <span style={{ color: prioridadeCores[d.prioridade], fontWeight: 600 }}>{prioridadeLabels[d.prioridade] || d.prioridade}</span></p>
-        {(d.imagem_thumbnail || d.imagem_url) && <img src={d.imagem_thumbnail || d.imagem_url} alt={d.titulo} style={{ width: '100%', maxWidth: 200, borderRadius: 4 }} />}
-        {imagensExtra.length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            {imagensExtra.map((url, i) => (
-              <img key={i} src={url} alt={`Anexo ${i + 1}`} style={{ width: '100%', maxWidth: 200, borderRadius: 4, marginTop: 4 }} />
-            ))}
-          </div>
-        )}
-        {atualizacoes.length > 0 && (
-          <div style={{ marginTop: 8, fontSize: 12 }}>
-            {atualizacoes.map((a, i) => (
-              <p key={i} style={{ borderTop: '1px solid #eee', paddingTop: 4, marginTop: 4 }}>
-                <em>{a.usuario}:</em> {a.texto}
-              </p>
-            ))}
-          </div>
-        )}
-      </Popup>
-    </Marker>
+    <Polygon positions={leafletCoords} pathOptions={{ color: '#D4A017', weight: 1.5, fillColor: '#D4A017', fillOpacity: 0.06, interactive: false }} />
   );
-});
- 
+}
+
 export default function AdminDashboard() {
   const { user, isAuthenticated } = useAuth();
   const { theme } = useTheme();
   const navigate = useNavigate();
-  const addToast = useToast();
-
-  const [defeitos, setDefeitos] = useState([]);
-  const [regioes, setRegioes] = useState([]);
-  const [filterRegiao, setFilterRegiao] = useState('todos');
-  const [filterStatus, setFilterStatus] = useState('pendente,em_andamento');
+  const [regioes, setRegioes] = useState({});
+  const [filtroRegiao, setFiltroRegiao] = useState('');
   const [selectedDefeito, setSelectedDefeito] = useState(null);
-  const [diasFiltro, setDiasFiltro] = useState('');
+  const mapRef = useRef(null);
+
+  const allPins = useMemo(() => {
+    const pins = [];
+    Object.entries(regioes).forEach(([bairro, defeitos]) => {
+      if (filtroRegiao && bairro !== filtroRegiao) return;
+      defeitos.forEach(d => {
+        if (!d.latitude || !d.longitude) return;
+        pins.push(d);
+      });
+    });
+    return pins;
+  }, [regioes, filtroRegiao]);
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
-  }, [isAuthenticated, navigate]);
+    if (!user?.admin) { navigate('/'); return; }
+    api.listDefeitos().then(d => {
+      const r = {};
+      d.forEach(x => {
+        const key = x.bairro || 'Sem bairro';
+        if (!r[key]) r[key] = [];
+        r[key].push(x);
+      });
+      setRegioes(r);
+    }).catch(() => {});
+  }, [isAuthenticated, user, navigate]);
 
-  const loadData = useCallback(async () => {
+  const handleStatus = async (id, novoStatus) => {
     try {
-      const params = {};
-      if (filterStatus) params.status = filterStatus;
-      if (diasFiltro) params.dias = diasFiltro;
-      const [d] = await Promise.all([
-        api.listDefeitos(params),
-      ]);
-      setDefeitos(d);
-      if (user?.admin) {
-        const rParams = {};
-        if (filterStatus) rParams.status = filterStatus;
-        if (diasFiltro) rParams.dias = diasFiltro;
-        const r = await api.regioesDefeitos(rParams);
+      await api.updateDefeito(id, { status: novoStatus });
+      api.listDefeitos().then(d => {
+        const r = {};
+        d.forEach(x => { const k = x.bairro || 'Sem bairro'; if (!r[k]) r[k] = []; r[k].push(x); });
         setRegioes(r);
-      }
-    } catch (err) {
-      addToast('Erro ao carregar dados: ' + err.message, 'error');
-    }
-  }, [filterStatus, diasFiltro, user, addToast]);
+      });
+    } catch { /* ignore */ }
+  };
 
-  const exportCSV = useCallback(() => {
-    if (defeitos.length === 0) { addToast('Nenhum dado para exportar', 'error'); return; }
-    const header = 'ID,Título,Descrição,Status,Prioridade,Categoria,Rua,Bairro,Latitude,Longitude,Data,Criado por';
-    const rows = defeitos.map(d =>
-      `"${d.id}","${(d.titulo||'').replace(/"/g,'""')}","${(d.descricao||'').replace(/"/g,'""')}","${d.status}","${d.prioridade||''}","${d.categoria||''}","${(d.rua||'').replace(/"/g,'""')}","${(d.bairro||'').replace(/"/g,'""')}",${d.latitude||''},${d.longitude||''},"${d.criado_em||''}","${d.usuario?.nome||''}"`
-    );
-    const csv = '\uFEFF' + header + '\n' + rows.join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `chamados-${new Date().toISOString().slice(0,10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
-    addToast('CSV exportado com sucesso!');
-  }, [defeitos, addToast]);
-
-  useEffect(() => {
-    loadData();
-  }, [filterStatus, diasFiltro, loadData]);
-
-  useEffect(() => {
-    function handleKey(e) { if (e.key === 'Escape') setSelectedDefeito(null); }
-    if (selectedDefeito) window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [selectedDefeito]);
-
-  async function handleUpdateDefeito(id, data) {
-    try {
-      await api.updateDefeito(id, data);
-      addToast('Atualizado com sucesso!');
-      loadData();
-    } catch (err) {
-      addToast('Erro: ' + err.message, 'error');
-    }
-  }
-
-  const regioesFiltradas = regioes.filter(r => {
-    if (filterRegiao === 'todos') return true;
-    if (filterRegiao === 'com_imagem') return r.com_imagem > 0;
-    if (filterRegiao === 'mais_reports') return r.total >= 3;
-    return true;
-  });
-
-  const defaultCenter = [-22.6069, -46.9190];
+  const regioesList = Object.entries(regioes).filter(([k]) => !filtroRegiao || k === filtroRegiao);
 
   return (
-    <div className="admin-page">
-      <Header />
-
-      <div className="admin-painel">
-        <div className="admin-map-section">
-          <MapContainer center={defaultCenter} zoom={13} className="admin-map" scrollWheelZoom={true}>
-            <TileLayer
-              attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-              url={theme === 'light' ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'}
-            />
-            {defeitos.map(d => <DefeitoPin key={d.id} d={d} />)}
-          </MapContainer>
+    <div className="h-full flex flex-col xl:flex-row" style={{ background: 'var(--color-bg-primary)' }}>
+      <div className="xl:w-[420px] flex flex-col border-r" style={{ borderColor: 'var(--color-border-default)' }}>
+        <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--color-border-default)' }}>
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>Painel de Controle</h2>
+          <select value={filtroRegiao} onChange={e => { setFiltroRegiao(e.target.value); setSelectedDefeito(null); }}
+            className="ml-auto h-8 px-3 rounded-md border text-xs outline-none bg-[var(--color-bg-input)] max-w-[180px]"
+            style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}>
+            <option value="">Todas as regiões</option>
+            {Object.keys(regioes).sort().map(r => <option key={r} value={r}>{r} ({regioes[r].length})</option>)}
+          </select>
         </div>
-
-        <div className="admin-regioes-section">
-          <div className="admin-regioes-header">
-            <h2>
-              <Calendar size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-              Regiões com Chamados
-            </h2>
-            <div className="admin-filters">
-              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-                <option value="pendente,em_andamento">Pendentes + Em Andamento</option>
-                <option value="">Todos os status</option>
-                <option value="pendente">Pendentes</option>
-                <option value="em_andamento">Em Andamento</option>
-                <option value="atendido">Atendidos</option>
-                <option value="encerrado">Encerrados</option>
-              </select>
-              <select value={diasFiltro} onChange={e => setDiasFiltro(e.target.value)} style={{ minWidth: 100 }}>
-                <option value="">Todo período</option>
-                <option value="7">Últimos 7 dias</option>
-                <option value="15">Últimos 15 dias</option>
-                <option value="30">Últimos 30 dias</option>
-                <option value="90">Últimos 90 dias</option>
-              </select>
-              <select value={filterRegiao} onChange={e => setFilterRegiao(e.target.value)}>
-                <option value="todos">Todos os chamados</option>
-                <option value="com_imagem">Com imagens</option>
-                <option value="mais_reports">Mais reports (3+)</option>
-              </select>
-              <button className="btn-export" onClick={exportCSV} aria-label="Exportar CSV">
-                <Download size={14} aria-hidden="true" />
-                CSV
-              </button>
-            </div>
-          </div>
-          <div className="admin-regioes-grid">
-            {regioesFiltradas.map(r => (
-              <div key={r.id} className="regiao-card">
-                <div className="regiao-card-header">
-                  <h3>Região {r.centro.latitude.toFixed(4)}, {r.centro.longitude.toFixed(4)}</h3>
-                  <span className="regiao-total">{r.total} chamados</span>
-                </div>
-                <div className="regiao-stats">
-                  <span><Camera size={12} style={{ verticalAlign: 'middle', marginRight: 3 }} /> {r.com_imagem} imagens</span>
-                  {Object.entries(r.status).map(([s, c]) => (
-                    <span key={s} className={`badge badge-${s}`}>{s}: {c}</span>
-                  ))}
-                </div>
-                 <div className="regiao-defeitos">
-                   {r.defeitos.map(d => (
-                     <div key={d.id} className="regiao-defeito-item" style={{ cursor: 'pointer' }} onClick={() => setSelectedDefeito(d)}>
-                        <div className="regiao-defeito-info">
-                         <strong>{d.titulo}</strong>
-                         <span className={`badge badge-${d.status}`}>{d.status}</span>
-                         <span style={{ color: prioridadeCores[d.prioridade], fontWeight: 600, fontSize: 11 }}>
-                           {prioridadeLabels[d.prioridade] || d.prioridade}
-                         </span>
-                        {(d.imagens_extra?.length > 0 || d.atualizacoes?.length > 0) && (
-                           <span style={{ fontSize: 10, color: '#6b7280', marginLeft: 4 }}>
-                             {d.imagens_extra?.length > 0 && <Camera size={10} style={{ verticalAlign: 'middle' }} />}
-                             {d.imagens_extra?.length > 0 && d.atualizacoes?.length > 0 && ' '}
-                             {d.atualizacoes?.length > 0 && <ChatCircle size={10} style={{ verticalAlign: 'middle' }} />}
-                           </span>
-                         )}
-                       </div>
-                        {user?.admin && (
-                          <div className="regiao-defeito-actions" onClick={e => e.stopPropagation()}>
-                            <select
-                              value={d.prioridade || 'media'}
-                              onChange={e => handleUpdateDefeito(d.id, { prioridade: e.target.value })}
-                            >
-                              <option value="baixa">Baixa</option>
-                              <option value="media">Média</option>
-                              <option value="alta">Alta</option>
-                            </select>
-                            {d.status !== 'atendido' && d.status !== 'encerrado' && (
-                              <>
-                                <button className="btn-sm btn-atender" onClick={() => handleUpdateDefeito(d.id, { status: 'atendido' })}>
-                                  Atender
-                                </button>
-                                <button className="btn-sm btn-encerrar" onClick={() => handleUpdateDefeito(d.id, { status: 'encerrado' })}>
-                                  Encerrar
-                                </button>
-                              </>
-                            )}
-                            {d.status === 'atendido' && (
-                              <button className="btn-sm btn-encerrar" onClick={() => handleUpdateDefeito(d.id, { status: 'encerrado' })}>
-                                Encerrar
-                              </button>
-                            )}
-                          </div>
-                        )}
-                     </div>
-                   ))}
-                 </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {selectedDefeito && (
+            <div className="rounded-xl border p-3 mb-3" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-gold-500)' }}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{selectedDefeito.titulo}</span>
+                <button onClick={() => setSelectedDefeito(null)} className="text-xs" style={{ color: 'var(--color-text-muted)' }}>✕</button>
               </div>
-            ))}
-             {regioesFiltradas.length === 0 && <p className="empty">Nenhuma região encontrada.</p>}
-           </div>
-         </div>
-       </div>
-
-        {selectedDefeito && (
-          <div className="defect-overlay" onClick={() => setSelectedDefeito(null)} role="dialog" aria-modal="true" aria-label={selectedDefeito.titulo}>
-            <div className="defect-modal" onClick={e => e.stopPropagation()}>
-             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-               <div>
-                 <h3 style={{ margin: 0 }}>{selectedDefeito.titulo}</h3>
-                 <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                   <span className={`badge badge-${selectedDefeito.status}`}>{selectedDefeito.status}</span>
-                   <span style={{ color: prioridadeCores[selectedDefeito.prioridade], fontWeight: 600 }}>
-                     {prioridadeLabels[selectedDefeito.prioridade] || selectedDefeito.prioridade}
-                   </span>
-                   {selectedDefeito.usuario?.nome && <span style={{ color: '#9ca3af', fontSize: 13 }}>Por: {selectedDefeito.usuario.nome}</span>}
-                 </div>
-               </div>
-                <button onClick={() => setSelectedDefeito(null)} aria-label="Fechar" style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
-             </div>
-
-             {selectedDefeito.descricao && <p className="chamado-desc">{selectedDefeito.descricao}</p>}
-
-             {(selectedDefeito.rua || selectedDefeito.bairro) && (
-               <p className="chamado-meta" style={{ marginBottom: 8 }}>
-                 📍 {[selectedDefeito.rua, selectedDefeito.bairro].filter(Boolean).join(', ')}
-               </p>
-             )}
-
-             {imagensDoDefeito(selectedDefeito).length > 0 && (
-               <div style={{ marginTop: 12 }}>
-                 <h4 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#d1d5db' }}>Imagens ({imagensDoDefeito(selectedDefeito).length})</h4>
-                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
-                   {imagensDoDefeito(selectedDefeito).map((url, i) => (
-                     <img key={i} src={url} alt={`Imagem ${i + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, cursor: 'pointer' }} onClick={() => window.open(url, '_blank')} />
-                   ))}
-                 </div>
-               </div>
-             )}
-
-             {selectedDefeito.atualizacoes?.length > 0 && (
-               <div style={{ marginTop: 16 }}>
-                 <h4 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#d1d5db' }}>Atualizações ({selectedDefeito.atualizacoes.length})</h4>
-                 <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                   {selectedDefeito.atualizacoes.map((a, i) => (
-                     <div key={i} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', borderRadius: 8, marginBottom: 8 }}>
-                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                         <strong style={{ fontSize: 12, color: '#60a5fa' }}>{a.usuario || 'Usuário'}</strong>
-                         <span style={{ fontSize: 11, color: '#6b7280' }}>{new Date(a.criado_em).toLocaleString('pt-BR')}</span>
-                       </div>
-                       <p style={{ margin: 0, fontSize: 13, color: '#e5e7eb' }}>{a.texto}</p>
-                     </div>
-                   ))}
-                 </div>
-               </div>
-             )}
-
-             <div className="modal-actions" style={{ marginTop: 16 }}>
-               <button className="btn-secondary" onClick={() => setSelectedDefeito(null)}>Fechar</button>
-             </div>
-           </div>
-         </div>
-       )}
-     </div>
-   );
- }
+              <div className="flex items-center gap-1 mb-1">
+                <StatusBadge status={selectedDefeito.status} concluido_em={selectedDefeito.atendido_em || selectedDefeito.atualizado_em} />
+                {selectedDefeito.score_urgencia != null && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
+                    style={selectedDefeito.score_urgencia >= 7 ? { background: 'rgba(207,68,68,0.12)', color: 'var(--color-error)' } :
+                      selectedDefeito.score_urgencia >= 4 ? { background: 'rgba(212,160,23,0.12)', color: 'var(--color-gold-500)' } :
+                        { background: 'rgba(76,175,125,0.12)', color: 'var(--color-success)' }}>
+                    <Target size={10} />{selectedDefeito.score_urgencia}
+                  </span>
+                )}
+              </div>
+              <select value={selectedDefeito.status} onChange={e => handleStatus(selectedDefeito.id, e.target.value)}
+                className="w-full h-8 px-2 rounded border text-xs outline-none bg-[var(--color-bg-input)] mb-1"
+                style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}>
+                <option value="pendente">Pendente</option>
+                <option value="em_andamento">Em andamento</option>
+                <option value="atendido">Atendido</option>
+                <option value="encerrado">Encerrado</option>
+              </select>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{selectedDefeito.bairro} · {new Date(selectedDefeito.criado_em).toLocaleDateString()}</p>
+            </div>
+          )}
+          {regioesList.length === 0 ? (
+            <div className="text-xs text-center py-8" style={{ color: 'var(--color-text-muted)' }}>Nenhum chamado nesta região</div>
+          ) : regioesList.map(([bairro, defeitosList]) => (
+            <div key={bairro} className="rounded-xl border p-3" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
+              <button onClick={() => setFiltroRegiao(filtroRegiao === bairro ? '' : bairro)}
+                className="flex items-center justify-between w-full mb-2">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5" style={{ color: filtroRegiao === bairro ? 'var(--color-gold-500)' : 'var(--color-text-primary)' }}>
+                  <MapPin size={14} weight={filtroRegiao === bairro ? 'fill' : 'regular'} /> {bairro}
+                </h3>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)' }}>
+                  {defeitosList.length}
+                </span>
+              </button>
+              <div className="space-y-1">
+                {defeitosList.slice(0, 5).map(d => (
+                  <div key={d.id} onClick={() => setSelectedDefeito(d)}
+                    className="flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors"
+                    style={{ background: 'var(--color-bg-primary)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg-elevated)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'var(--color-bg-primary)'}>
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{
+                        background: getStatusColor(d.status, d.atendido_em || d.atualizado_em)
+                      }} />
+                      <span className="font-medium truncate">{d.titulo}</span>
+                    </div>
+                    <StatusBadge status={d.status} concluido_em={d.atendido_em || d.atualizado_em} />
+                  </div>
+                ))}
+                {defeitosList.length > 5 && (
+                  <p className="text-xs text-center pt-1" style={{ color: 'var(--color-text-muted)' }}>+{defeitosList.length - 5} chamados</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 relative min-h-[300px] xl:min-h-0">
+        <MapContainer
+          center={user?.municipio?.min_lat ? [(user.municipio.min_lat + user.municipio.max_lat) / 2, (user.municipio.min_lng + user.municipio.max_lng) / 2] : [-22.6069, -46.9190]}
+          zoom={13}
+          className="absolute inset-0"
+          scrollWheelZoom={true}
+          zoomControl={true}
+          maxBounds={BRAZIL_BOUNDS}
+          minZoom={3}
+          maxBoundsViscosity={1.0}
+          whenReady={(ev) => { mapRef.current = ev.target; }}>
+          <TileLayer url={theme === 'dark' ? DARK_TILES : LIGHT_TILES} noWrap />
+          <PerimeterLayer poligono_json={user?.municipio?.poligono_json} />
+          <FitBounds pontos={allPins} filtroRegiao={filtroRegiao} />
+          {allPins.map(d => (
+            <Marker
+              key={d.id}
+              position={[d.latitude, d.longitude]}
+              icon={createDefectIcon(d.status, d.atendido_em || d.atualizado_em)}
+              eventHandlers={{
+                click: () => setSelectedDefeito(d),
+              }}
+            />
+          ))}
+        </MapContainer>
+      </div>
+    </div>
+  );
+}

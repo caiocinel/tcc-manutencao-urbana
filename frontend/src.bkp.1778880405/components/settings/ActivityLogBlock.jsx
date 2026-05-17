@@ -34,9 +34,9 @@ export default function ActivityLogBlock() {
             <tbody>
               {activities.map((a, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                  <td style={{ padding: '12px', color: '#9998a8', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>{a.date}</td>
+                  <td style={{ padding: '12px', color: 'var(--color-text-tertiary)', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>{a.date}</td>
                   <td style={{ padding: '12px', color: '#f0eff5', fontWeight: 500 }}>{a.action}</td>
-                  <td style={{ padding: '12px', color: '#9998a8' }}>{a.details}</td>
+                  <td style={{ padding: '12px', color: 'var(--color-text-tertiary)' }}>{a.details}</td>
                 </tr>
               ))}
             </tbody>

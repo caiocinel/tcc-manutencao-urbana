@@ -17,7 +17,7 @@ const router = express.Router();
 async function attachMunicipio(user) {
   if (!user.municipio_id) return user;
   const { rows } = await query(
-    'SELECT codigo, nome, uf_sigla, min_lat, max_lat, min_lng, max_lng FROM municipios WHERE codigo = $1',
+    'SELECT codigo, nome, uf_sigla, min_lat, max_lat, min_lng, max_lng, poligono_json FROM municipios WHERE codigo = $1',
     [user.municipio_id]
   );
   return { ...user, municipio: rows[0] || null };
@@ -190,7 +190,7 @@ router.patch('/municipio', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/verificar-email', authenticateToken, async (req, res) => {
+router.post('/verificar-email', authLimiter, authenticateToken, async (req, res) => {
   try {
     const { codigo } = req.body;
     if (!codigo) return res.status(400).json({ error: 'Código é obrigatório' });
@@ -214,7 +214,7 @@ router.post('/verificar-email', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/reenviar-codigo', authenticateToken, async (req, res) => {
+router.post('/reenviar-codigo', authLimiter, authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
@@ -282,7 +282,7 @@ router.post('/verificar-2fa', authLimiter, async (req, res) => {
   }
 });
 
-router.patch('/senha', authenticateToken, async (req, res) => {
+router.patch('/senha', authLimiter, authenticateToken, async (req, res) => {
   try {
     const { senha_atual, nova_senha } = req.body;
 

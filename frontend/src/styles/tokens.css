@@ -1,82 +1,55 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
 :root {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: 'DM Sans', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --color-bg-primary: #0A0A0A;
+  --color-bg-secondary: #111111;
+  --color-bg-surface: #1A1A1A;
+  --color-bg-elevated: #222222;
+  --color-bg-input: #1A1A1A;
 
-  --leading-none: 1;
-  --leading-tight: 1.15;
-  --leading-snug: 1.3;
-  --leading-normal: 1.5;
-  --leading-relaxed: 1.6;
+  --color-gold-300: #FFD700;
+  --color-gold-400: #F5C842;
+  --color-gold-500: #D4A017;
+  --color-gold-600: #B8860B;
+  --color-gold-700: #8B6508;
 
-  --bg-primary: #0d0d0f;
-  --bg-surface: #141517;
-  --bg-elevated: #1e1f22;
-  --bg-input: #0d0d0f;
-  --bg-hover: #25262b;
+  --color-text-primary: #F5F0E8;
+  --color-text-secondary: #A89060;
+  --color-text-muted: #6B5B3E;
+  --color-text-inverse: #0A0A0A;
 
-  --border-default: #27272a;
-  --border-hover: #3f3f46;
+  --color-border-default: #2A2A2A;
+  --color-border-gold: #D4A017;
+  --color-border-subtle: #1E1E1E;
 
-  --text-primary: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
-  --text-muted: #52525b;
+  --color-success: #4CAF7D;
+  --color-warning: #D4A017;
+  --color-error: #CF4444;
+  --color-info: #4A90D9;
 
-  --accent-green: #22c55e;
-  --accent-green-bg: rgba(34, 197, 94, 0.1);
-  --accent-yellow: #eab308;
-  --accent-yellow-bg: rgba(234, 179, 8, 0.1);
-  --accent-orange: #f97316;
-  --accent-orange-bg: rgba(249, 115, 22, 0.1);
-  --accent-red: #ef4444;
-  --accent-red-bg: rgba(239, 68, 68, 0.1);
-  --accent-amber: #f59e0b;
-  --accent-blue: #3b82f6;
-  --accent-blue-bg: rgba(59, 130, 246, 0.1);
-  --accent-purple: #7c6fff;
-  --border-purple: #7c6fff;
-  --accent-purple-dim: rgba(124, 111, 255, 0.15);
-  --success-green: #2ec4a0;
-  --success-green-dim: rgba(46, 196, 160, 0.12);
-  --danger-red: #ff6b6b;
+  --font-family-base: 'Geist Variable', 'Geist', sans-serif;
+  --font-family-mono: 'Geist Mono', monospace;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
 
-  --overlay: rgba(0, 0, 0, 0.6);
-
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-base: 15px;
-  --text-md: 16px;
-  --text-lg: 17px;
-  --text-xl: 19px;
-  --text-2xl: 21px;
-  --text-3xl: 25px;
-  --text-4xl: 30px;
-  --text-5xl: 36px;
-
-  --weight-normal: 400;
-  --weight-medium: 500;
-  --weight-semibold: 600;
-  --weight-bold: 700;
-
-  --tracking-tight: -0.02em;
-  --tracking-normal: 0;
-  --tracking-wide: 0.03em;
-  --tracking-wider: 0.06em;
-
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-7: 28px;
-  --space-8: 32px;
-  --space-10: 40px;
-  --space-12: 48px;
-  --space-16: 64px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
 
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -85,47 +58,32 @@
   --radius-2xl: 16px;
   --radius-full: 999px;
 
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
-  --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
-  --shadow-diffusion: 0 20px 40px -15px rgba(0,0,0,0.5);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.6);
+  --card-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --card-shadow-gold: 0 0 20px rgba(212,160,23,0.15);
 
-  --transition-fast: 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-  --transition-base: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  --transition-spring: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-fast: 0.15s cubic-bezier(0.16,1,0.3,1);
+  --transition-base: 0.25s cubic-bezier(0.16,1,0.3,1);
+  --transition-spring: 0.4s cubic-bezier(0.34,1.56,0.64,1);
 }
-
 [data-theme="light"] {
-  --bg-primary: #f5f5f0;
-  --bg-surface: #ffffff;
-  --bg-elevated: #e8e8e3;
-  --bg-input: #ffffff;
-  --bg-hover: #ddddf8;
-
-  --border-default: #d4d4d0;
-  --border-hover: #a3a39f;
-
-  --text-primary: #1a1a1c;
-  --text-secondary: #52525b;
-  --text-tertiary: #71717a;
-  --text-muted: #a1a1aa;
-
-  --accent-green: #16a34a;
-  --accent-green-bg: rgba(22, 163, 74, 0.08);
-  --accent-yellow: #ca8a04;
-  --accent-yellow-bg: rgba(202, 138, 4, 0.08);
-  --accent-orange: #ea580c;
-  --accent-orange-bg: rgba(234, 88, 12, 0.08);
-  --accent-red: #dc2626;
-  --accent-red-bg: rgba(220, 38, 38, 0.08);
-  --accent-amber: #d97706;
-  --accent-blue: #2563eb;
-  --accent-blue-bg: rgba(37, 99, 235, 0.08);
-
-  --overlay: rgba(0, 0, 0, 0.4);
-
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.08);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
-  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
-  --shadow-diffusion: 0 20px 40px -15px rgba(0,0,0,0.1);
+  --color-bg-primary: #F5F0E8;
+  --color-bg-secondary: #EDE8DD;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-elevated: #F0EBE0;
+  --color-bg-input: #FFFFFF;
+  --color-text-primary: #1A1A14;
+  --color-text-secondary: #8B7A4E;
+  --color-text-muted: #C8B890;
+  --color-text-inverse: #FFFFFF;
+  --color-border-default: #D8D0C0;
+  --color-border-gold: #D4A017;
+  --color-border-subtle: #E8E3D8;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.1);
+  --card-shadow: 0 4px 24px rgba(0,0,0,0.06);
+  --card-shadow-gold: 0 4px 20px rgba(212,160,23,0.1);
 }

@@ -46,7 +46,7 @@ export default function SecurityBlock() {
   };
 
   function handleInputFocus(e) {
-    e.target.style.borderColor = '#7c6fff';
+    e.target.style.borderColor = 'var(--color-gold-500)';
     e.target.style.boxShadow = '0 0 0 3px rgba(124,111,255,0.12)';
   }
 
@@ -93,7 +93,7 @@ export default function SecurityBlock() {
             fontSize: 14,
             fontWeight: 600,
             cursor: saving ? 'not-allowed' : 'pointer',
-            background: '#7c6fff',
+            background: 'var(--color-gold-500)',
             color: '#fff',
             opacity: saving ? 0.5 : 1,
             transition: 'opacity 0.15s',
@@ -108,7 +108,7 @@ export default function SecurityBlock() {
         <div>
           <h3 style={{ fontSize: 14, fontWeight: 600, color: '#f0eff5', marginBottom: 4 }}>Autenticação de Dois Fatores (2FA)</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 13, color: '#9998a8' }}>Status:</span>
+            <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }}>Status:</span>
             <span style={{ fontSize: 13, color: '#5c5b6e', fontStyle: 'italic' }}>Indisponível</span>
           </div>
         </div>

@@ -27,25 +27,16 @@ async function validatePerimeter(req, res, next) {
     if (isNaN(lat) || isNaN(lng)) return next();
 
     const { rows: munRows } = await query(
-      'SELECT min_lat, max_lat, min_lng, max_lng, polygon_geom FROM municipios WHERE codigo = $1',
+      'SELECT min_lat, max_lat, min_lng, max_lng FROM municipios WHERE codigo = $1',
       [user.municipio_id]
     );
     if (munRows.length === 0) return next();
 
     const m = munRows[0];
 
-    if (m.polygon_geom) {
-      const point = `ST_SetSRID(ST_MakePoint($2, $3), 4326)`;
-      const { rows } = await query(
-        `SELECT 1 FROM municipios
-         WHERE codigo = $1
-           AND (ST_Within(${point}, polygon_geom)
-             OR ST_Within(${point}, ST_Buffer(polygon_geom, ${PERIMETER_BUFFER_DEG})))`,
-        [user.municipio_id, lng, lat]
-      );
-      if (rows.length > 0) return next();
-    } else if (m.min_lat != null && m.max_lat != null && m.min_lng != null && m.max_lng != null &&
-               (m.min_lat !== 0 || m.max_lat !== 0 || m.min_lng !== 0 || m.max_lng !== 0)) {
+    // Bounding box validation
+    if (m.min_lat != null && m.max_lat != null && m.min_lng != null && m.max_lng != null &&
+        (m.min_lat !== 0 || m.max_lat !== 0 || m.min_lng !== 0 || m.max_lng !== 0)) {
       if (lat >= m.min_lat && lat <= m.max_lat && lng >= m.min_lng && lng <= m.max_lng) return next();
     } else {
       return next();

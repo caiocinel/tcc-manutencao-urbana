@@ -35,7 +35,7 @@ export default function PreferencesBlock() {
   };
 
   function handleFocus(e) {
-    e.target.style.borderColor = '#7c6fff';
+    e.target.style.borderColor = 'var(--color-gold-500)';
     e.target.style.boxShadow = '0 0 0 3px rgba(124,111,255,0.12)';
   }
 
@@ -52,7 +52,7 @@ export default function PreferencesBlock() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         <div>
-          <label style={{ fontSize: 13, color: '#9998a8', display: 'block', marginBottom: 6, fontWeight: 500 }}>
+          <label style={{ fontSize: 13, color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 6, fontWeight: 500 }}>
             Tema
           </label>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -61,13 +61,13 @@ export default function PreferencesBlock() {
               style={{
                 flex: 1,
                 padding: '10px 14px',
-                border: `1px solid ${theme === 'dark' ? '#7c6fff' : 'rgba(255,255,255,0.08)'}`,
+                border: `1px solid ${theme === 'dark' ? 'var(--color-gold-500)' : 'rgba(255,255,255,0.08)'}`,
                 borderRadius: 8,
                 fontSize: 14,
                 fontWeight: 500,
                 cursor: 'pointer',
                 background: theme === 'dark' ? 'rgba(124,111,255,0.15)' : '#111114',
-                color: theme === 'dark' ? '#7c6fff' : '#9998a8',
+                color: theme === 'dark' ? 'var(--color-gold-500)' : 'var(--color-text-tertiary)',
                 transition: 'all 0.15s',
               }}
             >
@@ -78,13 +78,13 @@ export default function PreferencesBlock() {
               style={{
                 flex: 1,
                 padding: '10px 14px',
-                border: `1px solid ${theme === 'light' ? '#7c6fff' : 'rgba(255,255,255,0.08)'}`,
+                border: `1px solid ${theme === 'light' ? 'var(--color-gold-500)' : 'rgba(255,255,255,0.08)'}`,
                 borderRadius: 8,
                 fontSize: 14,
                 fontWeight: 500,
                 cursor: 'pointer',
                 background: theme === 'light' ? 'rgba(124,111,255,0.15)' : '#111114',
-                color: theme === 'light' ? '#7c6fff' : '#9998a8',
+                color: theme === 'light' ? 'var(--color-gold-500)' : 'var(--color-text-tertiary)',
                 transition: 'all 0.15s',
               }}
             >
@@ -94,7 +94,7 @@ export default function PreferencesBlock() {
         </div>
 
         <div>
-          <label style={{ fontSize: 13, color: '#9998a8', display: 'block', marginBottom: 6, fontWeight: 500 }}>
+          <label style={{ fontSize: 13, color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 6, fontWeight: 500 }}>
             Idioma
           </label>
           <select
@@ -109,7 +109,7 @@ export default function PreferencesBlock() {
         </div>
 
         <div>
-          <label style={{ fontSize: 13, color: '#9998a8', display: 'block', marginBottom: 6, fontWeight: 500 }}>
+          <label style={{ fontSize: 13, color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 6, fontWeight: 500 }}>
             Fuso Horário
           </label>
           <select

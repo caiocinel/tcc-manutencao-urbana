@@ -7,7 +7,7 @@ function Checkbox({ label, checked, onChange }) {
         type="checkbox"
         checked={checked}
         onChange={e => onChange(e.target.checked)}
-        style={{ accentColor: '#7c6fff', width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
+        style={{ accentColor: 'var(--color-gold-500)', width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
       />
       <span style={{ fontSize: 14, color: '#f0eff5' }}>{label}</span>
     </label>
@@ -33,7 +33,7 @@ export default function PrivacyBlock() {
   };
 
   function handleSelectFocus(e) {
-    e.target.style.borderColor = '#7c6fff';
+    e.target.style.borderColor = 'var(--color-gold-500)';
     e.target.style.boxShadow = '0 0 0 3px rgba(124,111,255,0.12)';
   }
 
@@ -49,7 +49,7 @@ export default function PrivacyBlock() {
       </h2>
 
       <div style={{ marginBottom: 20 }}>
-        <label style={{ fontSize: 13, color: '#9998a8', display: 'block', marginBottom: 6, fontWeight: 500 }}>
+        <label style={{ fontSize: 13, color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 6, fontWeight: 500 }}>
           Visibilidade do Perfil
         </label>
         <select
@@ -64,7 +64,7 @@ export default function PrivacyBlock() {
       </div>
 
       <div>
-        <label style={{ fontSize: 13, color: '#9998a8', display: 'block', marginBottom: 6, fontWeight: 500 }}>
+        <label style={{ fontSize: 13, color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 6, fontWeight: 500 }}>
           Compartilhamento de Dados
         </label>
         <Checkbox

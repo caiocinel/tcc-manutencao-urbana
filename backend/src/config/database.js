@@ -1,6 +1,10 @@
 const { Pool } = require('pg');
 const logger = require('../services/logger');
 
+const sslConfig = process.env.DB_SSL === 'true'
+  ? { ssl: { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' } }
+  : {};
+
 const pool = new Pool({
   host: process.env.DB_HOST || 'postgres',
   port: parseInt(process.env.DB_PORT || '5432'),
@@ -10,6 +14,7 @@ const pool = new Pool({
   max: parseInt(process.env.DB_POOL_MAX || '10'),
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
+  ...sslConfig,
 });
 
 pool.on('error', (err) => {

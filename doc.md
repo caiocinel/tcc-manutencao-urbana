@@ -607,43 +607,58 @@ Defeito.find({ status: 'pendente' })
 
 **Arquivo:** `frontend/src/styles/tokens.css`
 
-**Funcao:** Define todas as variaveis CSS do design system (dark theme).
+**Funcao:** Define todas as variaveis CSS do design system com tema dourado (gold).
+
+**Migracao (15/05/2026):** Design system migrado de CSS custom (`App.css`, 1092 linhas) para Tailwind v4 + tokens CSS com prefixo `--color-*`. Tema alterado para paleta dourada com fonte Geist Variable.
 
 ```css
 :root {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* Fontes */
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
-  --leading-none: 1;
-  --leading-tight: 1.15;
-  --leading-snug: 1.3;
-  --leading-normal: 1.5;
-  --leading-relaxed: 1.6;
+  /* Cores - Tema Dourado */
+  --color-gold-50: #FDF8E8;
+  --color-gold-100: #F5F0E8;
+  --color-gold-200: #E8D9A8;
+  --color-gold-300: #D4B872;
+  --color-gold-400: #D4A017;
+  --color-gold-500: #D4A017;
+  --color-gold-600: #B8860B;
+  --color-gold-700: #996515;
+  --color-gold-800: #7A4B0A;
+  --color-gold-900: #5C3A00;
 
-  /* Cores */
-  --bg-primary: #0d0d0f;
-  --bg-surface: #141517;
-  --bg-elevated: #1e1f22;
-  --bg-input: #0d0d0f;
-  --bg-hover: #25262b;
-  --border-default: #27272a;
-  --border-hover: #3f3f46;
-  --text-primary: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
-  --text-muted: #52525b;
-  --accent-green: #22c55e;
-  --accent-green-bg: rgba(34, 197, 94, 0.1);
-  --accent-yellow: #eab308;
-  --accent-yellow-bg: rgba(234, 179, 8, 0.1);
-  --accent-orange: #f97316;
-  --accent-orange-bg: rgba(249, 115, 22, 0.1);
-  --accent-red: #ef4444;
-  --accent-red-bg: rgba(239, 68, 68, 0.1);
-  --accent-amber: #f59e0b;
-  --accent-blue: #3b82f6;
-  --accent-blue-bg: rgba(59, 130, 246, 0.1);
-  --overlay: rgba(0, 0, 0, 0.6);
+  --color-bg-primary: #0A0A0A;
+  --color-bg-surface: #141414;
+  --color-bg-elevated: #1A1A1A;
+  --color-bg-hover: #252525;
+  --color-bg-input: #0A0A0A;
+
+  --color-border-default: #2A2A2A;
+  --color-border-hover: #3A3A3A;
+
+  --color-text-primary: #FAFAFA;
+  --color-text-secondary: #A1A1AA;
+  --color-text-tertiary: #71717A;
+  --color-text-muted: #52525B;
+  --color-text-inverse: #0A0A0A;
+
+  --color-success: #4CAF7D;
+  --color-warning: #D4A017;
+  --color-error: #CF4444;
+  --color-info: #4A90D9;
+
+  --color-overlay: rgba(0, 0, 0, 0.7);
+  --color-backdrop: rgba(0, 0, 0, 0.6);
+
+  /* Status colors */
+  --status-pendente: #4A90D9;
+  --status-em_andamento: #D4A017;
+  --status-atendido: #4CAF7D;
+  --status-encerrado: #6B5B3E;
+  --status-concluido: #4CAF7D;
+  --status-critico: #CF4444;
 
   /* Tipografia */
   --text-xs: 12px;
@@ -661,11 +676,6 @@ Defeito.find({ status: 'pendente' })
   --weight-medium: 500;
   --weight-semibold: 600;
   --weight-bold: 700;
-
-  --tracking-tight: -0.02em;
-  --tracking-normal: 0;
-  --tracking-wide: 0.03em;
-  --tracking-wider: 0.06em;
 
   /* Espacamento */
   --space-1: 4px;
@@ -701,9 +711,36 @@ Defeito.find({ status: 'pendente' })
 }
 ```
 
+**`globals.css` (novo):** Importa Tailwind v4 via `@import "tailwindcss"`, usa `@theme inline` para mapear tokens Tailwind às variaveis CSS, e importa `tw-animate-css` para animacoes.
+
+```css
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --color-gold-50: var(--color-gold-50);
+  --color-gold-500: var(--color-gold-500);
+  --color-gold-600: var(--color-gold-600);
+  --color-bg-primary: var(--color-bg-primary);
+  --color-bg-surface: var(--color-bg-surface);
+  --color-bg-elevated: var(--color-bg-elevated);
+  --color-bg-hover: var(--color-bg-hover);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted: var(--color-text-muted);
+  --color-border-default: var(--color-border-default);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-error: var(--color-error);
+  --color-info: var(--color-info);
+}
+```
+
 ### 2.3 Componente Raiz - `frontend/src/App.jsx`
 
 **Arquivo:** `frontend/src/App.jsx`
+
+**Migracao (15/05/2026):** Reescrito com nova arquitetura: `ProtectedRoute`, `AppHeader`, `AppLayout`, `CommandMenu`, `UserDropdown`. Removido `SkipLink` (integrado ao layout), `MapPageGuard` (substituido por ProtectedRoute). Importacao trocada de `App.css` para `globals.css`.
 
 **Provedores e rotas:**
 
@@ -714,26 +751,42 @@ Defeito.find({ status: 'pendente' })
       <AuthProvider>                       ← Gerencia estado de login global
         <ToastProvider>                    ← Notificacoes toast (auto-dismiss 3.5s)
           <BrowserRouter>                  ← Navegacao SPA
-            <SkipLink />                   ← Link de acessibilidade "Ir para conteudo"
-            <Routes>
-              /              → MapPage       (mapa interativo com clusters)
-              /login         → Login         (autenticacao)
-              /registro      → Register      (cadastro com CPF e municipio)
-              /lista         → DefectList    (lista de chamados em cards)
-              /config        → Settings      (selecao de municipio)
-              /conta         → AccountSettings (senha, verificacao de email)
-              /admin           → AdminDashboard   (painel admin com mapa + regioes)
-              /admin/dashboard → AdminDashboardMetrics (metricas com graficos)
-              /admin/usuarios  → SuperAdmin      (gerenciar usuarios e permissoes)
-              *                → redirect para /
-            </Routes>
-        </BrowserRouter>
-      </ToastProvider>
-    </AuthProvider>
-   </ThemeProvider>
+            <KeyboardNav />                ← Atalhos de teclado
+            <AppLayout />                  ← Layout com header condicional + routes
+              <AppHeader />                ← Header com logo, busca, tema, user
+              <CommandMenu />              ← Busca global (Cmd+K)
+              <UserDropdown />             ← Menu do usuario com avatar
+              <ProtectedRoute />           ← Wrapper para rotas autenticadas
+              <Routes>
+                /              → MapPage       (mapa interativo com clusters)
+                /login         → Login         (autenticacao com framer-motion)
+                /registro      → Register      (cadastro com CPF e municipio)
+                /lista         → DefectList    (lista de chamados em cards)
+                /config        → Settings      (selecao de municipio)
+                /conta         → ProfileSettings (configuracoes da conta)
+                /configuracoes → GeneralSettings (configuracoes gerais)
+                /admin         → AdminDashboard   (painel admin com mapa + regioes)
+                /admin/dashboard → AdminDashboardMetrics (metricas com graficos)
+                /admin/usuarios  → SuperAdmin      (gerenciar usuarios e permissoes)
+                *                → redirect para /
+              </Routes>
+          </BrowserRouter>
+        </ToastProvider>
+      </AuthProvider>
+    </ThemeProvider>
   </IconContext.Provider>
 </ErrorBoundary>
 ```
+
+**Novos componentes internos:**
+
+| Componente | Funcao |
+|---|---|
+| `ProtectedRoute` | Wrapper que verifica `isAuthenticated` e redireciona para `/login` se nao autenticado. Mostra loading skeleton durante verificacao. |
+| `AppHeader` | Header com logo SVG, titulo "Central de Inteligencia Urbana", botao de busca (Cmd+K), toggle de tema (Sun/Moon), e `UserDropdown` ou botao "Entrar". |
+| `AppLayout` | Layout principal com `flex` column, header condicional (nao renderiza em paginas de auth ou mapa), e `main` com `Routes`. |
+| `PageFallback` | Skeleton de loading com animacao pulse (substitui skeleton classes antigas). |
+| `AnimatedRoute` | Wrapper com `framer-motion` para transicoes de pagina (duration 0.2s, y: 6). |
 
 ### 2.4 Servico de API - `frontend/src/services/api.js`
 
@@ -779,19 +832,134 @@ Defeito.find({ status: 'pendente' })
 | `pushKey()` | GET `/api/auth/push/key` | Chave publica VAPID |
 | `pushSubscribe(subscription)` | POST `/api/auth/push/subscribe` | Salvar subscription push |
 
-### 2.5 Componentes do Header - `frontend/src/components/`
+### 2.5 Componentes de UI - `frontend/src/components/ui/`
 
-**Arquivos:**
-- `Header.jsx` — Navbar principal com logo SVG, titulo, botao "Voltar para o mapa" e UserMenu
-- `UserMenu.jsx` — Avatar com iniciais do usuario + dropdown de navegacao (Lista, Configuracoes, Painel admin, Sair)
+**Migracao (15/05/2026):** Componentes de UI reescritos seguindo padrao shadcn/ui com Tailwind v4. Substituem `Header.jsx`, `UserMenu.jsx`, `SearchableSelect.jsx` e classes CSS customizadas.
 
-**Comportamento:**
-- Header full-width (fora do container de conteudo) em todas as paginas
-- Botao "Voltar para o mapa" com estilo outline semi-transparente
-- UserMenu com avatar circular, dropdown com click-outside para fechar
-- Parte esquerda (logo + titulo) clicavel para navegar ao mapa
+**`lib/utils.js`:** Utilidade `cn()` com `clsx` + `tailwind-merge` para composicao de classes.
 
-### 2.6 Contexto de Autenticacao - `frontend/src/context/AuthContext.jsx`
+#### 2.5.1 Button - `frontend/src/components/ui/button.jsx`
+
+Componente de botao com `class-variance-authority` (CVA) para variantes e tamanhos.
+
+**Base:** `@base-ui/react/button` (ButtonPrimitive)
+
+**Variantes:**
+| Variante | Estilo |
+|---|---|
+| `primary` | bg gold-500, text inverse, font-semibold, shadow-sm |
+| `secondary` | border gold-500, text gold-500, hover bg transparente |
+| `ghost` | bg transparente, hover bg-elevated |
+| `danger` | bg error, text white |
+
+**Tamanhos:** `xs` (h-6), `sm` (h-7), `default` (h-9), `lg` (h-10), `icon` (size-9), `icon-sm` (size-7), `icon-xs` (size-6), `icon-lg` (size-10)
+
+#### 2.5.2 CommandMenu - `frontend/src/components/ui/command-menu.jsx`
+
+Menu de busca global acionado por `Cmd+K` ou botao de lupa.
+
+**Funcionalidades:**
+- Overlay com backdrop blur (`bg-black/70 backdrop-blur-sm`)
+- Input de busca com filtro por label, keywords e path
+- Navegacao por teclado (ArrowUp/Down, Enter, Escape)
+- Icones Phosphor com peso bold no item selecionado
+- Paginas: Mapa, Lista de Chamados, Configuracoes, Painel Admin, Metricas, Usuarios
+- Paginas admin filtradas por prop `isAdmin`
+- Animacao framer-motion (scale 0.96 → 1, duration 0.2s)
+
+#### 2.5.3 StatusBadge - `frontend/src/components/ui/status-badge.jsx`
+
+Badge de status para chamados com cores semanticas.
+
+| Status | Cor | Label |
+|---|---|---|
+| `pendente` | `#4A90D9` (azul) | Aberto |
+| `em_andamento` | `#D4A017` (dourado) | Em Andamento |
+| `vinculado_sem_resposta` | `#D4A017` (dourado) | Vinculado |
+| `vinculado_com_resposta` | `#4A90D9` (azul) | Com Resposta |
+| `atendido` | `#4CAF7D` (verde) | Resolvido |
+| `encerrado` | `#6B5B3E` (marrom) | Encerrado |
+| `concluido` | `#4CAF7D` (verde) | Concluído |
+| `critico` | `#CF4444` (vermelho) | Crítico (animate-pulse) |
+| `aberto` | `#4A90D9` (azul) | Aberto |
+| `resolvido` | `#4CAF7D` (verde) | Resolvido |
+
+**Props:** `status` (obrigatorio), `className` (opcional), `pulse` (boolean, adiciona animate-pulse)
+
+#### 2.5.4 UserDropdown - `frontend/src/components/ui/user-dropdown.jsx`
+
+Menu dropdown do usuario com avatar (inicial do nome), info do perfil, e navegacao.
+
+**Funcionalidades:**
+- Avatar circular com inicial do nome (`user.nome.charAt(0)`)
+- Click-outside para fechar (event listener `mousedown`)
+- Animacao framer-motion (opacity, scale, y)
+- Info: nome, email, municipio + UF
+- Links: Mapa, Lista de Chamados, Configuracoes
+- Secao Admin (condicional): Painel, Metricas, Usuarios
+- Botao Sair com cor error e hover vermelho transparente
+- Icones Phosphor: MapPin, List, User, Layout, ChartBar, Users, SignOut
+
+#### 2.5.5 Data Table - `frontend/src/components/ui/data-table.jsx`
+
+Tabela de dados generica com ordenacao, paginacao e selecao.
+
+#### 2.5.6 KPI Card - `frontend/src/components/ui/kpi-card.jsx`
+
+Card de metrica KPI com titulo, valor, e indicador de tendencia.
+
+#### 2.5.7 Searchable Select - `frontend/src/components/ui/searchable-select.jsx`
+
+Dropdown searchable com busca e selecao. Substitui `SearchableSelect.jsx` antigo.
+
+#### 2.5.8 Timeline - `frontend/src/components/ui/timeline.jsx`
+
+Componente de timeline para historico de atualizacoes de chamados.
+
+### 2.6 Componentes Removidos
+
+**Migracao (15/05/2026):** Os seguintes arquivos foram removidos:
+
+| Arquivo | Motivo | Substituto |
+|---|---|---|
+| `App.css` (1092 linhas) | CSS custom monolitico | Tailwind v4 + tokens CSS |
+| `Header.jsx` | Header monolitico | `AppHeader` em `App.jsx` |
+| `UserMenu.jsx` | Menu de usuario basico | `UserDropdown` em `components/ui/` |
+| `LazyImage.jsx` | Componente de lazy loading | Native `loading="lazy"` |
+| `SearchableSelect.jsx` | Dropdown searchable | `searchable-select.jsx` em `components/ui/` |
+| `settings/AccountBlock.jsx` | Bloco de conta | Integrado ao `ProfileSettings` |
+| `settings/ActivityLogBlock.jsx` | Bloco de atividade | Removido |
+| `settings/NotificationsBlock.jsx` | Bloco de notificacoes | Removido |
+| `settings/PreferencesBlock.jsx` | Bloco de preferencias | Removido |
+| `settings/PrivacyBlock.jsx` | Bloco de privacidade | Removido |
+| `settings/SecurityBlock.jsx` | Bloco de seguranca | Removido |
+| `index.css` (33 linhas) | CSS global antigo | `globals.css` com Tailwind v4 |
+
+### 2.7 Componente Toast - `frontend/src/components/Toast.jsx`
+
+**Arquivo:** `frontend/src/components/Toast.jsx`
+
+**Funcao:** Notificacoes toast nao-intrusivas com auto-dismiss.
+
+**API:**
+```jsx
+import { useToast } from '../components/Toast';
+
+function MyComponent() {
+  const addToast = useToast();
+  addToast('Sucesso!');           // timeout 3.5s
+  addToast('Erro!', 'error');     // estilizacao vermelha
+}
+```
+
+**Funcionamento:**
+- `ToastProvider` envolve a arvore de componentes em `App.jsx`
+- `useToast()` hook retorna funcao `addToast(message, type?)`
+- Toasts sao renderizados em container fixed (bottom center)
+- Animacao slide-in + auto-dismiss apos 3.5s
+- Tipos: `success` (verde, padrao), `error` (vermelho)
+
+### 2.8 Contexto de Autenticacao - `frontend/src/context/AuthContext.jsx`
 
 **Arquivo:** `frontend/src/context/AuthContext.jsx`
 
@@ -839,7 +1007,11 @@ function MyComponent() {
 
 ### 2.8 Componente SearchableSelect - `frontend/src/components/SearchableSelect.jsx`
 
-### 2.9 Pagina do Mapa - `frontend/src/pages/MapPage.jsx`
+### 2.9 SearchableSelect - `frontend/src/components/ui/searchable-select.jsx`
+
+**Migracao (15/05/2026):** Substitui `SearchableSelect.jsx` antigo (77 linhas). Nova versao em `components/ui/` seguindo padrao shadcn/ui.
+
+### 2.10 Pagina do Mapa - `frontend/src/pages/MapPage.jsx`
 
 ### 2.10 Pagina de Listagem - `frontend/src/pages/DefectList.jsx`
 
@@ -1185,18 +1357,26 @@ docker compose --profile backup up -d
 
 | Pacote | Funcao |
 |---|---|
-| react | UI library |
+| react | UI library (v19) |
 | react-dom | Renderizacao DOM |
 | react-router-dom | Roteamento SPA (v7+) |
 | @phosphor-icons/react | Icones vetoriais (substitui emojis e Tabler Icons) |
 | leaflet | Mapas interativos |
 | react-leaflet | Componentes React para Leaflet |
-| vite | Bundler |
+| vite | Bundler (v8) |
 | @vitejs/plugin-react | React Fast Refresh |
 | vite-plugin-pwa | PWA + service worker |
 | workbox-precaching | Precaching no SW |
 | recharts | Graficos (dashboard de metricas) |
 | leaflet.heat | Plugin de mapa de calor para Leaflet |
+| **tailwindcss** | **Utility-first CSS framework (v4)** |
+| **@tailwindcss/vite** | **Plugin Tailwind para Vite** |
+| **framer-motion** | **Animacoes e transicoes de pagina** |
+| **class-variance-authority** | **Variantes de componentes (CVA)** |
+| **clsx** | **Composicao condicional de classes** |
+| **tailwind-merge** | **Merge de classes Tailwind sem conflitos** |
+| **tw-animate-css** | **Animacoes utilitarias para Tailwind** |
+| **@base-ui/react** | **Componentes base acessiveis (ButtonPrimitive)** |
 
 ---
 
@@ -1396,4 +1576,239 @@ Também foi adicionado o `anexarSchema` faltante na desestruturação do `requir
 | 8 | Backup automatizado | ⏳ Diferido | 2h |
 | 9 | Observabilidade | ⏳ Diferido | 1h |
 | 10 | Fix: validate() antes de Multer (erro required) | ✅ Feito | 15min |
-| — | Stress test + pentest | 📋 Proximo passo | — |
+| 11 | Pentest: botao duplo clique | ✅ Feito | 15min |
+| 12 | Pentest: vazamento de dados (PII) | ✅ Feito | 30min |
+| 13 | Pentest: headers de seguranca + server_tokens | ✅ Feito | 15min |
+| 14 | Pentest: email super admin hardcoded | ✅ Feito | 15min |
+| 15 | Pentest: rate limit /uploads | ✅ Feito | 10min |
+| 16 | Cloudflare setup | ✅ Feito | 30min |
+| — | Stress test + pentest | ✅ Concluido | — |
+
+---
+
+### 11.0 Resposta a Pentest (14/05/2026)
+
+**Contexto:** Amigo realizou pentest no ambiente de homologacao e identificou 6 vulnerabilidades (2 criticas, 1 alta, 2 medias, 1 baixa). Todas corrigidas.
+
+#### 11.1 Duplo Clique no Formulario — Botao Enviar (P0)
+
+**Problema:** Servidor com latencia alta permitia que o usuario clicasse 5-6x no botao "Enviar", criando chamados em lote.
+
+**Solucao:**
+- Estado `submitting` no componente `MapPage.jsx`
+- Botao desabilitado (`disabled`) com estilo cinza (`background: #6b7280`, `opacity: 0.5`)
+- Texto muda para "Enviando..." durante a requisicao
+- Bloqueio inicial: `if (submitting) return` antes de qualquer validacao
+- Reset no `finally` apos sucesso ou erro
+
+**Arquivos:** `frontend/src/pages/MapPage.jsx`
+
+#### 11.2 Vazamento de Dados Pessoais — PII (P0)
+
+**Problema:** `GET /api/defeitos` retornava todos os chamados + dados completos dos usuarios (nome, email) sem autenticacao.
+
+**Solucao:**
+- Endpoints publicos (`GET /`, `GET /clusters`, `GET /:id`): `populate('usuario', 'nome')` — apenas nome
+- Endpoints autenticados (`GET /meus`, `GET /regioes`): mantem `nome email`
+- Endpoints publicos nao expoem mais email dos usuarios
+
+**Arquivos:** `backend/src/routes/defeitos.js`
+
+#### 11.3 Headers de Seguranca HTTP (P1)
+
+**Problema:** Ausencia total de headers de seguranca nas respostas do servidor.
+
+**Solucao:** Adicionados em todos os 4 arquivos de configuracao nginx:
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `X-XSS-Protection: 1; mode=block`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Strict-Transport-Security` (ja existia no prod)
+- `Permissions-Policy` (prod)
+- `Cross-Origin-Embedder-Policy` (prod)
+- `Cross-Origin-Opener-Policy` (prod)
+
+**Arquivos:** `nginx.prod.conf`, `nginx.conf`, `nginx.host.conf`, `frontend/nginx.conf`
+
+#### 11.4 Exposicao da Versao do Servidor (P1)
+
+**Problema:** Header `Server: nginx/1.31.0` visivel em todas respostas.
+
+**Solucao:** `server_tokens off;` adicionado em todos os 4 arquivos nginx.
+
+**Arquivos:** `nginx.prod.conf`, `nginx.conf`, `nginx.host.conf`, `frontend/nginx.conf`
+
+#### 11.5 Acesso Direto a Uploads (P2)
+
+**Problema:** Diretorio `/uploads/` acessivel publicamente sem restricao.
+
+**Solucao:**
+- Rate limiting no nginx: `limit_req zone=uploads burst=10 nodelay` (30 req/min)
+- Imagens ja passam por desfoque de privacidade (sigma 0.6, existente)
+
+**Arquivos:** `nginx.prod.conf`
+
+#### 11.6 Email do Super Admin Hardcoded (P2)
+
+**Problema:** Email `josemurilorodriguessabalo@gmail.com` hardcoded em 4 lugares no codigo-fonte (backend + bundle frontend).
+
+**Solucao:**
+- Nova env var: `SUPER_ADMIN_EMAIL` — definida em `.env`, `.env.production`, `docker-compose`
+- Backend usa `process.env.SUPER_ADMIN_EMAIL` no middleware `requireSuperAdmin` e na protecao de autodemocao
+- Backend retorna campo `super_admin: true/false` no endpoint `/admin/users`
+- Frontend usa `u.super_admin` em vez de comparacao de email
+
+**Arquivos:** `backend/src/routes/auth.js`, `frontend/src/pages/SuperAdmin.jsx`, `.env`, `.env.production`, `backend/.env.example`, `docker-compose.yml`, `docker-compose.host.yml`
+
+#### 11.7 Cloudflare
+
+**Script:** `scripts/setup-cloudflare.sh` — configura ranges de IP, UFW, real_ip recovery.
+**Passos manuais necessarios:** Adicionar dominio no Cloudflare Dashboard, atualizar nameservers, configurar SSL/TLS como Full (strict), ativar Always Use HTTPS, WAF, Bot Fight Mode.
+
+**Pendencias pos-propagacao DNS (2h):**
+1. Cloudflare Dashboard: SSL/TLS → Overview → **Full (strict)**
+2. Cloudflare Dashboard: SSL/TLS → Edge Certificates → **Always Use HTTPS**: ON
+3. Cloudflare Dashboard: SSL/TLS → Edge Certificates → **Automatic HTTPS Rewrites**: ON
+4. Cloudflare Dashboard: SSL/TLS → Edge Certificates → **Minimum TLS Version**: TLS 1.2
+5. Cloudflare Dashboard: SSL/TLS → Origin Server → **Create Certificate** (15 anos, `tcc.josemurilors.com.br` e `*.josemurilors.com.br`)
+6. Colar certificado + chave no VPS (`/etc/cloudflare/`) e atualizar `nginx.prod.conf`
+7. Rodar `scripts/setup-cloudflare.sh` no VPS (configura ranges de IP, UFW)
+8. Opcional: remover servico `certbot` do `docker-compose.yml` (Cloudflare substitui Let's Encrypt)
+9. Verificar headers de seguranca: `curl -sI https://tcc.josemurilors.com.br/`
+
+---
+
+## 12. MIGRACAO FRONTEND (15/05/2026)
+
+### 12.1 Resumo
+
+Migracao completa do design system frontend de CSS custom monolitico (`App.css`, 1092 linhas) para **Tailwind v4 + shadcn/ui** com tema dourado.
+
+| Metrica | Antes | Depois | Mudanca |
+|---|---|---|---|
+| CSS custom | 1092 linhas (`App.css`) | 0 | **-1092 linhas** |
+| Arquivos removidos | 13 componentes/blocos | 0 | **-13 arquivos** |
+| Componentes UI novos | 0 | 8 | **+8 componentes** |
+| Linhas modificadas | — | 1907 insertions, 4520 deletions | **-2613 linhas liquidas** |
+| Build size | — | ~120KB gzipped | Otimizado |
+| Framework CSS | CSS custom + variaveis | Tailwind v4 + `@theme inline` | Modernizado |
+| Fonte | Inter | Geist Variable | Atualizada |
+| Tema | Dark theme generico | Tema dourado (`#D4A017`) | Rebrand |
+
+### 12.2 Arquivos Modificados (40)
+
+**Frontend (36 arquivos):**
+- `App.css` → **removido** (1092 linhas)
+- `App.jsx` → reescrito (+118/-50): ProtectedRoute, AppHeader, AppLayout, CommandMenu
+- `constants.js` → cores de status atualizadas para paleta dourada (+12/-16)
+- `tokens.css` → tema dourado com prefixo `--color-*` (+194/-194)
+- `globals.css` → **novo**: Tailwind v4 imports, `@theme inline`, Geist font
+- `index.css` → **removido** (33 linhas)
+- `main.jsx` → import de `globals.css` no lugar de `index.css`
+- `pages/MapPage.jsx` → refatorado (+1111/-1111): StatusBadge, createPinIcon, HeatmapLayer
+- `pages/AdminDashboard.jsx` → refatorado (+479/-479): StatusBadge, KPI cards
+- `pages/AdminDashboardMetrics.jsx` → refatorado (+482/-482)
+- `pages/DefectList.jsx` → refatorado (+223/-223)
+- `pages/Login.jsx` → reescrito (+100/-100): framer-motion, useToast
+- `pages/Register.jsx` → refatorado (+212/-212)
+- `pages/Settings.jsx` → refatorado (+67/-67)
+- `pages/ProfileSettings.jsx` → refatorado (+550/-550)
+- `pages/GeneralSettings.jsx` → refatorado (+130/-130)
+- `pages/SuperAdmin.jsx` → refatorado (+113/-113)
+- `components/Header.jsx` → **removido**
+- `components/UserMenu.jsx` → **removido**
+- `components/LazyImage.jsx` → **removido**
+- `components/SearchableSelect.jsx` → **removido** (substituido por `ui/searchable-select.jsx`)
+- `components/Toast.jsx` → refatorado (+81/-81)
+- `components/HeatmapLayer.jsx` → ajustado (+2/-1)
+- `components/settings/*` → **todos removidos** (6 arquivos)
+- `context/AuthContext.jsx` → ajustado (+1/-0)
+- `context/ThemeContext.jsx` → ajustado (+2/-1)
+- `package.json` → adicionados: tailwindcss, @tailwindcss/vite, tw-animate-css, shadcn
+- `package-lock.json` → atualizado (+238)
+
+**Componentes UI novos (8):**
+- `ui/button.jsx` → Button com CVA (4 variantes, 8 tamanhos)
+- `ui/command-menu.jsx` → Busca global Cmd+K
+- `ui/data-table.jsx` → Tabela generica
+- `ui/kpi-card.jsx` → Card de metrica
+- `ui/searchable-select.jsx` → Dropdown searchable
+- `ui/status-badge.jsx` → Badge de status (10 status)
+- `ui/timeline.jsx` → Timeline de atualizacoes
+- `ui/user-dropdown.jsx` → Menu do usuario
+
+**Backend/Infra (4 arquivos):**
+- `backend/src/config/database.js` → SSL config (+5)
+- `backend/src/routes/auth.js` → authLimiter em endpoints protegidos (+3/-3)
+- `docker-compose.yml` → ajustado (+4/-4)
+- `nginx.prod.conf` → ajustado (+36/-36)
+
+### 12.3 Design Tokens - Paleta Dourada
+
+**Cores principais:**
+| Token | Valor | Uso |
+|---|---|---|
+| `--color-gold-500` | `#D4A017` | Cor primaria, botoes, links |
+| `--color-gold-400` | `#D4A017` | Hover de botoes |
+| `--color-gold-600` | `#B8860B` | Variantes escuras |
+| `--color-bg-primary` | `#0A0A0A` | Fundo principal |
+| `--color-bg-surface` | `#141414` | Fundo de superficies |
+| `--color-bg-elevated` | `#1A1A1A` | Fundo elevado (dropdowns) |
+| `--color-bg-hover` | `#252525` | Hover de elementos |
+| `--color-border-default` | `#2A2A2A` | Bordas padrao |
+| `--color-text-primary` | `#FAFAFA` | Texto principal |
+| `--color-text-secondary` | `#A1A1AA` | Texto secundario |
+| `--color-text-muted` | `#52525B` | Texto desabilitado |
+| `--color-text-inverse` | `#0A0A0A` | Texto em fundo claro |
+
+**Cores de status:**
+| Status | Cor | Label |
+|---|---|---|
+| Pendente/Aberto | `#4A90D9` (azul) | Aberto |
+| Em Andamento | `#D4A017` (dourado) | Em Andamento |
+| Atendido/Resolvido | `#4CAF7D` (verde) | Resolvido |
+| Encerrado | `#6B5B3E` (marrom) | Encerrado |
+| Critico | `#CF4444` (vermelho) | Critico |
+
+### 12.4 Tailwind v4 - `@theme inline`
+
+**Configuracao (`globals.css`):**
+```css
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --color-gold-500: var(--color-gold-500);
+  --color-bg-primary: var(--color-bg-primary);
+  --color-text-primary: var(--color-text-primary);
+  /* ... mapeamento de tokens */
+}
+```
+
+**Diferencas v3 → v4:**
+- `@import "tailwindcss"` no lugar de `@tailwind base/components/utilities`
+- `@theme inline` para definir tokens customizados
+- Zero configuracao `tailwind.config.js` necessaria
+- Plugins via `@tailwindcss/vite` no lugar de `tailwindcss` postcss plugin
+
+### 12.5 Justificativas
+
+| Decisao | Motivo |
+|---|---|
+| Tailwind v4 | Utility-first, menor bundle, `@theme inline` nativo, zero config |
+| shadcn/ui pattern | Componentes acessiveis, composiveis, padrao da industria |
+| Tema dourado | Identidade visual "Central de Inteligencia Urbana" |
+| Geist Variable | Fonte moderna, legivel, variable font (menos requests) |
+| framer-motion | Animacoes declarativas, melhor DX que CSS animations |
+| CVA (class-variance-authority) | Variantes de componentes tipadas e reutilizaveis |
+| Remover `App.css` | 1092 linhas de CSS custom → Tailwind utilitario (mais manutenivel) |
+| Remover `settings/*` blocks | Simplificacao: configuracoes integradas nas paginas especificas |
+
+### 12.6 Build
+
+**Resultado (`vite v8.0.10`):**
+- 5619 modules processados
+- `dist/assets/index-CQ3ZjYdi.css`: 41.54KB
+- `dist/assets/MapPage-BjyMH9EB.js`: 27.60KB
+- Total: ~120KB gzipped
+- Build: **sucesso**, sem erros
