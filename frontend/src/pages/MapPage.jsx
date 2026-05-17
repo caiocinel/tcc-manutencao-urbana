@@ -69,6 +69,11 @@ export default function MapPage() {
   const polygonCoordsRef = useRef(null);
   useEffect(() => { polygonCoordsRef.current = polygonCoords; }, [polygonCoords]);
   const [atendendo, setAtendendo] = useState(null);
+  const [apoiando, setApoiando] = useState(null);
+  const [apoiei, setApoiei] = useState(new Set());
+  const [selectedImage, setSelectedImage] = useState(null);
+  const anexarRef = useRef(null);
+  const [anexando, setAnexando] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const { theme, toggle: toggleTheme } = useTheme();
 
@@ -120,7 +125,7 @@ export default function MapPage() {
 
   useEffect(() => {
     if (showForm && coords) reverseGeocode(coords.lat, coords.lng);
-  }, [showForm]);
+  }, [showForm, coords]);
 
   useEffect(() => {
     const m = mapRef.current;
@@ -135,6 +140,13 @@ export default function MapPage() {
     api.listCategorias().then(c => { if (!cancelled) setCategorias(c); }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    api.apoiei().then(r => { if (!cancelled) setApoiei(new Set(r.ids)); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (isAuthenticated) return;
@@ -227,6 +239,28 @@ export default function MapPage() {
     } catch (err) { addToast('Erro: ' + err.message, 'error'); }
     finally { setAtendendo(null); }
   }, [addToast, user?.id]);
+
+  const handleApoiar = useCallback(async (id) => {
+    setApoiando(id);
+    try {
+      const res = await api.apoiarDefeito(id);
+      setApoiei(prev => {
+        const next = new Set(prev);
+        if (res.apoiado) next.add(id); else next.delete(id);
+        return next;
+      });
+      if (res.apoiado) {
+        addToast('Apoio registrado!');
+        setDefeitos(prev => prev.map(d => d.id === id ? { ...d, total_apoios: (d.total_apoios || 0) + 1 } : d));
+        setSelected(prev => prev?.id === id ? { ...prev, total_apoios: (prev.total_apoios || 0) + 1 } : prev);
+      } else {
+        addToast('Apoio removido.');
+        setDefeitos(prev => prev.map(d => d.id === id ? { ...d, total_apoios: Math.max(0, (d.total_apoios || 0) - 1) } : d));
+        setSelected(prev => prev?.id === id ? { ...prev, total_apoios: Math.max(0, (prev.total_apoios || 0) - 1) } : prev);
+      }
+    } catch (err) { addToast('Erro: ' + err.message, 'error'); }
+    finally { setApoiando(null); }
+  }, [addToast]);
 
   const mapKey = `${theme}-${hasMunicipio ? `${user?.municipio_id}-${user?.municipio?.min_lat}-${user?.municipio?.min_lng}` : 'default'}`;
 
@@ -321,7 +355,10 @@ export default function MapPage() {
                 position={[d.latitude, d.longitude]}
                 icon={createDefectIcon(d.status, d.atendido_em || d.atualizado_em)}
                 eventHandlers={{
-                  click: () => setSelected(d),
+                  click: () => {
+                    setSelected(d);
+                    api.detalharDefeito(d.id).then(full => setSelected(full)).catch(() => {});
+                  },
                 }}
               />
             ))
@@ -364,6 +401,21 @@ export default function MapPage() {
                 style={{ borderColor: 'var(--color-border-default)' }}
                 onFocus={e => e.target.style.borderColor = 'var(--color-gold-500)'}
                 onBlur={e => e.target.style.borderColor = 'var(--color-border-default)'} />
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-hover)' }}>
+                  <div className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${Math.min(100, (formData.descricao.length / 20) * 100)}%`,
+                      background: formData.descricao.length >= 20
+                        ? 'var(--color-success)'
+                        : 'var(--color-error)',
+                    }} />
+                </div>
+                <span className="text-xs font-mono shrink-0"
+                  style={{ color: formData.descricao.length >= 20 ? 'var(--color-success)' : 'var(--color-error)' }}>
+                  {formData.descricao.length}/20
+                </span>
+              </div>
               <select value={formData.categoria} onChange={e => setFormData(p => ({ ...p, categoria: e.target.value }))}
                 className="w-full h-11 px-4 rounded-lg border text-sm outline-none bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
                 style={{ borderColor: 'var(--color-border-default)' }}>
@@ -440,8 +492,15 @@ export default function MapPage() {
               </div>
               <p className="text-xs mb-3 line-clamp-2" style={{ color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>{selected.descricao}</p>
               {selected.imagem_thumbnail && (
-                <img src={selected.imagem_thumbnail} alt="" className="w-full h-32 object-cover rounded-lg mb-3" />
+                <img src={selected.imagem_thumbnail} alt="" className="w-full h-32 object-cover rounded-lg mb-3 cursor-pointer"
+                  onClick={() => setSelectedImage(selected.imagem_thumbnail)} />
               )}
+              {selected.imagens_extra && (() => {
+                try { return JSON.parse(selected.imagens_extra); } catch { return []; }
+              })().map((url, i) => (
+                <img key={i} src={url} alt="" className="w-full h-32 object-cover rounded-lg mb-2 cursor-pointer"
+                  onClick={() => setSelectedImage(url)} />
+              ))}
               <div className="flex items-center gap-3 text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>
                 <span>{new Date(selected.criado_em).toLocaleDateString()}</span>
                 {selected.apoios_total > 0 && <span className="flex items-center gap-1"><ThumbsUp size={12} /> {selected.apoios_total}</span>}
@@ -456,23 +515,55 @@ export default function MapPage() {
                     <Handshake size={14} /> {atendendo === selected.id ? '...' : 'Atender Chamado'}
                   </button>
                 )}
-                <button className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
-                  style={{ background: 'rgba(212,160,23,0.12)', color: 'var(--color-gold-500)' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,160,23,0.2)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(212,160,23,0.12)'}>
-                  <ThumbsUp size={14} /> Apoiar
+                <button onClick={() => handleApoiar(selected.id)} disabled={apoiando === selected.id}
+                  className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                  style={{
+                    background: apoiei.has(selected.id) ? 'rgba(212,160,23,0.2)' : 'rgba(212,160,23,0.12)',
+                    color: 'var(--color-gold-500)',
+                    border: apoiei.has(selected.id) ? '1px solid var(--color-gold-500)' : 'none',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(212,160,23,0.2)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = apoiei.has(selected.id) ? 'rgba(212,160,23,0.2)' : 'rgba(212,160,23,0.12)'; }}>
+                  {apoiei.has(selected.id) ? <ThumbsUp size={14} weight="fill" /> : <ThumbsUp size={14} />}
+                  {apoiando === selected.id ? '...' : apoiei.has(selected.id) ? 'Apoiado' : 'Apoiar'}
                 </button>
-                <button className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                <button onClick={() => anexarRef.current?.click()} disabled={anexando === selected.id}
+                  className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
                   style={{ background: 'transparent', border: '1px solid var(--color-border-default)', color: 'var(--color-text-secondary)' }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--color-gold-500)'; e.currentTarget.style.color = 'var(--color-gold-500)'; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--color-border-default)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>
-                  <Camera size={14} /> Anexar
+                  <Camera size={14} /> {anexando === selected.id ? '...' : 'Anexar'}
                 </button>
+                <input ref={anexarRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                  onChange={async e => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    setAnexando(selected.id);
+                    try {
+                      await api.anexarImagem(selected.id, f);
+                      addToast('Imagem anexada!');
+                      const d = await api.detalharDefeito(selected.id);
+                      setSelected(d);
+                      setDefeitos(prev => prev.map(x => x.id === d.id ? d : x));
+                    } catch (err) { addToast('Erro: ' + err.message, 'error'); }
+                    finally { setAnexando(null); e.target.value = ''; }
+                  }} />
               </div>
             </motion.div>
           </div>
         )}
       </div>
+      {selectedImage && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 cursor-pointer"
+          onClick={() => setSelectedImage(null)}>
+          <img src={selectedImage} alt="" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+            onClick={e => e.stopPropagation()} />
+          <button onClick={() => setSelectedImage(null)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center text-white bg-black/40 hover:bg-black/60 transition-colors text-xl">
+            ✕
+          </button>
+        </div>
+      )}
       <CommandMenu open={cmdOpen} onClose={() => setCmdOpen(false)} isAdmin={user?.admin} />
     </div>
   );

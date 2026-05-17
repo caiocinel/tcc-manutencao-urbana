@@ -34,6 +34,113 @@ O sistema foi migrado de uma VPS x86 com 300MB RAM e 1 nucleo para a VPS ARM atu
 
 ---
 
+## Migracao para Python/Django (2026)
+
+O backend esta sendo migrado de Node.js/Express 5 para Python/Django 5.x com Django REST Framework. O backend Node.js (`backend/`) continua em producao ate a migracao completa. O novo backend Python (`backend-python/`) reutiliza o mesmo banco PostgreSQL 16 + PostGIS.
+
+### Justificativa da Migracao
+
+| Aspecto | Node.js/Express | Python/Django | Ganho |
+|---|---|---|---|
+| **Seguranca** | Manual (Helmet, CSRF custom) | Built-in (CSRF, XSS, SQL injection protection) | Reducao de vulnerabilidades |
+| **Admin Panel** | Necessario construir do zero | Django Admin pronto com GIS | Economia de semanas de dev |
+| **ORM** | Query builder manual (knex/pg) | ORM completo com PostGIS nativo | Queries espaciais simplificadas |
+| **Validacao** | Zod (manual em cada rota) | Serializers DRF (declarativo) | Menos codigo boilerplate |
+| **Testes** | Sem framework padronizado | pytest + Django test client | Testes integrados nativos |
+| **Ecossistema IA** | ONNX via node-onnxruntime | PyTorch/ONNX nativo, scikit-learn | Integracao direta com ML |
+| **Manutencao** | Callback hell potencial | Arquitetura MVC clara | Onboarding mais rapido |
+| **Autenticacao** | JWT custom + bcrypt | simplejwt + bcrypt compativel | Compatibilidade com hashes existentes |
+| **Rate Limiting** | express-rate-limit | django-ratelimit + Redis | Circuit breaker integrado |
+| **Documentacao API** | Manual | DRF gera schema OpenAPI automatico | Documentacao sempre atualizada |
+
+### Arquitetura do Novo Backend
+
+```
++----------------------------------------------------------+
+|                   NGINX (Proxy Reverso + SSL)             |
+|  Porta 80 (HTTP -> redireciona HTTPS)                    |
+|  Porta 443 (HTTPS com Let's Encrypt)                     |
+|  Proxy reverso para backend:8000                         |
+|  Cache de assets estaticos (30d)                         |
++---------------------------+------------------------------+
+|                   FRONTEND (React + Vite)                 |
+|  Build estatico servido pelo Nginx                       |
+|  PWA com service worker + notificacoes push              |
++---------------------------+------------------------------+
+|                   BACKEND (Python/Django 5.x)             |
+|  Gunicorn :8000 (interno, atras do Nginx)                |
+|  Django REST Framework (API RESTful)                     |
+|  simplejwt (autenticacao JWT compativel)                 |
+|  django-cors-headers, django-ratelimit                   |
+|  5 apps: users, defeitos, municipios, categorias, core   |
++---------------------------+------------------------------+
+|                   SERVICOS (Python standalone)            |
+|  encryption.py - AES-256-GCM (compativel com Node.js)    |
+|  cpf_validator.py - Validacao + BrasilAPI                |
+|  email_service.py - Resend async                         |
+|  push_service.py - pywebpush (Web Push)                  |
+|  image_processor.py - Pillow (WebP + blur)               |
+|  ia_client.py - FastAPI IA com Redis circuit breaker     |
++---------------------------+------------------------------+
+|                   BANCO POSTGRESQL 16 + POSTGIS           |
+|  Mesmo banco compartilhado (managed=False)               |
+|  Redis 7 (circuit breaker para IA)                       |
++----------------------------------------------------------+
+```
+
+### Compatibilidade com Backend Existente
+
+- **Senhas:** BCryptPasswordHasher customizado compativel com bcrypt do Node.js
+- **Criptografia CPF:** AES-256-GCM com mesmo formato `iv:tag:data` (hex)
+- **JWT:** simplejwt com mesmo SECRET_KEY e algoritmo
+- **Banco:** Models com `managed=False` mapeiam tabelas existentes sem alteracoes
+- **API:** Prefixo `/api/v1/` com trailing slashes (padrao Django)
+
+### Status da Migracao
+
+| Componente | Status | Notas |
+|---|---|---|
+| Project scaffold | ✅ Concluido | 5 apps criados, settings split (base/production) |
+| BCryptPasswordHasher | ✅ Concluido | Compativel com hashes Node.js |
+| Encryption service | ✅ Concluido | AES-256-GCM compativel |
+| CPF validator | ✅ Concluido | Validacao + BrasilAPI |
+| Email service | ✅ Concluido | Resend async |
+| Push service | ✅ Concluido | pywebpush + VAPID |
+| Image processor | ✅ Concluido | Pillow WebP + Gaussian blur |
+| IA client | ✅ Concluido | Circuit breaker Redis |
+| User model | ✅ Concluido | managed=False, AbstractBaseUser |
+| Defeito model | ✅ Concluido | PostGIS PointField |
+| Municipio model | ✅ Concluido | PostGIS MultiPolygonField |
+| Categoria model | ✅ Concluido | Mapeamento direto |
+| Auth views/serializers | ✅ Concluido | Register, Login, Profile, 2FA |
+| Defeito views/serializers | ✅ Concluido | CRUD + filtros + GIS |
+| Admin views | ✅ Concluido | SuperAdmin + VinculateMunicipio |
+| Frontend API integration | ✅ Concluido | api.js atualizado para /api/v1/ |
+| Docker compose | ✅ Concluido | Backend Python + Redis |
+| Nginx config | ✅ Concluido | Proxy para :8000 |
+| Testes | 🔄 Em progresso | pytest + conftest |
+| Producao | ⏳ Pendente | Switch do Node.js para Django |
+
+### Auditoria de Seguranca (2026-05-17)
+
+| Severidade | Count | Status |
+|---|---|---|
+| CRITICAL | 4 | ✅ Corrigidos |
+| HIGH | 8 | ✅ Corrigidos |
+| MEDIUM | 10 | 📋 Documentados |
+| LOW | 6 | 📋 Documentados |
+
+**Correcoes aplicadas:**
+- CSRF middleware habilitado no Django
+- DRF default permission alterado para `IsAuthenticated`
+- Django SECRET_KEY separado do JWT_SECRET
+- Porta 8000 removida do docker-compose (backend apenas via nginx)
+- Usuario non-root adicionado ao Dockerfile
+- Fallback de DB_PASSWORD removido do servico de backup
+- HSTS e SSL redirect adicionados ao production settings
+
+---
+
 ## Arquitetura do Sistema
 
 ```

@@ -1,12 +1,62 @@
+# Dependencies
 node_modules/
-.agents/
-.env
-.env.production
+.pnp/
+.pnp.js
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+.venv/
+venv/
+env/
+
+# Node
 backend/node_modules/
 backend/.env
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+
+# Environment
+.env
+.env.production
+.env.local
+.env.*.local
+
+# Backend
 backend/uploads/
 backend/public/
+
+# Database
 database/
+
+# AI/Agent files
+.agents/
+.claude-mem.md
+skills-lock.json
+.opencode/
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local-only docs
 todo.md
 SPEC.md
 doc.md
+
+# Dev compose (contains hardcoded dev credentials)
+docker-compose.dev.yml

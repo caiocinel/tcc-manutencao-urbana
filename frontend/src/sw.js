@@ -38,7 +38,7 @@ registerRoute(
 );
 
 registerRoute(
-  ({ url }) => url.pathname.startsWith('/api/defeitos') || url.pathname.startsWith('/api/categorias') || url.pathname.startsWith('/api/municipios') || url.pathname.startsWith('/api/defeitos/clusters'),
+  ({ url }) => url.pathname.startsWith('/api/v1/defeitos') || url.pathname.startsWith('/api/v1/categorias') || url.pathname.startsWith('/api/v1/municipios'),
   new NetworkFirst({
     cacheName: CACHES.api,
     plugins: [
@@ -88,14 +88,12 @@ async function processarFilaOffline() {
         const formData = new FormData();
         Object.entries(item.dados).forEach(([k, v]) => formData.append(k, v));
 
-        const res = await fetch('/api/defeitos', {
+        const res = await fetch('/api/v1/defeitos/', {
           method: 'POST',
           headers: {
             Authorization: token,
-            'X-XSRF-TOKEN': csrfToken,
           },
           body: formData,
-          credentials: 'include',
         });
 
         if (res.ok) {
@@ -130,9 +128,7 @@ async function openOfflineDB() {
 }
 
 async function getCsrfTokenOffline() {
-  const res = await fetch('/api/csrf-token', { credentials: 'include' });
-  const data = await res.json();
-  return data.csrfToken;
+  return '';
 }
 
 self.addEventListener('push', (event) => {

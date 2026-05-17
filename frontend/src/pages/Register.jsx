@@ -24,7 +24,7 @@ export default function Register() {
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) navigate('/');
-    api.listMunicipios().then(setMunicipios).catch(() => {});
+    api.getMunicipiosComAdmin().then(setMunicipios).catch(() => {});
   }, [isAuthenticated, authLoading, navigate]);
 
   function formatCpf(val) {
@@ -62,7 +62,7 @@ export default function Register() {
     setLoading(true);
     try {
       const res = await api.register(nome, email, senha, municipioId || undefined, cpf.replace(/\D/g, ''));
-      login(res.token, res.user);
+      login(res);
       addToast('Conta criada com sucesso!');
       navigate('/');
     } catch (err) { setError(err.message); }

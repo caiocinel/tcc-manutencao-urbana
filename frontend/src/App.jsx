@@ -18,7 +18,6 @@ const MapPage = lazy(() => import('./pages/MapPage'));
 const DefectList = lazy(() => import('./pages/DefectList'));
 const Settings = lazy(() => import('./pages/Settings'));
 const ProfileSettings = lazy(() => import('./pages/ProfileSettings'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const AdminDashboardMetrics = lazy(() => import('./pages/AdminDashboardMetrics'));
 const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
 const GeneralSettings = lazy(() => import('./pages/GeneralSettings'));
@@ -148,7 +147,6 @@ function AppLayout() {
             <Route path="/config" element={<ProtectedRoute><AnimatedRoute><Settings /></AnimatedRoute></ProtectedRoute>} />
             <Route path="/conta" element={<ProtectedRoute><AnimatedRoute><ProfileSettings /></AnimatedRoute></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><AnimatedRoute><GeneralSettings /></AnimatedRoute></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute><AnimatedRoute><AdminDashboard /></AnimatedRoute></ProtectedRoute>} />
             <Route path="/admin/dashboard" element={<ProtectedRoute><AnimatedRoute><AdminDashboardMetrics /></AnimatedRoute></ProtectedRoute>} />
             <Route path="/admin/usuarios" element={<ProtectedRoute><AnimatedRoute><SuperAdmin /></AnimatedRoute></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" />} />

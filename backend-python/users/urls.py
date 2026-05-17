@@ -1,0 +1,26 @@
+from django.urls import path
+from .views import (
+    RegisterView, LoginView, RefreshView,
+    ProfileView, ChangePasswordView, UpdateMunicipioView,
+    VerifyEmailView, ResendCodeView,
+    AdminUsersView, AdminToggleAdminView, AdminVinculateMunicipioView,
+    AdminEstatisticasView,
+    SubscribeView, PublicKeyView,
+)
+
+urlpatterns = [
+    path('register/', RegisterView.as_view(), name='auth-register'),
+    path('login/', LoginView.as_view(), name='auth-login'),
+    path('refresh/', RefreshView.as_view(), name='auth-refresh'),
+    path('profile/', ProfileView.as_view(), name='auth-profile'),
+    path('senha/', ChangePasswordView.as_view(), name='auth-change-password'),
+    path('municipio/', UpdateMunicipioView.as_view(), name='auth-update-municipio'),
+    path('verificar-email/', VerifyEmailView.as_view(), name='auth-verify-email'),
+    path('reenviar-codigo/', ResendCodeView.as_view(), name='auth-resend-code'),
+    path('admin/users/', AdminUsersView.as_view(), name='auth-admin-users'),
+    path('admin/users/<uuid:pk>/admin/', AdminToggleAdminView.as_view(), name='auth-admin-toggle'),
+    path('admin/users/<uuid:pk>/municipio/', AdminVinculateMunicipioView.as_view(), name='auth-admin-vinculate-municipio'),
+    path('admin/estatisticas/', AdminEstatisticasView.as_view(), name='auth-admin-estatisticas'),
+    path('subscribe/', SubscribeView.as_view(), name='auth-subscribe'),
+    path('public-key/', PublicKeyView.as_view(), name='auth-public-key'),
+]

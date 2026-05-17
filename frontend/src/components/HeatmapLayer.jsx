@@ -16,7 +16,7 @@ export default function HeatmapLayer({ pontos, ativo }) {
     }
     const pontosHeat = pontos
       .filter(p => p.latitude && p.longitude)
-      .map(p => [p.latitude, p.longitude, 0.8]);
+      .map(p => [p.latitude, p.longitude, 0.35]);
     if (pontosHeat.length === 0) return;
 
     let canceled = false;
@@ -24,11 +24,11 @@ export default function HeatmapLayer({ pontos, ativo }) {
       if (canceled) return;
       if (heatRef.current) map.removeLayer(heatRef.current);
       const heat = L.heatLayer(pontosHeat, {
-        radius: 25,
-        blur: 15,
+        radius: 18,
+        blur: 20,
         maxZoom: 17,
         max: 1.0,
-        gradient: { 0.4: 'rgb(34,197,94)', 0.6: 'rgb(212,160,23)', 0.8: 'rgb(255,140,0)', 1.0: 'rgb(239,68,68)' },
+        gradient: { 0.0: 'rgba(0,0,0,0)', 0.1: 'rgb(34,197,94)', 0.5: 'rgb(212,160,23)', 0.7: 'rgb(255,140,0)', 1.0: 'rgb(239,68,68)' },
       });
       heat.addTo(map);
       heatRef.current = heat;

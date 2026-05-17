@@ -7,7 +7,6 @@ const pages = [
   { path: '/', icon: MapPin, label: 'Mapa', keywords: 'mapa home' },
   { path: '/lista', icon: List, label: 'Lista de Chamados', keywords: 'chamados lista defeitos' },
   { path: '/conta', icon: User, label: 'Configurações da Conta', keywords: 'conta perfil configuracoes' },
-  { path: '/admin', icon: Layout, label: 'Painel Admin', keywords: 'admin painel', admin: true },
   { path: '/admin/dashboard', icon: ChartBar, label: 'Métricas', keywords: 'metricas dashboard graficos', admin: true },
   { path: '/admin/usuarios', icon: Users, label: 'Gerenciar Usuários', keywords: 'usuarios admin', admin: true },
   { path: '/configuracoes', icon: GearSix, label: 'Configurações Gerais', keywords: 'configuracoes gerais' },

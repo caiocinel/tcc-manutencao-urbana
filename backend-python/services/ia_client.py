@@ -1,0 +1,118 @@
+import time
+import logging
+import httpx
+import redis.asyncio as redis
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+TIMEOUT = 3.0
+
+SECRETARIAS = {
+    'Buraco': 'Secretaria de Obras e Infraestrutura',
+    'Iluminacao': 'Secretaria de Iluminacao Publica',
+    'Semafaro': 'Secretaria de Transito e Mobilidade',
+    'Arvore Caida': 'Secretaria de Meio Ambiente',
+    'Entulho': 'Secretaria de Limpeza Urbana',
+    'Calcada Danificada': 'Secretaria de Obras e Infraestrutura',
+    'Outro': 'Secretaria de Servicos Urbanos',
+}
+
+PRAZOS = {
+    'Buraco': 7,
+    'Iluminacao': 5,
+    'Semafaro': 2,
+    'Arvore Caida': 2,
+    'Entulho': 15,
+    'Calcada Danificada': 7,
+    'Outro': 15,
+}
+
+
+class CircuitBreaker:
+    KEY_TEMPLATE = 'ia:circuit:{name}'
+
+    def __init__(self, name: str = 'main'):
+        self.name = name
+
+    async def is_open(self, redis_client=None) -> bool:
+        if redis_client is None:
+            return False
+        key = self.KEY_TEMPLATE.format(name=self.name)
+        state = await redis_client.hgetall(key)
+        if not state:
+            return False
+        failures = int(state.get(b'failures', 0))
+        if failures >= 3:
+            cooldown_until = float(state.get(b'cooldown_until', 0))
+            if time.time() < cooldown_until:
+                return True
+            await redis_client.delete(key)
+        return False
+
+    async def record_failure(self, redis_client=None):
+        if redis_client is None:
+            return
+        key = self.KEY_TEMPLATE.format(name=self.name)
+        pipe = redis_client.pipeline()
+        pipe.hincrby(key, 'failures', 1)
+        pipe.hset(key, 'cooldown_until', time.time() + 60)
+        pipe.expire(key, 120)
+        await pipe.execute()
+
+    async def record_success(self, redis_client=None):
+        if redis_client is None:
+            return
+        key = self.KEY_TEMPLATE.format(name=self.name)
+        await redis_client.delete(key)
+
+
+circuit_breaker = CircuitBreaker()
+
+
+async def _call_ia(endpoint: str, payload: dict, redis_client=None) -> dict | None:
+    ia_url = settings.IA_URL
+    if await circuit_breaker.is_open(redis_client):
+        logger.warning(f'Circuit breaker open for {endpoint}')
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f'{ia_url}{endpoint}',
+                json=payload,
+                timeout=TIMEOUT,
+            )
+            resp.raise_for_status()
+            await circuit_breaker.record_success(redis_client)
+            return resp.json()
+    except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        logger.error(f'IA call failed: {exc}')
+        await circuit_breaker.record_failure(redis_client)
+        return None
+
+
+async def classify(text: str, redis_client=None) -> dict | None:
+    return await _call_ia('/classify', {'text': text}, redis_client)
+
+
+async def classify_full(text: str, redis_client=None) -> dict | None:
+    return await _call_ia('/classify-full', {'text': text}, redis_client)
+
+
+async def classify_priority(text: str, redis_client=None) -> dict | None:
+    return await _call_ia('/priority', {'text': text}, redis_client)
+
+
+async def text_similarity(text1: str, text2: str, redis_client=None) -> dict | None:
+    return await _call_ia('/text-similarity', {'text1': text1, 'text2': text2}, redis_client)
+
+
+async def check_spam(text: str, redis_client=None) -> dict | None:
+    return await _call_ia('/check-spam', {'text': text}, redis_client)
+
+
+def routing(categoria: str) -> dict:
+    return {
+        'secretaria': SECRETARIAS.get(categoria, SECRETARIAS['Outro']),
+        'prazo_sla_dias': PRAZOS.get(categoria, PRAZOS['Outro']),
+    }

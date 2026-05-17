@@ -1,35 +1,17 @@
-// Serviço de API - comunicação com o backend
-// Usa fetch nativo com suporte a JWT, CSRF e FormData
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-// Obtém um token CSRF do servidor (necessário para mutations)
-async function getCsrfToken() {
-  const res = await fetch(`${API_URL}/api/csrf-token`, { credentials: 'include' });
-  const data = await res.json();
-  return data.csrfToken;
-}
-
-// Função genérica de requisição com tratamento de erros
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem('token');
-  const isMutation = options.method && !['GET', 'HEAD'].includes(options.method);
-  let csrfToken;
-
-  if (isMutation) {
-    csrfToken = await getCsrfToken();
-  }
 
   const headers = {
     'Content-Type': 'application/json',
-    ...(token && { Authorization: token }),
-    ...(isMutation && csrfToken && { 'X-XSRF-TOKEN': csrfToken }),
+    ...(token && { Authorization: `Bearer ${token}` }),
     ...options.headers,
   };
 
   const fetchOptions = {
     method: options.method || 'GET',
     headers,
-    credentials: 'include',
   };
 
   if (options.body) {
@@ -39,11 +21,42 @@ async function request(endpoint, options = {}) {
   const res = await fetch(`${API_URL}${endpoint}`, fetchOptions);
 
   if (!res.ok) {
+    if (res.status === 401) {
+      const refreshToken = localStorage.getItem('refresh');
+      if (refreshToken && !endpoint.includes('/auth/login/') && !endpoint.includes('/auth/register/')) {
+        const refreshRes = await fetch(`${API_URL}/api/v1/auth/login/refresh/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh: refreshToken }),
+        });
+        if (refreshRes.ok) {
+          const { access } = await refreshRes.json();
+          localStorage.setItem('token', access);
+          options.headers = { ...options.headers, Authorization: `Bearer ${access}` };
+          const retryRes = await fetch(`${API_URL}${endpoint}`, { ...fetchOptions, headers: options.headers });
+          if (!retryRes.ok) {
+            const retryErr = await retryRes.json().catch(() => ({ error: 'Erro desconhecido' }));
+            throw new Error(retryErr.error || 'Erro na requisição');
+          }
+          return retryRes.json();
+        }
+        localStorage.removeItem('token');
+        localStorage.removeItem('refresh');
+        localStorage.removeItem('userData');
+        window.location.href = '/login';
+        throw new Error('Sessão expirada. Faça login novamente.');
+      }
+    }
     const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
     throw new Error(err.error || 'Erro na requisição');
   }
 
   return res.json();
+}
+
+async function paginated(endpoint, options = {}) {
+  const data = await request(endpoint, options);
+  return data?.results ?? data;
 }
 
 function formDataToObject(formData) {
@@ -80,17 +93,14 @@ async function openOfflineDB() {
 
 async function uploadDefeito(formData) {
   const token = localStorage.getItem('token');
-  const csrfToken = await getCsrfToken();
 
   try {
-    const res = await fetch(`${API_URL}/api/defeitos`, {
+    const res = await fetch(`${API_URL}/api/v1/defeitos/`, {
       method: 'POST',
       headers: {
-        Authorization: token,
-        'X-XSRF-TOKEN': csrfToken,
+        Authorization: `Bearer ${token}`,
       },
       body: formData,
-      credentials: 'include',
     });
 
     if (!res.ok) {
@@ -110,67 +120,94 @@ async function uploadDefeito(formData) {
 
 export const api = {
   login: (email, senha) =>
-    request('/api/auth/login', { method: 'POST', body: { email, senha } }),
+    request('/api/v1/auth/login/', { method: 'POST', body: { email, password: senha } }),
 
-  register: (nome, email, senha, municipio_id, cpf) =>
-    request('/api/auth/registro', { method: 'POST', body: { nome, email, senha, municipio_id, cpf } }),
+  register: (nome, email, senha) =>
+    request('/api/v1/auth/register/', { method: 'POST', body: { nome, email, password: senha, confirm_password: senha } }),
 
   listDefeitos: (params = {}) => {
     const q = new URLSearchParams();
-    if (params.ordenar) q.set('ordenar', params.ordenar);
-    if (params.dias) q.set('dias', params.dias);
+    if (params.ordenar) q.set('ordering', params.ordenar === 'recentes' ? '-criado_em' : '-curtidas');
     if (params.status) q.set('status', params.status);
     const qs = q.toString();
-    return request(`/api/defeitos${qs ? '?' + qs : ''}`);
+    return paginated(`/api/v1/defeitos/${qs ? '?' + qs : ''}`);
   },
 
   createDefeito: uploadDefeito,
 
   updateDefeito: (id, data) =>
-    request(`/api/defeitos/${id}`, { method: 'PATCH', body: data }),
+    request(`/api/v1/defeitos/${id}/`, { method: 'PATCH', body: data }),
 
   listMunicipios: () =>
-    request('/api/municipios'),
+    paginated('/api/v1/municipios/'),
 
   getMunicipio: (codigo) =>
-    request(`/api/municipios/${codigo}`),
+    request(`/api/v1/municipios/${codigo}/`),
 
   listCategorias: () =>
-    request('/api/categorias'),
-
-  updateMunicipio: (municipio_id) =>
-    request('/api/auth/municipio', { method: 'PATCH', body: { municipio_id } }),
+    paginated('/api/v1/categorias/'),
 
   meusDefeitos: () =>
-    request('/api/defeitos/meus'),
-
-  adminEstatisticas: () =>
-    request('/api/auth/admin/estatisticas'),
-
-  adminListUsers: () =>
-    request('/api/auth/admin/users'),
-
-  adminToggleAdmin: (userId, admin) =>
-    request(`/api/auth/admin/users/${userId}/admin`, { method: 'PATCH', body: { admin } }),
-
-  updatePassword: (senha_atual, nova_senha) =>
-    request('/api/auth/senha', { method: 'PATCH', body: { senha_atual, nova_senha } }),
-
-  verificarEmail: (codigo) =>
-    request('/api/auth/verificar-email', { method: 'POST', body: { codigo } }),
+    paginated('/api/v1/defeitos/meus/'),
 
   pushKey: () =>
-    request('/api/auth/push/key'),
+    request('/api/v1/auth/public-key/'),
 
   pushSubscribe: (subscription) =>
-    request('/api/auth/push/subscribe', { method: 'POST', body: { subscription } }),
-
-  reenviarCodigo: () =>
-    request('/api/auth/reenviar-codigo', { method: 'POST' }),
+    request('/api/v1/auth/subscribe/', { method: 'POST', body: { subscription } }),
 
   updateProfile: (data) =>
-    request('/api/auth/profile', { method: 'PATCH', body: data }),
+    request('/api/v1/auth/profile/', { method: 'PATCH', body: data }),
+
+  updatePassword: (senhaAtual, novaSenha) =>
+    request('/api/v1/auth/senha/', { method: 'PATCH', body: { senha_atual: senhaAtual, nova_senha: novaSenha } }),
+
+  updateMunicipio: (municipioId) =>
+    request('/api/v1/auth/municipio/', { method: 'PATCH', body: { municipio_id: municipioId } }),
+
+  verificarEmail: (codigo) =>
+    request('/api/v1/auth/verificar-email/', { method: 'POST', body: { codigo } }),
+
+  reenviarCodigo: () =>
+    request('/api/v1/auth/reenviar-codigo/', { method: 'POST' }),
+
+  apoiarDefeito: (id) =>
+    request(`/api/v1/defeitos/${id}/apoiar/`, { method: 'POST' }),
+
+  apoiei: () =>
+    request('/api/v1/defeitos/apoiei/'),
+
+  detalharDefeito: (id) =>
+    request(`/api/v1/defeitos/${id}/`),
+
+  anexarImagem: async (id, file) => {
+    const token = localStorage.getItem('token');
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(`${API_URL}/api/v1/defeitos/${id}/anexar/`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+    if (!res.ok) { const err = await res.json().catch(() => ({ error: 'Erro' })); throw new Error(err.error); }
+    return res.json();
+  },
 
   atenderDefeito: (id) =>
-    request(`/api/defeitos/${id}/atender`, { method: 'PATCH' }),
+    request(`/api/v1/defeitos/${id}/atender/`, { method: 'PATCH' }),
+
+  adminListUsers: () =>
+    request('/api/v1/auth/admin/users/'),
+
+  adminToggleAdmin: (id, admin) =>
+    request(`/api/v1/auth/admin/users/${id}/admin/`, { method: 'PATCH', body: { admin } }),
+
+  adminSetMunicipio: (id, municipioId) =>
+    request(`/api/v1/auth/admin/users/${id}/municipio/`, { method: 'PATCH', body: { municipio_id: municipioId } }),
+
+  adminEstatisticas: () =>
+    request('/api/v1/auth/admin/estatisticas/'),
+
+  getMunicipiosComAdmin: () =>
+    request('/api/v1/municipios/com_admin/'),
 };

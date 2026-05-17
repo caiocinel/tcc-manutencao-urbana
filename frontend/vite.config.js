@@ -46,11 +46,11 @@ export default defineConfig({
     // Proxy para API e uploads em desenvolvimento (evita CORS)
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },

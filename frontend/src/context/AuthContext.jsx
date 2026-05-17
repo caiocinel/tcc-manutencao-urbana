@@ -61,9 +61,10 @@ export function AuthProvider({ children }) {
       );
       if (precisaMunicipio) {
         api.getMunicipio(userBase.municipio_id).then(mun => {
-          setUser(prev => ({ ...prev, municipio: mun }));
+          const flat = { ...mun.properties, id: mun.id };
+          setUser(prev => ({ ...prev, municipio: flat }));
           const stored2 = JSON.parse(localStorage.getItem('userData') || '{}');
-          stored2.municipio = mun;
+          stored2.municipio = flat;
           localStorage.setItem('userData', JSON.stringify(stored2));
         }).catch(() => {});
       }
@@ -73,11 +74,13 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, [token, subscribeToPush]);
 
-  function login(tokenData, userData) {
-    localStorage.setItem('token', tokenData);
-    if (userData) localStorage.setItem('userData', JSON.stringify(userData));
-    setToken(tokenData);
-    setUser(userData);
+  function login(responseData) {
+    const { access, refresh, user } = responseData;
+    localStorage.setItem('token', access);
+    if (refresh) localStorage.setItem('refresh', refresh);
+    if (user) localStorage.setItem('userData', JSON.stringify(user));
+    setToken(access);
+    setUser(user || null);
     subscribeToPush();
   }
 
@@ -92,6 +95,7 @@ export function AuthProvider({ children }) {
 
   function logout() {
     localStorage.removeItem('token');
+    localStorage.removeItem('refresh');
     localStorage.removeItem('userData');
     setToken(null);
     setUser(null);

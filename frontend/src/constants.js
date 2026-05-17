@@ -1,3 +1,5 @@
+export const API_BASE = '/api/v1';
+
 export const STATUS_CONFIG = {
   pendente: { color: '#4A90D9', label: 'Aberto', bg: 'rgba(74,144,217,0.12)' },
   em_andamento: { color: '#D4A017', label: 'Em Andamento', bg: 'rgba(212,160,23,0.12)' },

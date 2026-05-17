@@ -25,7 +25,7 @@ export default function Login() {
     setLoading(true);
     try {
       const res = await api.login(email, senha);
-      login(res.token, res.user);
+      login(res);
       addToast('Login realizado com sucesso!');
       navigate('/');
     } catch (err) {

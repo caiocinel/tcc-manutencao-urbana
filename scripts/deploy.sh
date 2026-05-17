@@ -27,10 +27,8 @@ ssh -i "$VPS_SSH_KEY" -o StrictHostKeyChecking=no "${VPS_USER}@${VPS_HOST}" << '
   set -e
   cd /app/tcc-manutencao-urbana
 
-  # Migrate DB schema
-  docker compose exec -T postgres psql -U urbana -d manutencao_urbana -c "
-    ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS atendente_id UUID REFERENCES users(id);
-  " || true
+  # Run Django migrations
+  docker compose exec -T backend python manage.py migrate --noinput --fake-initial
 
   # Rebuild and restart all services
   docker compose up -d --build

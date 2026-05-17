@@ -87,11 +87,6 @@ export default function UserDropdown() {
                 <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
                   Administração
                 </p>
-                <button onClick={() => handleNav('/admin')} className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors" style={{ color: 'var(--color-text-secondary)' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-hover)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>
-                  <Layout size={16} /> Painel
-                </button>
                 <button onClick={() => handleNav('/admin/dashboard')} className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors" style={{ color: 'var(--color-text-secondary)' }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-hover)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>
