@@ -1,24 +1,25 @@
 # Central de Inteligência Urbana (Urban Intelligence Center)
 
-Full-stack PWA for reporting and managing urban infrastructure issues (potholes, broken lighting, damaged sidewalks, fallen trees, etc.). Citizens can submit photo + GPS reports; AI classifies and prioritizes automatically. Admin dashboard with heatmap and BI metrics.
+Full-stack PWA for reporting and managing urban infrastructure issues (potholes, broken lighting, damaged sidewalks, fallen trees, etc.). Citizens can submit photo + GPS reports; AI classifies and prioritizes automatically. Admin dashboard with heatmap and BI metrics. **Migrating from Node.js/Express to Python/Django 5.x.**
 
 **Deployed at:** [tcc.josemurilors.com.br](https://tcc.josemurilors.com.br)
-**Stack:** React 19 + Vite 8 + Node.js/Express 5 + PostgreSQL 16/PostGIS 3.4 + ONNX Runtime (Python)
+**Stack (current):** React 19 + Vite 8 + Node.js/Express 5 + PostgreSQL 16/PostGIS 3.4 + ONNX Runtime (Python)
+**Stack (migrating to):** React 19 + Vite 8 + Django 5.x/DRF + PostgreSQL 16/PostGIS 3.4 + ONNX Runtime (Python)
 **Infrastructure:** Hetzner (Nuremberg, Germany) — ARM64 CX11, 4GB RAM, 2 cores, 40GB NVMe
 
 ## Architecture
 
-| Layer | Technology |
-|---|---|
-| Frontend | React 19 + Vite 8 + Phosphor Icons + Framer Motion + Leaflet |
-| Backend | Node.js + Express 5 (pg, pool 10 connections) |
-| Database | PostgreSQL 16 + PostGIS 3.4 (spatial queries) |
-| AI | ONNX Runtime (Python/FastAPI) — all-MiniLM-L6-v2 embeddings |
-| Maps | Leaflet + react-leaflet + leaflet.heat + CartoDB tiles |
-| Auth | JWT + bcrypt + CSRF Double Submit Cookie |
-| Security | Helmet, Rate Limiting (3 levels), AES-256-GCM (CPF encryption) |
-| Notifications | Web Push API (VAPID) |
-| Logger | Pino structured logging with daily rotation |
+| Layer | Legacy | New (Django) |
+|---|---|---|
+| Frontend | React 19 + Vite 8 + Phosphor Icons + Framer Motion + Leaflet | React 19 + Vite 8 (unchanged) |
+| Backend | Node.js + Express 5 (pg, pool 10 connections) | Django 5.x + DRF (Gunicorn) |
+| Database | PostgreSQL 16 + PostGIS 3.4 (spatial queries) | PostgreSQL 16 + PostGIS (managed=False) |
+| AI | ONNX Runtime (Python/FastAPI) — all-MiniLM-L6-v2 | ONNX Runtime (same, no change) |
+| Maps | Leaflet + react-leaflet + leaflet.heat + CartoDB | Leaflet (unchanged) |
+| Auth | JWT + bcrypt + CSRF Double Submit Cookie | simplejwt + BCryptPasswordHasher (compatible) |
+| Security | Helmet, Rate Limiting (3 levels), AES-256-GCM | CSRF middleware, IsAuthenticated default, same encryption |
+| Notifications | Web Push API (VAPID) | pywebpush (compatible) |
+| Logger | Pino structured logging (Node.js) | Python logging (Django) |
 
 ## Features
 
@@ -46,6 +47,24 @@ Full-stack PWA for reporting and managing urban infrastructure issues (potholes,
 - **Privacy** — Gaussian blur on all uploaded photos to protect faces and license plates (configurable sigma)
 - **GPS tolerance** — perimeter validation with ST_Buffer (~1km) + bounding box fallback for city border GPS errors
 
+## Migration Status
+
+The Django backend (`backend-python/`) is in parallel development — same database, same frontend, same API contract. Switch-over planned after full test coverage.
+
+| Component | Status | Notes |
+|---|---|---|
+| Project scaffold | ✅ Complete | 5 apps (users, defeitos, municipios, categorias, core) |
+| BCryptPasswordHasher | ✅ Complete | Compatible with existing Node.js bcrypt hashes |
+| Encryption service | ✅ Complete | AES-256-GCM, same `iv:tag:data` hex format |
+| Auth (register/login) | ✅ Complete | simplejwt + email verification |
+| Defeitos CRUD | ✅ Complete | PostGIS PointField + filters |
+| Admin endpoints | ✅ Complete | SuperAdmin + VinculateMunicipio |
+| Frontend integration | ✅ Complete | api.js updated for `/api/v1/` prefix |
+| Docker + Redis | ✅ Complete | Gunicorn + django-ratelimit |
+| Nginx config | ✅ Complete | Proxy to :8000 |
+| Testes | 🔄 In progress | pytest + conftest |
+| Switch to production | ⏳ Pending | Cutover from Node.js to Django |
+
 ## Quick Start (Development)
 
 ```bash
@@ -57,21 +76,24 @@ cd tcc-manutencao-urbana
 cp backend/.env.example backend/.env
 # Edit backend/.env: JWT_SECRET, ENCRYPTION_KEY, DB_PASSWORD, etc.
 
-# 3. Start database + backend (host mode, no Nginx)
-docker compose -f docker-compose.host.yml up -d --build
+# 3. Start database (legacy backend + PostGIS)
+docker compose -f docker-compose.host.yml up -d --build postgres
 
-# 4. Run PostGIS migration (creates extensions + geometry columns)
+# 4. Run PostGIS migration
 docker compose -f docker-compose.host.yml exec postgres \
   psql -U urbana -d manutencao_urbana -f /scripts/migration-postgis.sql
 
-# 5. (Optional) Start IA service
-docker compose -f docker-compose.host.yml --profile ia up -d
-
-# 6. Seed municipality data (IBGE)
+# 5. Seed municipality data (IBGE)
 docker compose -f docker-compose.host.yml exec backend \
   node scripts/seed-municipios.js
 
-# 7. Frontend dev server
+# 6. (Optional) Start Django backend
+docker compose -f docker-compose.dev.yml up -d backend-python redis
+
+# 7. (Optional) Start IA service
+docker compose -f docker-compose.host.yml --profile ia up -d
+
+# 8. Frontend dev server
 cd frontend && npm run dev
 ```
 
@@ -86,7 +108,7 @@ cd tcc-manutencao-urbana
 cp .env.production backend/.env
 # Edit backend/.env with production secrets
 
-# 3. Build full stack
+# 3. Build full stack (legacy Node.js)
 docker compose up -d --build
 
 # 4. Run PostGIS migration
@@ -114,42 +136,58 @@ curl https://tcc.josemurilors.com.br/api/health
 
 ```
 tcc-manutencao-urbana/
-├── backend/                     # Node.js + Express API
-│   ├── index.js                 # Entry point
+├── backend/                       # Node.js + Express API (legacy)
+│   ├── index.js
 │   ├── src/
-│   │   ├── routes/              # auth, defeitos, categorias, municipios, ia
-│   │   ├── models/              # User, Defeito, Apoio (Mongoose-style)
-│   │   ├── middleware/          # csrf, imageProcessor, rateLimit, validate
-│   │   ├── services/           # ia.js, email (Resend), encryption, push, logger
-│   │   ├── validation/         # Zod schemas (auth, defeitos, admin)
-│   │   └── config/             # database.js (pg pool + schema init)
-│   └── scripts/                # migration-postgis.sql, run-migration.js
-├── frontend/                    # React + Vite SPA
+│   │   ├── routes/                # auth, defeitos, categorias, municipios, ia
+│   │   ├── models/                # User, Defeito, Apoio (knex-based)
+│   │   ├── middleware/            # csrf, imageProcessor, rateLimit, validate
+│   │   ├── services/              # ia, email (Resend), encryption, push, logger
+│   │   ├── validation/            # Zod schemas (auth, defeitos, admin)
+│   │   └── config/                # database.js (pg pool + schema init)
+│   └── scripts/                   # migration-postgis.sql, seed-municipios.js
+├── backend-python/                # Django 5.x API (migration target)
+│   ├── core/                      # Django project (settings, urls, wsgi)
+│   │   ├── settings/
+│   │   │   ├── base.py            # Shared settings (DB, CORS, CSRF, DRF)
+│   │   │   ├── production.py      # Prod overrides (HSTS, SSL, sentry)
+│   │   │   └── ...
+│   ├── apps/
+│   │   ├── users/                 # User model, auth views, serializers
+│   │   ├── defeitos/              # Defeito model (PostGIS), CRUD views
+│   │   ├── municipios/            # Municipio model (PostGIS), lookup
+│   │   ├── categorias/            # Category model, listing
+│   │   └── core/                  # Health, CSRF, shared utilities
+│   ├── services/                  # Encryption, CPF, email, push, IA client
+│   ├── requirements.txt           # Django + DRF + psycopg + Pillow
+│   ├── entrypoint.sh              # Migrate + collectstatic + gunicorn
+│   └── Dockerfile                 # Multi-stage: builder → slim (~200MB)
+├── frontend/                      # React + Vite SPA
 │   ├── src/
-│   │   ├── pages/              # MapPage, Login, Register, AdminDashboard, etc.
-│   │   ├── components/         # Header, UserMenu, Toast, Heatmap, SearchableSelect
-│   │   ├── context/            # AuthContext, ThemeContext
-│   │   ├── services/           # api.js (HTTP client w/ fetch + CSRF)
-│   │   ├── styles/             # tokens.css (design system), App.css
-│   │   ├── hooks/              # useKeyboardNav
-│   │   └── assets/             # static assets
-│   └── sw.js                   # Service worker (Vite injectManifest)
-├── ia/                          # AI classification (Python/FastAPI/ONNX)
-│   ├── main.py                 # FastAPI app (6 endpoints)
-│   ├── inference.py            # ONNX embedding + centroid similarity
-│   ├── models/                 # download_text_model.py, download_image_model.py
-│   ├── requirements.txt        # Runtime deps (onnxruntime, etc.)
-│   ├── requirements-build.txt  # Build deps (PyTorch for export)
-│   ├── test_load.py            # Model load validation
-│   └── Dockerfile              # Multi-stage: builder → runtime (~200MB)
-├── scripts/                     # backup-postgres.sh, zram-setup.sh
-├── .github/workflows/           # deploy.yml (CI/CD: lint + build + deploy)
-├── docker-compose.yml           # Production stack (postgres + backend + nginx + ia)
-├── docker-compose.host.yml      # Host-mode (without Nginx, for dev)
-├── nginx.prod.conf              # Nginx prod config (SSL, proxy, cache, gzip)
-├── nginx.Dockerfile             # Nginx with pre-built frontend
-├── SPEC.md                      # Project specification (invariants, tasks, bug log)
-└── .env.production              # Environment template (not versioned)
+│   │   ├── pages/                 # MapPage, Login, Register, AdminDashboard, DefectList
+│   │   ├── components/            # Header, UserMenu, Toast, Heatmap, SearchableSelect
+│   │   ├── context/               # AuthContext, ThemeContext
+│   │   ├── services/              # api.js (HTTP client w/ fetch + CSRF)
+│   │   ├── styles/                # tokens.css (design system), App.css
+│   │   ├── hooks/                 # useKeyboardNav
+│   │   └── assets/
+│   └── sw.js                      # Service worker (Vite injectManifest)
+├── ia/                            # AI classification (Python/FastAPI/ONNX)
+│   ├── main.py                    # FastAPI app (6 endpoints)
+│   ├── inference.py               # ONNX embedding + centroid similarity
+│   ├── models/                    # model download scripts
+│   └── Dockerfile                 # Multi-stage: builder → runtime (~200MB)
+├── scripts/                       # backup-postgres.sh, zram-setup.sh
+├── .github/workflows/             # deploy.yml (CI/CD: lint + build + deploy)
+├── docker-compose.yml             # Production stack (postgres + backend + nginx + ia)
+├── docker-compose.host.yml        # Host-mode dev stack (no Nginx)
+├── docker-compose.dev.yml         # Django dev stack (Redis + backend-python)
+├── nginx.prod.conf                # Nginx prod config (SSL, proxy, cache)
+├── nginx.host.conf                # Nginx dev config
+├── nginx.Dockerfile               # Nginx with pre-built frontend
+├── SPEC.md                        # Project spec (caveman encoded)
+├── doc.md                         # Detailed docs (migration, architecture, audit)
+└── .env.production                # Environment template (not versioned)
 ```
 
 ## API Endpoints
@@ -166,52 +204,69 @@ tcc-manutencao-urbana/
 | GET | `/api/auth/push/key` | — | VAPID public key |
 | POST | `/api/auth/push/subscribe` | JWT | Save push subscription |
 | GET | `/api/auth/admin/users` | Admin | List all users |
-| GET | `/api/auth/admin/statistics` | Admin | Dashboard metrics (defeitos, users, daily) |
-| PATCH | `/api/auth/admin/users/:id` | Admin | Update user (name, municipio, status) |
-| PATCH | `/api/auth/admin/users/:id/admin` | Super | Promote/remove admin role |
+| GET | `/api/auth/admin/statistics` | Admin | Dashboard metrics |
+| PATCH | `/api/auth/admin/users/:id` | Admin | Update user |
+| PATCH | `/api/auth/admin/users/:id/admin` | Super | Promote/remove admin |
 
 ### Defeitos
 | Method | Route | Auth | Description |
 |---|---|---|---|
-| GET | `/api/defeitos` | — | List all (support count, IA data, paginated) |
+| GET | `/api/defeitos` | — | List all (paginated, with support count) |
 | GET | `/api/defeitos/meus` | JWT | List user's own defects |
-| GET | `/api/defeitos/clusters` | — | GeoJSON clustered for map markers |
-| GET | `/api/defeitos/:id` | — | Full detail with attachments and support |
-| POST | `/api/defeitos` | JWT | Create (photo + desc + GPS → IA classify + dedup + route) |
+| GET | `/api/defeitos/clusters` | — | GeoJSON clustered for map |
+| GET | `/api/defeitos/:id` | — | Full detail with attachments |
+| POST | `/api/defeitos` | JWT | Create (photo + desc + GPS → IA classify) |
 | POST | `/api/defeitos/:id/support` | JWT | Toggle upvote |
 | PATCH | `/api/defeitos/:id` | Admin | Update status/priority/secretaria |
-| PATCH | `/api/defeitos/:id/attach` | JWT | Attach image or text update |
+| PATCH | `/api/defeitos/:id/attach` | JWT | Attach image/text update |
 | POST | `/api/defeitos/batch-close` | Admin | Batch close by IDs |
+| GET | `/api/defeitos/vinculados` | Admin | List defects with assigned attendant |
+
+### Django API (v1, in migration)
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| POST | `/api/v1/auth/register/` | — | Django register endpoint |
+| POST | `/api/v1/auth/login/` | — | Django login endpoint |
+| GET | `/api/v1/auth/profile/` | JWT | Django profile endpoint |
+| GET/PATCH | `/api/v1/defeitos/` | varied | Django defeitos CRUD |
+| GET/POST | `/api/v1/municipios/` | varied | Django municipios lookup |
+| GET | `/api/v1/categorias/` | — | Django categories |
+| GET | `/api/health/django/` | — | Django health check |
+| GET | `/api/v1/admin/vinculate/` | Super| Django vincular municípios |
+| GET | `/api/v1/admin/super/users/` | Super| Django user management |
 
 ### IA Service (port 8000 — ONNX Runtime)
 | Method | Route | Description |
 |---|---|---|
-| POST | `/classify` | Text → category + confidence (all-MiniLM-L6-v2 embeddings) |
-| POST | `/classify-full` | Text → category + priority + spam + routing in one call |
-| POST | `/classify-image` | Image base64 → category (MobileNetV3 feature extractor) |
-| POST | `/text-similarity` | Two texts → cosine similarity score |
-| POST | `/summarize` | Weekly summary from defect list |
-| GET | `/health` | Model loading status and available models |
+| POST | `/classify` | Text → category + confidence |
+| POST | `/classify-full` | Category + priority + spam + routing |
+| POST | `/classify-image` | Image base64 → category |
+| POST | `/text-similarity` | Cosine similarity score |
+| POST | `/summarize` | Weekly summary |
+| GET | `/health` | Model loading status |
 
 ### Support
 | Method | Route | Auth | Description |
 |---|---|---|---|
-| GET | `/api/categorias` | — | List defect categories with metadata |
+| GET | `/api/categorias` | — | List categories with metadata |
 | GET | `/api/municipios` | — | List municipalities (name, uf, polygon) |
-| GET | `/api/csrf-token` | — | Get CSRF double-submit cookie |
+| GET | `/api/csrf-token` | — | CSRF double-submit cookie |
 | GET | `/api/health` | — | Health check (db, ia, uptime) |
 
 ## Security
 
-- **Passwords:** bcrypt hashing (salt rounds = 10)
-- **JWT:** 24h expiration, payload `{ userId, email, admin, municipio_id }`, signed with 256-bit secret
+- **Passwords:** bcrypt hashing (salt rounds = 10); Django BCryptPasswordHasher compatible with existing hashes
+- **JWT:** 24h expiration, payload `{ userId, email, admin, municipio_id }`, 256-bit secret
 - **CPF:** AES-256-GCM encrypted at rest + SHA-256 HMAC for unique lookups
-- **CSRF:** Double Submit Cookie pattern (XSRF-SESSION httpOnly + XSRF-TOKEN via JS)
-- **Rate Limiting:** 4 levels — global (200/15min), auth (20/15min), API (200/h), per-user (10/h)
+- **CSRF:** Double Submit Cookie (Node.js); Django CsrfViewMiddleware with SameSite=Strict (Django)
+- **DRF Default:** `IsAuthenticated` — all endpoints locked by default; public ones explicitly use `AllowAny`
+- **Rate Limiting:** 4 levels — global (200/15min), auth (20/15min), API (200/h), per-user (10/h); Django side uses `django-ratelimit` + Redis circuit breaker
 - **Helmet:** Security headers (CSP relaxed for Leaflet CDN tiles)
+- **HSTS/SSL:** Enforced in production settings (Django `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`)
+- **Non-root user:** Django Docker container runs as `django` (uid 1001)
 - **Upload validation:** Sharp compress to WebP 1200px max, whitelist (JPEG/PNG/WebP/AVIF), 5MB limit
 - **IA Circuit Breaker:** 3 failures → 60s cooldown, never blocks defect creation
-- **Validation:** Zod schemas on all inputs (auth, defeitos, admin routes)
+- **Validation:** Zod schemas (Node.js); DRF serializers (Django) on all inputs
 - **2FA:** Optional TOTP-based two-factor authentication
 - **Encryption key:** AES-256-GCM (32 bytes / 64 hex chars), generated via `openssl rand -hex 32`
 
@@ -240,11 +295,11 @@ User input → Tokenize (BERT tokenizer) → all-MiniLM-L6-v2 (ONNX)
 - **Duplicate detection:** `ST_DWithin(geom, 0.01)` (~1km) + embedding cosine similarity > 0.3
 - **Spam filter:** Rejects texts < 10 chars, high-repeat-ratio, or generic patterns
 - **Priority extraction:** Keyword match on urgent/alta/media/baixa in description
-- **Secretary routing:** Category → responsible municipal department (e.g., Buraco → Secretaria de Obras)
+- **Secretary routing:** Category → responsible municipal department
 - **Weekly summary:** Auto-generated report (totals, resolution rate, top 3 categories/bairros)
 - **Critical clusters:** 5+ same-category defects within 7 days triggers priority alert
 - **Circuit breaker:** 3 consecutive IA failures → 60s cooldown period, timeout 3s
-- **Multi-stage Docker:** Builder (PyTorch 3GB) → exports ONNX → runtime (~200MB, onnxruntime only)
+- **Multi-stage Docker:** Builder (PyTorch 3GB) → exports ONNX → runtime (~200MB)
 
 ### Text Classification Detail
 
@@ -276,13 +331,23 @@ User input → Tokenize (BERT tokenizer) → all-MiniLM-L6-v2 (ONNX)
 └─────────────────────────────────────────────────┘
 ```
 
-## PostGIS
+## Docker Architecture
 
-PostgreSQL 16 with PostGIS 3.4 spatial extension:
-- `municipios.polygon_geom` — MultiPolygon from IBGE GeoJSON (5570 municipalities)
-- `defeitos.geom` — Computed Point(4326) from latitude/longitude
-- **Perimeter validation:** `ST_Within(point, polygon_geom)` on defect creation
-- **Duplicate detection:** `ST_DWithin(geom, 0.01)` (~1km) + semantic similarity
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   nginx:80   │────▶│  backend:5000│────▶│  postgres:5432│
+│   (SSL+proxy) │     │  (Express)   │     │  (PG16+GIS)  │
+└──────────────┘     └──────┬───────┘     └──────────────┘
+                            │                         ▲
+                            ▼                         │
+                     ┌──────────────┐     ┌──────────────┐
+                     │   ia:8000    │     │  backend-py  │
+                     │  (FastAPI    │     │  :8000(Django)│
+                     │   + ONNX)    │     │  (next phase) │
+                     └──────────────┘     └──────────────┘
+```
+
+All services communicate over a Docker bridge network (`app-network`). Nginx serves the SPA build and reverse-proxies `/api/*` to backend. Django runs alongside for gradual migration.
 
 ## Keyboard Navigation
 
@@ -317,7 +382,7 @@ Push to master
 
 Automated PostgreSQL backup via `scripts/backup-postgres.sh`:
 
-- **Schedule:** Daily via cron (docker service `backup`, profile `backup`)
+- **Schedule:** Daily via cron (Docker service `backup`, profile `backup`)
 - **Output:** Compressed SQL dump (gzip)
 - **Retention:** 30 days (configurable via `RETENTION_DAYS`)
 - **Remote:** Optional S3-compatible upload via rclone
@@ -325,7 +390,7 @@ Automated PostgreSQL backup via `scripts/backup-postgres.sh`:
 
 ## Design System
 
-Dark-first theme with CSS custom properties (tokens.css):
+Dark-first theme with CSS custom properties (`tokens.css`):
 
 - **Font:** Inter (sans-serif) + JetBrains Mono (mono)
 - **Typography:** 12px to 36px scale
@@ -338,76 +403,37 @@ Dark-first theme with CSS custom properties (tokens.css):
 | Criteria | Implementation |
 |---|---|
 | Focus visible | `:focus-visible` 2px green outline on all interactive elements |
-| Icon labels | `aria-label` on every icon-only button (Header, FAB, UserMenu, modals) |
-| Modal semantics | `role="dialog"` + `aria-modal="true"` + `aria-label` + `aria-describedby` |
-| Live regions | `aria-live="polite"` on toast notifications, `aria-atomic="true"` |
-| Combobox | Full WAI-ARIA `role="combobox"` with `aria-expanded`, `aria-activedescendant` |
+| Icon labels | `aria-label` on every icon-only button |
+| Modal semantics | `role="dialog"` + `aria-modal="true"` + `aria-label` |
+| Live regions | `aria-live="polite"` on toast notifications |
+| Combobox | Full WAI-ARIA `role="combobox"` with `aria-expanded` |
 | Skip link | Skip-to-content link at page top (`#main-content`) |
 | Escape key | Closes all modals and clears keyboard nav buffer |
-| Error messages | `role="alert"` on inline validation, `aria-describedby` linking input to error |
-| Contrast (dark) | AA+ on all combos (e.g., `--text-secondary #a1a1aa` on `--bg-primary #0d0d0f` → 7.58:1 AAA) |
-| Contrast (light) | `--text-primary #1a1a1c` on `--bg-primary #f5f5f0` → 16.4:1 AAA |
+| Error messages | `role="alert"` on inline validation |
+| Contrast (dark) | AA+ on all combos (7.58:1 AAA on primary/secondary) |
+| Contrast (light) | 16.4:1 AAA on primary |
 | Keyboard nav | `g+key` shortcuts with visual help overlay (`?`) |
 | Reduced motion | `prefers-reduced-motion` respected via framer-motion |
 
-## Docker Architecture
+## Validation
 
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   nginx:80   │────▶│  backend:5000│────▶│  postgres:5432│
-│   (SSL+proxy) │     │  (Express)   │     │  (PG16+GIS)  │
-└──────────────┘     └──────┬───────┘     └──────────────┘
-                            │
-                            ▼
-                     ┌──────────────┐
-                     │   ia:8000    │
-                     │  (FastAPI    │
-                     │   + ONNX)    │
-                     └──────────────┘
-```
-
-All services communicate over a Docker bridge network (`app-network`). The IA service runs under the `ia` profile (optional start). Nginx serves the SPA build and reverse-proxies `/api/*` to backend.
-
-## Input Validation (Zod Schemas)
-
-All API inputs validated via Zod schemas in `backend/src/validation/`:
-
-| Schema | File | Rules |
+| Schema | Source | Rules |
 |---|---|---|
-| Auth | `auth.schema.js` | CPF (11 digits, BrasilAPI format), email, password (min 8 chars), name, municipality code |
-| Defeitos | `defeitos.schema.js` | Title (3-100 chars), description (10-2000), lat/lng (-90/90, -180/180), image (base64 max 5MB) |
-| Admin | `admin.schema.js` | Status enum (aberto/em_andamento/resolvido/fechado), priority enum, secretary, user role |
-
-Validation is centralized via `validate.js` — returns 422 with structured error messages on failure.
-
-## Spec
-
-The project spec lives in `SPEC.md` at the repo root, written in caveman-encoded format:
-- **§G** — Goal
-- **§C** — Constraints (RAM, Docker limits, auth, storage, etc.)
-- **§I** — Interfaces (API contracts + env vars + Docker layout)
-- **§V** — Invariants (V1–V10: must-not-break rules verified by CI)
-- **§T** — Tasks (T1–T17: implementation checklist with status)
-- **§B** — Bug log (B1–B2: recorded failures with root cause and fix)
-
-## Scripts
-
-| Script | Location | Purpose |
-|---|---|---|
-| `backup-postgres.sh` | `scripts/` | Daily compressed SQL dump, 30-day retention, optional S3 + Telegram |
-| `zram-setup.sh` | `scripts/` | Enables ZRAM compression (2× compression, 4G max) to stretch 4GB RAM on Hetzner CX11 |
-| `run-migration.js` | `backend/scripts/` | Applies `migration-postgis.sql` (PostGIS extensions, geometry columns, spatial indices) |
-| `download_text_model.py` | `ia/models/` | Downloads all-MiniLM-L6-v2 from HuggingFace and exports to ONNX |
-| `download_image_model.py` | `ia/models/` | Downloads MobileNetV3-small and exports to ONNX |
+| Auth | Zod / DRF serializers | CPF (11 digits), email, password (min 8), name, municipality |
+| Defeitos | Zod / DRF serializers | Title (3-100), description (10-2000), lat/lng, image (5MB max) |
+| Admin | Zod / DRF serializers | Status enum, priority, secretary, user role |
 
 ## Admin Hierarchy
 
-Three admin levels enforced via JWT payload `{ role: 'user' | 'admin' | 'super' }`:
+Three admin levels enforced via JWT payload `{ role: 'user' \| 'admin' \| 'super' }`:
 
 | Level | Permissions |
 |---|---|
 | **User** | Create/edit own defects, toggle support, attach updates |
-| **Admin** | All user + change status/priority/secretaria of any defect, batch close, manage users (name/municipio/status) |
-| **Super** | All admin + promote/remove admin roles |
+| **Admin** | All user + change status/priority/secretaria of any defect, batch close, manage users |
+| **Super** | All admin + promote/remove admin roles, vincular municipios |
 
-Route-level checks via `requireAdmin` / `requireSuper` middleware in `backend/src/middleware/`. Frontend conditionally renders AdminDashboard tab for `role !== 'user'`.
+## Spec & Docs
+
+- **`SPEC.md`** — Project spec in caveman encoding (§G, §C, §I, §V, §T, §B)
+- **`doc.md`** — Detailed documentation (migration justification, architecture, security audit, deployment)
