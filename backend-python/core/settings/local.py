@@ -10,7 +10,7 @@ DATABASES = {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',
         'NAME': os.environ.get('DB_NAME', 'manutencao_urbana'),
         'USER': os.environ.get('DB_USER', 'urbana'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', 'urbana123'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
         'HOST': os.environ.get('DB_HOST', 'localhost'),
         'PORT': os.environ.get('DB_PORT', '5432'),
         'OPTIONS': {
