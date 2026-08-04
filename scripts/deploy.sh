@@ -18,7 +18,6 @@ rsync -avz --delete \
   --exclude '.git' \
   --exclude 'node_modules' \
   --exclude 'frontend/node_modules' \
-  --exclude 'backend/node_modules' \
   --exclude 'ia/__pycache__' \
   . "${VPS_USER}@${VPS_HOST}:/app/tcc-manutencao-urbana/"
 

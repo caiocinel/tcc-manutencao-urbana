@@ -102,7 +102,7 @@ git clone git@github.com:josemurilors/tcc-manutencao-urbana.git
 cd tcc-manutencao-urbana
 
 # 2. Configure o ambiente do backend Django
-cp backend-python/.env.example backend-python/.env
+cp .env.production backend-python/.env
 # Edite backend-python/.env: ENCRYPTION_KEY, DB_PASSWORD, etc.
 
 # 3. Suba o banco (Postgres + PostGIS) e o backend Django + Redis
@@ -142,14 +142,11 @@ docker compose exec -T postgres psql -U urbana -d manutencao_urbana -c "
     GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)) STORED;
   CREATE INDEX IF NOT EXISTS idx_defeitos_geom ON defeitos USING GIST (geom);"
 
-# 5. Seed de municípios IBGE (5571 cidades, somente na primeira vez)
-docker compose exec -T backend node seed-municipios-ibge.js
-
-# 6. Certificado SSL (primeira vez)
+# 5. Certificado SSL (primeira vez)
 docker compose run --rm certbot certonly --webroot \
   -w /var/www/certbot -d tcc.josemurilors.com.br
 
-# 7. Verifique a saúde
+# 6. Verifique a saúde
 curl https://tcc.josemurilors.com.br/api/health
 ```
 
@@ -517,7 +514,7 @@ git clone git@github.com:josemurilors/tcc-manutencao-urbana.git
 cd tcc-manutencao-urbana
 
 # 2. Configure environment
-cp backend-python/.env.example backend-python/.env
+cp .env.production backend-python/.env
 # Edit backend-python/.env: SECRET_KEY, ENCRYPTION_KEY, DB_PASSWORD, etc.
 
 # 3. Start backend + Redis (Django dev stack)
@@ -526,13 +523,10 @@ docker compose -f docker-compose.dev.yml up -d backend redis
 # 4. Apply Django migrations
 docker compose -f docker-compose.dev.yml exec backend python manage.py migrate
 
-# 5. (Optional) Seed municipality data (IBGE)
-docker compose -f docker-compose.dev.yml exec backend node seed-municipios-ibge.js
-
-# 6. (Optional) Start IA service (port 8000)
+# 5. (Optional) Start IA service (port 8000)
 docker compose --profile ia up -d ia
 
-# 7. Frontend dev server
+# 6. Frontend dev server
 cd frontend && npm run dev
 ```
 
@@ -560,14 +554,11 @@ docker compose exec -T postgres psql -U urbana -d manutencao_urbana -c "
     GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)) STORED;
   CREATE INDEX IF NOT EXISTS idx_defeitos_geom ON defeitos USING GIST (geom);"
 
-# 5. Seed IBGE municipalities (5571 cities, first time only)
-docker compose exec -T backend node seed-municipios-ibge.js
-
-# 6. SSL certificate (first time)
+# 5. SSL certificate (first time)
 docker compose run --rm certbot certonly --webroot \
   -w /var/www/certbot -d tcc.josemurilors.com.br
 
-# 7. Verify health
+# 6. Verify health
 curl https://tcc.josemurilors.com.br/api/health
 ```
 
