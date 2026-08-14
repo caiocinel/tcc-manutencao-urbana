@@ -78,13 +78,13 @@ def normalize(embeddings: np.ndarray) -> np.ndarray:
 
 
 def export_to_onnx(output_dir: Path):
-    print("Carregando tokenizer e modelo: sentence-transformers/all-MiniLM-L6-v2")
+    print("Carregando tokenizer e modelo: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
     from transformers import AutoTokenizer, AutoModel
     import torch
 
-    tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
-    model = AutoModel.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+    tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    model = AutoModel.from_pretrained("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     model.eval()
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -92,8 +92,8 @@ def export_to_onnx(output_dir: Path):
     dummy_text = "exemplo de texto para rastreamento do modelo"
     dummy_tokens = tokenizer(dummy_text, return_tensors="pt", padding=True, truncation=True)
 
-    onnx_path = output_dir / "text_model.onnx"
-    print(f"Exportando para ONNX: {onnx_path}")
+    onnx_path = output_dir / "text_model_fp32.onnx"
+    print(f"Exportando para ONNX (FP32): {onnx_path}")
 
     with torch.no_grad():
         torch.onnx.export(
@@ -113,7 +113,24 @@ def export_to_onnx(output_dir: Path):
 
     tokenizer.save_pretrained(str(output_dir))
     size_mb = onnx_path.stat().st_size / (1024 * 1024)
-    print(f"Modelo ONNX exportado: {onnx_path} ({size_mb:.1f}MB)")
+    print(f"Modelo ONNX exportado (FP32): {onnx_path} ({size_mb:.1f}MB)")
+
+    print("\nAplicando quantização INT8...")
+    from onnxruntime.quantization import quantize_dynamic, QuantType
+
+    onnx_quant_path = output_dir / "text_model.onnx"
+    quantize_dynamic(
+        model_input=str(onnx_path),
+        model_output=str(onnx_quant_path),
+        weight_type=QuantType.QUInt8
+    )
+
+    onnx_path.unlink()
+    onnx_data_path = onnx_path.with_suffix('.onnx.data')
+    if onnx_data_path.exists():
+        onnx_data_path.unlink()
+    size_mb = onnx_quant_path.stat().st_size / (1024 * 1024)
+    print(f"Modelo ONNX quantizado (INT8): {onnx_quant_path} ({size_mb:.1f}MB)")
 
     tz_path = output_dir / "tokenizer.json"
     if tz_path.exists():

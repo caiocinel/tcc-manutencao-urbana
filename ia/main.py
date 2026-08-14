@@ -76,6 +76,14 @@ class TextPairRequest(BaseModel):
     text2: str = Field(..., min_length=1, max_length=5000)
 
 
+class BatchEmbeddingsRequest(BaseModel):
+    texts: list[str] = Field(..., min_length=1, max_length=50)
+
+
+class BatchEmbeddingsResponse(BaseModel):
+    embeddings: list[list[float]]
+
+
 class ImageRequest(BaseModel):
     image: str
 
@@ -214,6 +222,18 @@ async def similarity(request: TextPairRequest):
     from inference import text_similarity
     score = text_similarity(request.text1, request.text2, text_classifier)
     return SimilarityResponse(score=score)
+
+
+@app.post("/embeddings-batch", response_model=BatchEmbeddingsResponse)
+async def embeddings_batch(request: BatchEmbeddingsRequest):
+    if not request.texts:
+        raise HTTPException(status_code=400, detail="Lista de textos vazia")
+    
+    embeddings = text_classifier.encode_batch(request.texts)
+    if embeddings is None:
+        raise HTTPException(status_code=503, detail="Modelo de embeddings indisponivel")
+    
+    return BatchEmbeddingsResponse(embeddings=embeddings)
 
 
 @app.post("/check-spam", response_model=SpamResponse)

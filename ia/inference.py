@@ -163,6 +163,22 @@ class TextClassifier:
             pass
         return _jaccard_similarity(text1, text2)
 
+    def encode_batch(self, texts: list[str]) -> list[list[float]] | None:
+        if self.session is None or self.tokenizer is None:
+            return None
+        try:
+            embeddings = []
+            for text in texts:
+                emb = self._encode(text)
+                if emb is not None:
+                    embeddings.append(emb.tolist())
+                else:
+                    return None
+            return embeddings
+        except Exception as e:
+            print(f"Erro no encode_batch: {e}")
+            return None
+
     def _keyword_classify(self, text: str) -> tuple[str, float]:
         text_lower = text.lower()
         scores = {}
