@@ -3,6 +3,7 @@ from django.utils import timezone
 from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from django.db.models import Count
 from .models import Defeito, Apoio
 from .serializers import (
@@ -44,6 +45,15 @@ class DefeitoViewSet(viewsets.ModelViewSet):
                            'update', 'partial_update', 'destroy', 'anexar'):
             return (permissions.IsAuthenticated(),)
         return (permissions.AllowAny(),)
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except ValidationError as e:
+            detail = e.detail
+            if isinstance(detail, dict) and detail.get('duplicado'):
+                return Response(detail, status=status.HTTP_409_CONFLICT)
+            raise
 
     def perform_create(self, serializer):
         webp = None

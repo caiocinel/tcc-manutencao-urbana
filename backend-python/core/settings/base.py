@@ -128,8 +128,18 @@ SUPER_ADMIN_EMAIL = os.environ.get('SUPER_ADMIN_EMAIL', '')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
 IA_URL = os.environ.get('IA_URL', 'http://ia:8000')
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': REDIS_URL,
+    }
+}
+
 PRIVACY_BLUR_SIGMA = float(os.environ.get('PRIVACY_BLUR_SIGMA', '0.6'))
 PERIMETER_BUFFER_DEG = float(os.environ.get('PERIMETER_BUFFER_DEG', '0.01'))
+DUPLICATE_RADIUS_M = float(os.environ.get('DUPLICATE_RADIUS_M', '50'))
+DUPLICATE_SIMILARITY_THRESHOLD = float(os.environ.get('DUPLICATE_SIMILARITY_THRESHOLD', '0.75'))
 VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')

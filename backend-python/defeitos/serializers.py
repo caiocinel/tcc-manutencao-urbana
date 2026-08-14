@@ -1,5 +1,7 @@
 import base64
+import math
 from rest_framework import serializers
+from django.conf import settings
 from .models import Defeito, Apoio
 
 
@@ -56,6 +58,69 @@ class DefeitoCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         lat = validated_data.get('latitude')
         lng = validated_data.get('longitude')
+        descricao = validated_data.get('descricao', '')
+
+        if lat and lng and descricao:
+            from django.db.models import F
+            from django.db.models.functions import ACos, Cos, Radians, Sin
+            import asyncio
+
+            radius_m = settings.DUPLICATE_RADIUS_M
+            threshold = settings.DUPLICATE_SIMILARITY_THRESHOLD
+
+            deg_approx = radius_m / 111000
+
+            candidatos_qs = Defeito.objects.filter(
+                latitude__range=(lat - deg_approx, lat + deg_approx),
+                longitude__range=(lng - deg_approx, lng + deg_approx),
+            ).exclude(
+                status__in=['concluido', 'encerrado', 'rejeitado']
+            ).exclude(
+                descricao=''
+            ).values('id', 'descricao', 'latitude', 'longitude')[:20]
+
+            candidatos = []
+            for c in candidatos_qs:
+                dlat = c['latitude'] - lat
+                dlng = c['longitude'] - lng
+                dist_approx_m = math.sqrt((dlat * 111000) ** 2 + (dlng * 111000 * math.cos(math.radians(lat))) ** 2)
+                if dist_approx_m <= radius_m:
+                    candidatos.append(c)
+
+            if candidatos:
+                from services.ia_client import get_embeddings_batch
+
+                textos = [descricao] + [c['descricao'] for c in candidatos]
+
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+
+                embeddings = loop.run_until_complete(get_embeddings_batch(textos))
+
+                if embeddings and len(embeddings) == len(textos):
+                    emb_novo = embeddings[0]
+
+                    for i, candidato in enumerate(candidatos):
+                        emb_existente = embeddings[i + 1]
+                        dot_product = sum(a * b for a, b in zip(emb_novo, emb_existente))
+                        norm_novo = math.sqrt(sum(a * a for a in emb_novo))
+                        norm_existente = math.sqrt(sum(a * a for a in emb_existente))
+                        similaridade = dot_product / (norm_novo * norm_existente) if norm_novo > 0 and norm_existente > 0 else 0.0
+
+                        if similaridade >= threshold:
+                            raise serializers.ValidationError(
+                                {
+                                    'duplicado': True,
+                                    'defeito_existente_id': str(candidato['id']),
+                                    'similaridade': round(similaridade, 4),
+                                    'detail': 'Ja existe um relato similar nesta localizacao'
+                                },
+                                code='duplicate_defect'
+                            )
+
         return super().create(validated_data)
 
 

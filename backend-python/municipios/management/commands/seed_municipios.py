@@ -83,7 +83,7 @@ class Command(BaseCommand):
                 cur.execute(
                     """
                     INSERT INTO municipios (codigo, nome, uf, uf_sigla, min_lat, max_lat, min_lng, max_lng, poligono_json, polygon_geom)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326))
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, ST_SetSRID(ST_SimplifyPreserveTopology(ST_GeomFromGeoJSON(%s), 0.0001), 4326))
                     ON CONFLICT (codigo) DO UPDATE SET
                         nome = EXCLUDED.nome,
                         uf = EXCLUDED.uf,

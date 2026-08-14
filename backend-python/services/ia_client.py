@@ -107,6 +107,13 @@ async def text_similarity(text1: str, text2: str, redis_client=None) -> dict | N
     return await _call_ia('/text-similarity', {'text1': text1, 'text2': text2}, redis_client)
 
 
+async def get_embeddings_batch(texts: list[str], redis_client=None) -> list[list[float]] | None:
+    result = await _call_ia('/embeddings-batch', {'texts': texts}, redis_client)
+    if result and 'embeddings' in result:
+        return result['embeddings']
+    return None
+
+
 async def check_spam(text: str, redis_client=None) -> dict | None:
     return await _call_ia('/check-spam', {'text': text}, redis_client)
 
