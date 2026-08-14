@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MagnifyingGlass, MapPin, List, ChartBar, Layout, Users, User, GearSix } from '@phosphor-icons/react';
+import { MagnifyingGlass, MapPin, List, ChartBar, Users, User, GearSix } from '@phosphor-icons/react';
 
 const pages = [
-  { path: '/', icon: MapPin, label: 'Mapa', keywords: 'mapa home' },
+  { path: '/mapa', icon: MapPin, label: 'Mapa', keywords: 'mapa home' },
   { path: '/lista', icon: List, label: 'Lista de Chamados', keywords: 'chamados lista defeitos' },
   { path: '/conta', icon: User, label: 'Configurações da Conta', keywords: 'conta perfil configuracoes' },
   { path: '/admin/dashboard', icon: ChartBar, label: 'Métricas', keywords: 'metricas dashboard graficos', admin: true },

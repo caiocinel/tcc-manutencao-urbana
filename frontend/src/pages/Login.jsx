@@ -15,7 +15,7 @@ export default function Login() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated) navigate('/');
+    if (!authLoading && isAuthenticated) navigate('/mapa');
   }, [isAuthenticated, authLoading, navigate]);
 
   async function handleSubmit(e) {
@@ -27,7 +27,7 @@ export default function Login() {
       const res = await api.login(email, senha);
       login(res);
       addToast('Login realizado com sucesso!');
-      navigate('/');
+      navigate('/mapa');
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Erro ao fazer login.');
     } finally {
@@ -40,40 +40,42 @@ export default function Login() {
   return (
     <div className="min-h-dvh flex items-center justify-center bg-[var(--color-bg-primary)] p-4">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.16,1,0.3,1] }}
-        className="w-full max-w-md rounded-xl border p-8" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
+        className="w-full max-w-md border p-8" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
         <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} transition={{ delay: 0.1, type: 'spring', stiffness: 200 }} className="flex flex-col items-center mb-8">
-          <img src="/icon.svg" alt="CIU" className="w-12 h-12 mb-3" />
+          <div style={{ width: '3rem', height: '3rem', background: 'var(--color-gold-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.75rem' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--color-text-inverse)' }}>
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+          </div>
           <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>Central de Inteligência Urbana</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>Chamados para Serviços Públicos</p>
+          <p className="text-sm mt-2" style={{ color: 'var(--color-text-muted)' }}>Chamados para Serviços Públicos</p>
         </motion.div>
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="relative">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="email" className="text-xs uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>E-mail</label>
             <input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)}
-              className="peer w-full h-12 px-4 pt-4 rounded-lg border text-sm outline-none transition-colors bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
+              className="w-full h-12 px-4 border text-sm outline-none transition-colors bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
               style={{ borderColor: error ? 'var(--color-error)' : 'var(--color-border-default)' }}
               onFocus={e => { e.target.style.borderColor = 'var(--color-gold-500)'; }}
               onBlur={e => { e.target.style.borderColor = error ? 'var(--color-error)' : 'var(--color-border-default)'; }}
-              placeholder=" " />
-            <label htmlFor="email" className="absolute left-4 top-0 text-xs transition-all duration-200 peer-placeholder-shown:text-sm peer-placeholder-shown:top-3.5 peer-focus:top-0 peer-focus:text-xs"
-              style={{ color: email ? 'var(--color-gold-500)' : 'var(--color-text-muted)' }}>E-mail</label>
+              placeholder="seu@email.com" />
           </div>
-          <div className="relative">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="senha" className="text-xs uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>Senha</label>
             <input id="senha" type="password" value={senha} onChange={e => setSenha(e.target.value)}
-              className="peer w-full h-12 px-4 pt-4 rounded-lg border text-sm outline-none transition-colors bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
+              className="w-full h-12 px-4 border text-sm outline-none transition-colors bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
               style={{ borderColor: error ? 'var(--color-error)' : 'var(--color-border-default)' }}
               onFocus={e => { e.target.style.borderColor = 'var(--color-gold-500)'; }}
               onBlur={e => { e.target.style.borderColor = error ? 'var(--color-error)' : 'var(--color-border-default)'; }}
-              placeholder=" " />
-            <label htmlFor="senha" className="absolute left-4 top-0 text-xs transition-all duration-200 peer-placeholder-shown:text-sm peer-placeholder-shown:top-3.5 peer-focus:top-0 peer-focus:text-xs"
-              style={{ color: senha ? 'var(--color-gold-500)' : 'var(--color-text-muted)' }}>Senha</label>
+              placeholder="••••••••" />
           </div>
           {error && <p className="text-xs" style={{ color: 'var(--color-error)' }}>{error}</p>}
           <button type="submit" disabled={loading}
-            className="w-full h-10 rounded-md font-semibold text-sm transition-all disabled:opacity-50"
+            className="w-full h-12 font-semibold text-sm transition-all disabled:opacity-50"
             style={{ background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)' }}>
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between text-sm mt-4">
             <Link to="/registro" className="transition-colors hover:underline" style={{ color: 'var(--color-text-secondary)' }}>
               Não tem conta? Cadastre-se
             </Link>

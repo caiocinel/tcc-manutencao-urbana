@@ -2,10 +2,12 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem('token');
+  const isDemoMode = localStorage.getItem('ciu-demo-mode') === 'true';
 
   const headers = {
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
+    ...(isDemoMode && { 'X-Demo-Mode': 'true' }),
     ...options.headers,
   };
 
@@ -93,12 +95,14 @@ async function openOfflineDB() {
 
 async function uploadDefeito(formData) {
   const token = localStorage.getItem('token');
+  const isDemoMode = localStorage.getItem('ciu-demo-mode') === 'true';
 
   try {
     const res = await fetch(`${API_URL}/api/v1/defeitos/`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
+        ...(isDemoMode && { 'X-Demo-Mode': 'true' }),
       },
       body: formData,
     });
@@ -122,8 +126,12 @@ export const api = {
   login: (email, senha) =>
     request('/api/v1/auth/login/', { method: 'POST', body: { email, password: senha } }),
 
-  register: (nome, email, senha) =>
-    request('/api/v1/auth/register/', { method: 'POST', body: { nome, email, password: senha, confirm_password: senha } }),
+  register: (nome, email, senha, municipioId, cpf) =>
+    request('/api/v1/auth/register/', { method: 'POST', body: {
+      nome, email, password: senha, confirm_password: senha,
+      ...(municipioId && { municipio_id: municipioId }),
+      ...(cpf && { cpf }),
+    } }),
 
   listDefeitos: (params = {}) => {
     const q = new URLSearchParams();

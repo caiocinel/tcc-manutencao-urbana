@@ -17,7 +17,7 @@ export default function SuperAdmin() {
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
-    if (!user?.admin) { navigate('/'); return; }
+    if (!user?.admin) { navigate('/mapa'); return; }
     Promise.all([
       api.adminListUsers(),
       api.listMunicipios(),
@@ -72,7 +72,7 @@ export default function SuperAdmin() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>{u.nome}</span>
                       {u.super_admin && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(212,160,23,0.12)', color: 'var(--color-gold-500)' }}>SUPER</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 uppercase tracking-wide" style={{ background: 'var(--color-gold-muted)', color: 'var(--color-gold-500)' }}>SUPER</span>
                       )}
                     </div>
                   </td>

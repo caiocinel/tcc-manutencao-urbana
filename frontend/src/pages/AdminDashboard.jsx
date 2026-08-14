@@ -63,7 +63,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
-    if (!user?.admin) { navigate('/'); return; }
+    if (!user?.admin) { navigate('/mapa'); return; }
     api.listDefeitos().then(d => {
       const r = {};
       d.forEach(x => {

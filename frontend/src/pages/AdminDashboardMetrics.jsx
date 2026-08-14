@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { STATUS_CONFIG } from '../constants';
 import { KpiCard } from '../components/ui/kpi-card';
-const GOLD = '#D4A017', GOLD_DARK = '#B8860B', SUCCESS = '#4CAF7D', ERROR = '#CF4444';
+const GOLD = '#D4AF37', GOLD_DARK = '#AA7C11', SUCCESS = '#4CAF7D', ERROR = '#CF4444';
 
 const statusCores = {};
 for (const [k, v] of Object.entries(STATUS_CONFIG)) statusCores[k] = v.color;
@@ -40,7 +40,7 @@ export default function AdminDashboardMetrics() {
     finally { setLoading(false); }
   }, [addToast]);
 
-  useEffect(() => { if (!isAuthenticated) { navigate('/login'); return; } if (!user?.admin) { navigate('/'); return; } loadStats(); }, [isAuthenticated, user, navigate, loadStats]);
+  useEffect(() => { if (!isAuthenticated) { navigate('/login'); return; } if (!user?.admin) { navigate('/mapa'); return; } loadStats(); }, [isAuthenticated, user, navigate, loadStats]);
 
   if (loading) return <div className="flex items-center justify-center min-h-[50vh]"><div className="animate-pulse text-sm" style={{ color: 'var(--color-text-muted)' }}>Carregando...</div></div>;
   if (!stats) return null;

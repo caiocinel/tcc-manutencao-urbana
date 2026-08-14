@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Handshake, Calendar, User as UserIcon, MapPin, Camera, ThumbsUp, Target, X, CaretUp, CaretDown } from '@phosphor-icons/react';
+import { Handshake, Calendar, User as UserIcon, MapPin, Camera, ThumbsUp, X, CaretUp, CaretDown } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -7,12 +7,6 @@ import { useToast } from '../components/Toast';
 import { StatusBadge, getStatusColor } from '../components/ui/status-badge';
 import { Timeline } from '../components/ui/timeline';
 import { Button } from '../components/ui/button';
-
-function ScorePill({ score }) {
-  if (score == null) return null;
-  const cls = score >= 7 ? 'text-[var(--color-error)] bg-[rgba(207,68,68,0.12)]' : score >= 4 ? 'text-[var(--color-gold-500)] bg-[rgba(212,160,23,0.12)]' : 'text-[var(--color-success)] bg-[rgba(76,175,125,0.12)]';
-  return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${cls}`}><Target size={11} />{score}</span>;
-}
 
 export default function DefectList() {
   const { isAuthenticated, user } = useAuth();
@@ -153,7 +147,7 @@ export default function DefectList() {
     else { setOrdemCol(col); setOrdemDir('desc'); }
   }
 
-  function SortIcon({ col }) {
+  function renderSortIcon(col) {
     if (ordemCol !== col) return null;
     return ordemDir === 'asc' ? <CaretUp size={11} /> : <CaretDown size={11} />;
   }
@@ -180,8 +174,8 @@ export default function DefectList() {
         {[['todos','Todos'],['pendentes','Pendentes'],['atendidos','Atendidos'],['vinculados','Vinculados'],['meus','Meus Chamados']].map(([k,l]) => (
           (isAuthenticated || k !== 'meus') && (isAdmin || k !== 'vinculados') ? (
             <button key={k} onClick={() => setFiltro(k)}
-              className="px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap"
-              style={filtro === k ? { background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)' }
+              className="px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap"
+              style={filtro === k ? { background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)', border: '1px solid var(--color-gold-500)' }
                 : { border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)', background: 'transparent' }}>
               {l}
             </button>
@@ -199,10 +193,10 @@ export default function DefectList() {
             <thead>
               <tr style={{ background: 'var(--color-bg-elevated)' }}>
                 <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort('status')} style={{ color: 'var(--color-text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Status <SortIcon col="status" />
+                  Status {renderSortIcon("status")}
                 </th>
                 <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort('titulo')} style={{ color: 'var(--color-text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Título <SortIcon col="titulo" />
+                  Título {renderSortIcon("titulo")}
                 </th>
                 <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap hidden md:table-cell" style={{ color: 'var(--color-text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Categoria
@@ -211,10 +205,10 @@ export default function DefectList() {
                   Autor
                 </th>
                 <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap cursor-pointer select-none hidden md:table-cell" onClick={() => toggleSort('criado_em')} style={{ color: 'var(--color-text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Data <SortIcon col="criado_em" />
+                  Data {renderSortIcon("criado_em")}
                 </th>
                 <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort('total_apoios')} style={{ color: 'var(--color-text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <ThumbsUp size={11} /> <SortIcon col="total_apoios" />
+                  <ThumbsUp size={11} /> {renderSortIcon("total_apoios")}
                 </th>
                 <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--color-text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Ações
@@ -222,7 +216,7 @@ export default function DefectList() {
               </tr>
             </thead>
             <tbody>
-              {sorted.map((d, i) => (
+              {sorted.map(d => (
                 <tr key={d.id} className="cursor-pointer transition-colors hover:opacity-80"
                   style={{ borderTop: '1px solid var(--color-border-default)' }}
                   onClick={() => {
@@ -371,12 +365,12 @@ export default function DefectList() {
                   {apoiei.has(selectedDefect.id) ? <ThumbsUp size={14} weight="fill" /> : <ThumbsUp size={14} />}
                   {apoiando === selectedDefect.id ? '...' : apoiei.has(selectedDefect.id) ? 'Apoiado' : 'Apoiar'}
                 </button>
-                <button onClick={() => handleAnexarClick(selectedDefect.id)}
+                <button onClick={() => handleAnexarClick(selectedDefect.id)} disabled={anexando === selectedDefect.id}
                   className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
                   style={{ background: 'transparent', border: '1px solid var(--color-border-default)', color: 'var(--color-text-secondary)' }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--color-gold-500)'; e.currentTarget.style.color = 'var(--color-gold-500)'; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--color-border-default)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>
-                  <Camera size={14} /> Anexar
+                  <Camera size={14} /> {anexando === selectedDefect.id ? 'Enviando...' : 'Anexar'}
                 </button>
                 <input ref={anexarRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
                   onChange={async e => {

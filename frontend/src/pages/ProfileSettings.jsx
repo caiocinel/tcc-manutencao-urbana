@@ -1,12 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Camera, CheckCircle, WarningCircle } from '@phosphor-icons/react';
+import { Camera, CheckCircle, WarningCircle, User, Lock, Bell, Sliders, Trash } from '@phosphor-icons/react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { api } from '../services/api';
 import { Button } from '../components/ui/button';
 import SearchableSelect from '../components/ui/searchable-select';
+
+const navItems = [
+  { id: 'conta', icon: User, label: 'Minha Conta' },
+  { id: 'seguranca', icon: Lock, label: 'Segurança' },
+  { id: 'notificacoes', icon: Bell, label: 'Notificações' },
+  { id: 'preferencias', icon: Sliders, label: 'Preferências' },
+];
 
 export default function ProfileSettings() {
   const { user, isAuthenticated, updateUser } = useAuth();
@@ -24,6 +31,7 @@ export default function ProfileSettings() {
   const municipioOptions = municipios.map(m => ({ value: m.codigo, label: m.nome, group: m.uf_sigla }));
   const [codigoVerificacao, setCodigoVerificacao] = useState('');
   const [verificando, setVerificando] = useState(false);
+  const [activeSection, setActiveSection] = useState('conta');
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
@@ -80,13 +88,35 @@ export default function ProfileSettings() {
   }, [nome, senhaAtual, novaSenha, municipioId, user, addToast, updateUser]);
 
   return (
-    <div className="p-5 max-w-2xl mx-auto">
+    <div className="p-5 max-w-4xl mx-auto">
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-lg font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>Configurações de Perfil</h1>
-        <p className="text-sm mb-6" style={{ color: 'var(--color-text-muted)' }}>Gerencie suas informações pessoais</p>
+        <h1 className="text-lg font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>Configurações</h1>
+        <p className="text-sm mb-6" style={{ color: 'var(--color-text-muted)' }}>Gerencie sua conta e preferências</p>
 
-        <div className="rounded-xl border p-6 space-y-6" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
-          <div className="flex items-center gap-4">
+        <div className="flex flex-wrap gap-6">
+          {/* Sidebar Navigation */}
+          <nav className="flex flex-col gap-1" style={{ minWidth: '12rem' }}>
+            {navItems.map(item => (
+              <button key={item.id} onClick={() => setActiveSection(item.id)}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors"
+                style={activeSection === item.id
+                  ? { background: 'var(--color-gold-muted)', color: 'var(--color-gold-500)' }
+                  : { color: 'var(--color-text-secondary)' }}
+                onMouseEnter={e => { if (activeSection !== item.id) { e.currentTarget.style.background = 'var(--color-bg-hover)'; e.currentTarget.style.color = 'var(--color-text-primary)'; } }}
+                onMouseLeave={e => { if (activeSection !== item.id) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; } }}>
+                <item.icon size={16} />
+                {item.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Content */}
+          <div style={{ flex: 1, minWidth: '300px' }}>
+          {activeSection === 'conta' && (
+          <div className="border p-6 space-y-6" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>Perfil</h2>
+            <p className="text-xs -mt-4" style={{ color: 'var(--color-text-muted)' }}>Informações da sua conta</p>
+            <div className="flex items-center gap-4">
             <div className="relative w-16 h-16 rounded-full overflow-hidden cursor-pointer group" style={{ background: 'var(--color-bg-elevated)' }}
               onClick={() => fileRef.current?.click()}>
               {fotoPreview ? <img src={fotoPreview} alt="" className="w-full h-full object-cover" />
@@ -183,8 +213,89 @@ export default function ProfileSettings() {
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={() => navigate('/')}>Cancelar</Button>
+            <Button variant="ghost" onClick={() => navigate('/mapa')}>Cancelar</Button>
             <Button variant="primary" onClick={handleSave} disabled={saving}>{saving ? 'Salvando...' : 'Salvar Alterações'}</Button>
+          </div>
+          </div>
+          )}
+
+          {activeSection === 'seguranca' && (
+            <div className="border p-6" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
+              <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>Segurança</h2>
+              <p className="text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>Gerencie sua senha e autenticação</p>
+              <div className="flex flex-col">
+                <div className="flex items-center justify-between py-3" style={{ borderBottom: '1px solid var(--color-border-default)' }}>
+                  <div>
+                    <div className="text-sm" style={{ color: 'var(--color-text-primary)' }}>Alterar senha</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Atualize sua senha de acesso</div>
+                  </div>
+                  <Button variant="secondary" size="sm" onClick={() => { setActiveSection('conta'); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }}>Alterar</Button>
+                </div>
+                <div className="flex items-center justify-between py-3">
+                  <div>
+                    <div className="text-sm" style={{ color: 'var(--color-text-primary)' }}>Autenticação de dois fatores (2FA)</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Em desenvolvimento</div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => addToast('Função em desenvolvimento.', 'info')}>Gerenciar</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'notificacoes' && (
+            <div className="border p-6" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
+              <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>Notificações</h2>
+              <p className="text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>Controle como você recebe alertas</p>
+              <div className="flex flex-col">
+                <div className="flex items-center justify-between py-3" style={{ borderBottom: '1px solid var(--color-border-default)' }}>
+                  <div>
+                    <div className="text-sm" style={{ color: 'var(--color-text-primary)' }}>Notificações push</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Receba alertas no navegador</div>
+                  </div>
+                  <Button variant="secondary" size="sm" onClick={() => addToast('Configuração de push em desenvolvimento.', 'info')}>Gerenciar</Button>
+                </div>
+                <div className="flex items-center justify-between py-3">
+                  <div>
+                    <div className="text-sm" style={{ color: 'var(--color-text-primary)' }}>Atualizações de chamados</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Quando um chamado que você apoiou mudar de status</div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => addToast('Função em desenvolvimento.', 'info')}>Gerenciar</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'preferencias' && (
+            <div className="border p-6" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
+              <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>Preferências</h2>
+              <p className="text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>Personalize sua experiência</p>
+              <div className="flex flex-col">
+                <div className="flex items-center justify-between py-3">
+                  <div>
+                    <div className="text-sm" style={{ color: 'var(--color-text-primary)' }}>Idioma</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Idioma da interface</div>
+                  </div>
+                  <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Português (BR)</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'conta' && (
+            <div className="border p-6 mt-6" style={{ background: 'var(--color-bg-surface)', borderColor: 'rgba(207,68,68,0.3)' }}>
+              <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--color-error)' }}>Zona de perigo</h2>
+              <p className="text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>Ações irreversíveis</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm" style={{ color: 'var(--color-text-primary)' }}>Excluir conta</div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Remove permanentemente todos os seus dados</div>
+                </div>
+                <Button variant="danger" size="sm" onClick={() => addToast('Função em desenvolvimento.', 'info')}>
+                  <Trash size={12} /> Excluir
+                </Button>
+              </div>
+            </div>
+          )}
           </div>
         </div>
       </motion.div>

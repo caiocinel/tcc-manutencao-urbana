@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, List, User, ChartBar, Layout, Users, SignOut } from '@phosphor-icons/react';
+import { MapPin, List, User, ChartBar, Users, SignOut } from '@phosphor-icons/react';
 import { useAuth } from '../../context/AuthContext';
 
 export default function UserDropdown() {
@@ -65,7 +65,7 @@ export default function UserDropdown() {
 
             <div className="h-px mx-2" style={{ background: 'var(--color-border-default)' }} />
 
-            <button onClick={() => handleNav('/')} className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors" style={{ color: 'var(--color-text-secondary)' }}
+            <button onClick={() => handleNav('/mapa')} className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors" style={{ color: 'var(--color-text-secondary)' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-hover)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>
               <MapPin size={16} /> Mapa

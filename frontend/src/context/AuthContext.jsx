@@ -15,6 +15,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
+  const [isDemoMode, setIsDemoMode] = useState(() => localStorage.getItem('ciu-demo-mode') === 'true');
 
   const subscribeToPush = useCallback(async () => {
     try {
@@ -97,12 +98,32 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('token');
     localStorage.removeItem('refresh');
     localStorage.removeItem('userData');
+    localStorage.removeItem('ciu-demo-mode');
     setToken(null);
     setUser(null);
+    setIsDemoMode(false);
   }
 
+  const enterDemoMode = useCallback(async () => {
+    try {
+      const res = await api.login('demo@ciu.app', 'Demo@2024');
+      login(res);
+      setIsDemoMode(true);
+      localStorage.setItem('ciu-demo-mode', 'true');
+    } catch (err) {
+      console.error('Erro ao entrar no modo demo:', err);
+      throw err;
+    }
+  }, [login]);
+
+  const exitDemoMode = useCallback(() => {
+    localStorage.removeItem('ciu-demo-mode');
+    setIsDemoMode(false);
+    logout();
+  }, []);
+
   return (
-      <AuthContext.Provider value={{ user, token, login, updateUser, logout, isAuthenticated: !!token, loading }}>
+      <AuthContext.Provider value={{ user, token, login, updateUser, logout, isAuthenticated: !!token, loading, isDemoMode, enterDemoMode, exitDemoMode }}>
       {children}
     </AuthContext.Provider>
   );

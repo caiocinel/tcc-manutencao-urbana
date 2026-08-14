@@ -124,10 +124,6 @@ export default function MapPage() {
   }, [user?.municipio?.poligono_json]);
 
   useEffect(() => {
-    if (showForm && coords) reverseGeocode(coords.lat, coords.lng);
-  }, [showForm, coords]);
-
-  useEffect(() => {
     const m = mapRef.current;
     if (!m) return;
     const timer = setTimeout(() => m.invalidateSize(), 100);
@@ -183,10 +179,14 @@ export default function MapPage() {
         const bairro = data.address.suburb || data.address.neighbourhood || data.address.city_district || '';
         setFormData(p => ({ ...p, rua, bairro }));
       }
-    } catch {} finally {
+    } catch (err) { void err; } finally {
       setGeocoding(false);
     }
   }
+
+  useEffect(() => {
+    if (showForm && coords) reverseGeocode(coords.lat, coords.lng);
+  }, [showForm, coords]);
 
   const handleSubmit = useCallback(async () => {
     if (!formData.titulo || formData.descricao.length < 20) {
@@ -268,7 +268,11 @@ export default function MapPage() {
     <div className="flex flex-col" style={{ height: '100%', minHeight: 0, position: 'relative' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56, padding: '0 16px', flexShrink: 0, borderBottom: '1px solid var(--color-border-default)', background: 'var(--color-bg-elevated)', zIndex: 1000 }}>
         <div className="flex items-center gap-2">
-          <img src="/icon.svg" alt="" className="w-7 h-7" />
+          <div style={{ width: '1.75rem', height: '1.75rem', background: 'var(--color-gold-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--color-text-inverse)' }}>
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+          </div>
           <div className="max-sm:hidden">
             <h1 className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>Central de Inteligência Urbana</h1>
             <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Chamados para Serviços Públicos</p>

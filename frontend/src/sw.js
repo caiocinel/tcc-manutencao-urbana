@@ -84,7 +84,6 @@ async function processarFilaOffline() {
     for (const item of todos) {
       try {
         const token = item.token;
-        const csrfToken = await getCsrfTokenOffline();
         const formData = new FormData();
         Object.entries(item.dados).forEach(([k, v]) => formData.append(k, v));
 
@@ -125,10 +124,6 @@ async function openOfflineDB() {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
-}
-
-async function getCsrfTokenOffline() {
-  return '';
 }
 
 self.addEventListener('push', (event) => {

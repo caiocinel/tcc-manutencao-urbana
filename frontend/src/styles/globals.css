@@ -14,8 +14,8 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 4px rgba(212,160,23,0.3); }
-  50% { box-shadow: 0 0 12px rgba(212,160,23,0.6); }
+  0%, 100% { box-shadow: 0 0 4px rgba(212,175,55,0.3); }
+  50% { box-shadow: 0 0 12px rgba(212,175,55,0.6); }
 }
 
 @theme inline {
@@ -27,19 +27,25 @@
   --color-card-foreground: var(--color-text-primary);
   --color-popover: var(--color-bg-elevated);
   --color-popover-foreground: var(--color-text-primary);
-  --color-primary: #D4A017;
-  --color-primary-foreground: #0A0A0A;
+  --color-primary: #D4AF37;
+  --color-primary-foreground: #000000;
   --color-secondary: var(--color-bg-elevated);
   --color-secondary-foreground: var(--color-text-primary);
   --color-muted: var(--color-bg-elevated);
   --color-muted-foreground: var(--color-text-muted);
-  --color-accent: rgba(212,160,23,0.15);
-  --color-accent-foreground: #D4A017;
+  --color-accent: rgba(212,175,55,0.15);
+  --color-accent-foreground: #D4AF37;
   --color-destructive: #CF4444;
   --color-border: var(--color-border-default);
   --color-input: var(--color-bg-input);
-  --color-ring: #D4A017;
-  --radius: 0.5rem;
+  --color-ring: #D4AF37;
+  --radius: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-full: 999px;
 }
 
 @layer base {
@@ -48,9 +54,9 @@
     @apply bg-background text-foreground font-sans antialiased;
     font-variation-settings: 'wght' 400;
   }
-  ::selection { background: rgba(212,160,23,0.2); }
+  ::selection { background: rgba(212,175,55,0.2); }
   :focus-visible {
-    outline: 2px solid #D4A017;
+    outline: 2px solid #D4AF37;
     outline-offset: 2px;
   }
 }

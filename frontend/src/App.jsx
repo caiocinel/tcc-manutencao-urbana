@@ -9,9 +9,11 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { useKeyboardNav } from './hooks/useKeyboardNav';
 import UserDropdown from './components/ui/user-dropdown';
 import { CommandMenu } from './components/ui/command-menu';
+import DemoBanner from './components/ui/DemoBanner';
 import './styles/tokens.css';
 import './styles/globals.css';
 
+const Landing = lazy(() => import('./pages/Landing'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 const MapPage = lazy(() => import('./pages/MapPage'));
@@ -66,8 +68,12 @@ function AppHeader({ onToggleTheme, onOpenCmd, theme }) {
       borderBottom: '1px solid var(--color-border-default)',
       background: 'var(--color-bg-elevated)', zIndex: 1000,
     }}>
-      <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')} role="button" aria-label="Ir para o mapa">
-        <img src="/icon.svg" alt="" className="w-7 h-7" />
+      <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/mapa')} role="button" aria-label="Ir para o mapa">
+        <div style={{ width: '1.75rem', height: '1.75rem', background: 'var(--color-gold-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--color-text-inverse)' }}>
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
         <div className="max-sm:hidden">
           <h1 className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>Central de Inteligência Urbana</h1>
           <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Chamados para Serviços Públicos</p>
@@ -110,8 +116,9 @@ function AppLayout() {
   const location = useLocation();
   const { theme, toggle } = useTheme();
   const [cmdOpen, setCmdOpen] = useState(false);
-  const isMapPage = location.pathname === '/';
+  const isMapPage = location.pathname === '/mapa';
   const isAuthPage = location.pathname === '/login' || location.pathname === '/registro';
+  const isLanding = location.pathname === '/';
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -125,10 +132,11 @@ function AppLayout() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isAuthenticated]);
 
-  const shouldRenderHeader = isAuthenticated && !isAuthPage && !isMapPage;
+  const shouldRenderHeader = isAuthenticated && !isAuthPage && !isMapPage && !isLanding;
 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--color-bg-primary)' }}>
+      <DemoBanner />
       {shouldRenderHeader && (
         <AppHeader
           theme={theme}
@@ -140,7 +148,8 @@ function AppLayout() {
       <main id="main-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
         <Suspense fallback={<PageFallback />}>
           <Routes>
-            <Route path="/" element={<div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}><MapPage /></div>} />
+            <Route path="/" element={<AnimatedRoute><Landing /></AnimatedRoute>} />
+            <Route path="/mapa" element={<div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}><MapPage /></div>} />
             <Route path="/login" element={<AnimatedRoute><Login /></AnimatedRoute>} />
             <Route path="/registro" element={<AnimatedRoute><Register /></AnimatedRoute>} />
             <Route path="/lista" element={<ProtectedRoute><AnimatedRoute><DefectList /></AnimatedRoute></ProtectedRoute>} />
