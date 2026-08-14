@@ -1,0 +1,48 @@
+{
+  "normal": {
+    "scenario": "normal",
+    "requests": 20,
+    "avg_latency_ms": 94.75,
+    "min_latency_ms": 15.13,
+    "max_latency_ms": 104.03,
+    "p95_latency_ms": 104.03,
+    "throughput_rps": 10.6
+  },
+  "batch": [
+    {
+      "batch_size": 1,
+      "latency_ms": 99.38,
+      "status": "ok"
+    },
+    {
+      "batch_size": 5,
+      "latency_ms": 599.16,
+      "status": "ok"
+    },
+    {
+      "batch_size": 10,
+      "latency_ms": 1011.59,
+      "status": "ok"
+    },
+    {
+      "batch_size": 20,
+      "latency_ms": 1805.19,
+      "status": "ok"
+    },
+    {
+      "batch_size": 50,
+      "latency_ms": 4599.16,
+      "status": "ok"
+    }
+  ],
+  "health": {
+    "scenario": "health_check",
+    "checks": 10,
+    "avg_latency_ms": 8.86
+  },
+  "similarity": {
+    "scenario": "text_similarity",
+    "pairs": 10,
+    "avg_latency_ms": 180.87
+  }
+}
