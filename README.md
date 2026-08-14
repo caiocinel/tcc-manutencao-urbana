@@ -66,8 +66,8 @@ A aplicação está no ar e em uso contínuo em `tcc.josemurilors.com.br`. O bac
 
 - `Navegação anônima`: visualização do mapa de calor de defeitos sem login (marcadores individuais exigem login)
 - `Relato cidadão`: foto + GPS + categoria com classificação por IA
-- `Classificação IA`: embeddings ONNX (all-MiniLM-L6-v2) → 7 categorias, detecção de spam, dedup e extração de prioridade
-- `Detecção de duplicados`: proximidade espacial (ST_DWithin ~1km) + similaridade semântica (cosseno > 0,3)
+- `Classificação IA`: embeddings ONNX (paraphrase-multilingual-MiniLM-L12-v2) → 7 categorias, detecção de spam, dedup e extração de prioridade
+- `Detecção de duplicados`: proximidade espacial (raio de 50m) + similaridade semântica (cosseno ≥ 0,75)
 - `Moderação de spam`: detecção automática de descrições curtas, genéricas ou repetitivas
 - `Roteamento inteligente`: categoria → secretaria municipal responsável (ex.: Buraco → Obras, Iluminação → Serviços Urbanos)
 - `Pontuação de prioridade`: correspondência de palavras-chave (urgente/alta/media/baixa) extraídas da descrição
@@ -85,7 +85,7 @@ A aplicação está no ar e em uso contínuo em `tcc.josemurilors.com.br`. O bac
 - `Acessibilidade`: WCAG AA — aria-labels, skip-link, navegação por teclado, focus-visible, combobox, live regions
 - `Responsivo`: mobile-first com bottom sheets, menu hamburguer <768px
 - `PWA`: service worker com cache-first para assets estáticos, manifest com splash screen
-- `Privacidade`: blur gaussiano em todas as fotos enviadas para proteger rostos e placas (sigma configurável)
+- `Privacidade`: ofuscação de imagem via blur gaussiano em todas as fotos enviadas para atenuação de privacidade (sigma configurável)
 - `Tolerância de GPS`: validação de perímetro com ST_Buffer (~1km) + bounding box fallback para erros de GPS na borda do município
 
 ### Demonstração
@@ -155,7 +155,7 @@ curl https://tcc.josemurilors.com.br/api/health
 - **Frontend:** React 19 + Vite 8 + Phosphor Icons + Framer Motion + Leaflet + react-leaflet + leaflet.heat + CartoDB
 - **Backend:** Django 5.2 + Django REST Framework (Gunicorn)
 - **Database:** PostgreSQL 16 + PostGIS 3.4 (consultas espaciais)
-- **IA:** ONNX Runtime (Python/FastAPI) — all-MiniLM-L6-v2
+- **IA:** ONNX Runtime (Python/FastAPI) — paraphrase-multilingual-MiniLM-L12-v2
 - **Maps:** Leaflet + react-leaflet + leaflet.heat + CartoDB
 - **Auth:** simplejwt + BCryptPasswordHasher
 - **Security:** CSRF middleware, IsAuthenticated default, AES-256-GCM
@@ -169,7 +169,7 @@ curl https://tcc.josemurilors.com.br/api/health
 | Frontend | React 19 + Vite 8 + Phosphor Icons + Framer Motion + Leaflet |
 | Backend | Django 5.2 + DRF (Gunicorn) |
 | Database | PostgreSQL 16 + PostGIS 3.4 |
-| IA | ONNX Runtime (Python/FastAPI) — all-MiniLM-L6-v2 |
+| IA | ONNX Runtime (Python/FastAPI) — paraphrase-multilingual-MiniLM-L12-v2 |
 | Maps | Leaflet + react-leaflet + leaflet.heat + CartoDB |
 | Auth | simplejwt + BCryptPasswordHasher |
 | Security | CSRF middleware, IsAuthenticated default, AES-256-GCM |
@@ -286,23 +286,23 @@ PostgreSQL 16 com extensão PostGIS 3.4 para todas as operações espaciais:
 - **`municipios.polygon_geom`** — MultiPolygon(4326) a partir do GeoJSON IBGE (5570 municípios, ~120MB)
 - **`defeitos.geom`** — gerado sempre como `ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)` via migração Django/PostGIS
 - **Validação de perímetro:** `ST_Within(point, polygon_geom)` — o defeito deve estar dentro do município do usuário
-- **Detecção de duplicados:** `ST_DWithin(geom, 0.01)` (~1km de raio) + similaridade de embedding > 0,3
+- **Detecção de duplicados:** raio espacial de 50m + similaridade de embedding (cosseno) ≥ 0,75
 
 O Django gerencia a geometria via PostGIS diretamente nas migrações — nenhum script SQL legado externo é necessário.
 
 ## Pipeline de Classificação IA
 
 ```
-User input → Tokenize (BERT tokenizer) → all-MiniLM-L6-v2 (ONNX)
+User input → Tokenize (BERT tokenizer) → paraphrase-multilingual-MiniLM-L12-v2 (ONNX)
   → Mean pooling → L2 normalize → Cosine similarity × 7 centroids
   → Softmax(t=3.0) → Category + confidence
 ```
 
-- **Modelo:** `sentence-transformers/all-MiniLM-L6-v2` (embeddings 384-dim, ~90MB)
+- **Modelo:** `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (embeddings 384-dim, multilíngue)
 - **Fallback:** classificador por palavras-chave ativa se o ONNX falhar ao carregar ou o container de IA cair
 - **Categorias:** Buraco, Iluminação, Semáforo, Árvore Caída, Entulho, Calçada Danificada, Outro
 - **Imagem:** extrator de features MobileNetV3-small (576-dim) — requer fine-tuning para classificação
-- **Detecção de duplicados:** `ST_DWithin(geom, 0.01)` (~1km) + similaridade cosseno de embedding > 0,3
+- **Detecção de duplicados:** raio espacial de 50m + similaridade cosseno de embedding ≥ 0,75
 - **Filtro de spam:** rejeita textos < 10 chars, alta taxa de repetição ou padrões genéricos
 - **Extração de prioridade:** match de palavras-chave urgent/alta/media/baixa na descrição
 - **Roteamento de secretaria:** categoria → departamento municipal responsável
@@ -316,7 +316,7 @@ User input → Tokenize (BERT tokenizer) → all-MiniLM-L6-v2 (ONNX)
 | Passo | Descrição |
 |---|---|
 | Tokenize | BERT tokenizer, max_length=128, pad/truncate |
-| Embed | all-MiniLM-L6-v2 ONNX → vetor 384-dim |
+| Embed | paraphrase-multilingual-MiniLM-L12-v2 ONNX → vetor 384-dim |
 | Pool | Mean pooling dos embeddings de token |
 | Normalize | L2 normalize para vetor unitário |
 | Compare | Cosseno com 7 centróides de categoria pré-computados |
@@ -332,7 +332,7 @@ User input → Tokenize (BERT tokenizer) → all-MiniLM-L6-v2 (ONNX)
 │  FastAPI ← POST /classify, /classify-full, etc.   │
 │     ↓                                              │
 │  inference.py (ONNX Runtime session)                │
-│     ├── text_session → all-MiniLM-L6-v2.onnx       │
+│     ├── text_session → paraphrase-multilingual-MiniLM-L12-v2.onnx       │
 │     └── image_session → mobilenetv3.onnx            │
 │     └── centroids.json (7 vetores pré-computados)   │
 │                                                     │
@@ -478,8 +478,8 @@ The Django backend is the active production backend. The application is deployed
 
 - `Anonymous browsing`: view the heatmap of defects without login (individual markers require login)
 - `Citizen reporting`: photo + GPS + category with AI classification
-- `AI classification`: ONNX embeddings (all-MiniLM-L6-v2) → 7 categories, spam detection, dedup, priority extraction
-- `Duplicate detection`: spatial proximity (ST_DWithin ~1km) + semantic similarity (embedding cosine > 0.3)
+- `AI classification`: ONNX embeddings (paraphrase-multilingual-MiniLM-L12-v2) → 7 categories, spam detection, dedup, priority extraction
+- `Duplicate detection`: spatial proximity (50m radius) + semantic similarity (cosine ≥ 0.75)
 - `Spam moderation`: automatic detection of short, generic, or repetitive descriptions
 - `Smart routing`: category → responsible municipal secretary (e.g., Buraco → Obras, Iluminação → Serviços Urbanos)
 - `Priority scoring`: keyword match (urgente/alta/media/baixa) extracted from description
@@ -567,7 +567,7 @@ curl https://tcc.josemurilors.com.br/api/health
 - **Frontend:** React 19 + Vite 8 + Phosphor Icons + Framer Motion + Leaflet (react-leaflet, leaflet.heat, CartoDB)
 - **Backend:** Django 5.2 + Django REST Framework (DRF) served by Gunicorn
 - **Database:** PostgreSQL 16 + PostGIS 3.4 (spatial queries)
-- **AI:** ONNX Runtime (Python/FastAPI) — all-MiniLM-L6-v2
+- **AI:** ONNX Runtime (Python/FastAPI) — paraphrase-multilingual-MiniLM-L12-v2
 - **Maps:** Leaflet + react-leaflet + leaflet.heat + CartoDB
 - **Auth:** simplejwt + BCryptPasswordHasher
 - **Security:** CSRF middleware, IsAuthenticated default, AES-256-GCM encryption
@@ -582,7 +582,7 @@ curl https://tcc.josemurilors.com.br/api/health
 | Frontend | React 19 + Vite 8 + Phosphor Icons + Framer Motion + Leaflet |
 | Backend | Django 5.2 + DRF (Gunicorn) |
 | Database | PostgreSQL 16 + PostGIS 3.4 |
-| AI | ONNX Runtime (Python/FastAPI) — all-MiniLM-L6-v2 |
+| AI | ONNX Runtime (Python/FastAPI) — paraphrase-multilingual-MiniLM-L12-v2 |
 | Maps | Leaflet + react-leaflet + leaflet.heat + CartoDB |
 | Auth | simplejwt + BCryptPasswordHasher |
 | Security | CSRF middleware, IsAuthenticated default, AES-256-GCM |
@@ -698,21 +698,21 @@ PostgreSQL 16 with the PostGIS 3.4 extension for all spatial operations:
 - **`municipios.polygon_geom`** — MultiPolygon(4326) from IBGE GeoJSON (~5570 municipalities, ~120MB)
 - **`defeitos.geom`** — Generated always as `ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)` (managed by Django/PostGIS migrations)
 - **Perimeter validation:** `ST_Within(point, polygon_geom)` — defect must be inside the user's municipality
-- **Duplicate detection:** `ST_DWithin(geom, 0.01)` (~1km radius) + embedding similarity > 0.3
+- **Duplicate detection:** 50m spatial radius + embedding cosine similarity ≥ 0.75
 
 ## AI Classification Pipeline
 
 ```
-User input → Tokenize (BERT tokenizer) → all-MiniLM-L6-v2 (ONNX)
+User input → Tokenize (BERT tokenizer) → paraphrase-multilingual-MiniLM-L12-v2 (ONNX)
   → Mean pooling → L2 normalize → Cosine similarity × 7 centroids
   → Softmax(t=3.0) → Category + confidence
 ```
 
-- **Model:** `sentence-transformers/all-MiniLM-L6-v2` (384-dim embeddings, ~90MB)
+- **Model:** `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384-dim embeddings, multilingual)
 - **Fallback:** Keyword classifier activates if ONNX fails to load or the IA container is down
 - **Categories:** Buraco, Iluminação, Semáforo, Árvore Caída, Entulho, Calçada Danificada, Outro
 - **Image:** MobileNetV3-small feature extractor (576-dim) — requires fine-tuning for classification
-- **Duplicate detection:** `ST_DWithin(geom, 0.01)` (~1km) + embedding cosine similarity > 0.3
+- **Duplicate detection:** 50m spatial radius + embedding cosine similarity ≥ 0.75
 - **Spam filter:** Rejects texts < 10 chars, high-repeat-ratio, or generic patterns
 - **Priority extraction:** Keyword match on urgent/alta/media/baixa in description
 - **Secretary routing:** Category → responsible municipal department
@@ -726,7 +726,7 @@ User input → Tokenize (BERT tokenizer) → all-MiniLM-L6-v2 (ONNX)
 | Step | Description |
 |---|---|
 | Tokenize | BERT tokenizer, max_length=128, pad/truncate |
-| Embed | all-MiniLM-L6-v2 ONNX → 384-dim vector |
+| Embed | paraphrase-multilingual-MiniLM-L12-v2 ONNX → 384-dim vector |
 | Pool | Mean pooling of token embeddings |
 | Normalize | L2 normalize to unit vector |
 | Compare | Cosine similarity with 7 pre-computed category centroids |
@@ -742,7 +742,7 @@ User input → Tokenize (BERT tokenizer) → all-MiniLM-L6-v2 (ONNX)
 │  FastAPI ← POST /classify, /classify-full, etc.   │
 │     ↓                                              │
 │  inference.py (ONNX Runtime session)                │
-│     ├── text_session → all-MiniLM-L6-v2.onnx       │
+│     ├── text_session → paraphrase-multilingual-MiniLM-L12-v2.onnx       │
 │     └── image_session → mobilenetv3.onnx            │
 │     └── centroids.json (7 pre-computed vectors)     │
 │                                                     │
