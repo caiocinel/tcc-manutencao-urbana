@@ -13,6 +13,7 @@ DATABASES = {
         'PASSWORD': os.environ.get('DB_PASSWORD', ''),
         'HOST': os.environ.get('DB_HOST', 'postgres'),
         'PORT': os.environ.get('DB_PORT', '5432'),
+        'CONN_MAX_AGE': 60,
         'OPTIONS': {
             'options': '-c timezone=UTC',
         },
@@ -26,6 +27,6 @@ CSRF_COOKIE_SECURE = True
 
 # SECURITY: HSTS, SSL redirect, XSS filter (defense-in-depth beyond nginx)
 SECURE_HSTS_SECONDS = 31536000
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'true').lower() in ('true', '1', 'yes')
 SECURE_BROWSER_XSS_FILTER = False  # Deprecated, rely on CSP in nginx
 SECURE_CONTENT_TYPE_NOSNIFF = True
