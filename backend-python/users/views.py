@@ -448,6 +448,14 @@ class AdminEstatisticasView(APIView):
             sla_vencidos_total = 0
             sla_vencidos = []
             cursor.execute(f'''
+                SELECT COUNT(*)
+                FROM defeitos d{mun_join}
+                {mun_where_and} d.status NOT IN {resolvidos_status_sql}
+                  AND d.prazo_sla_dias > 0
+                  AND d.criado_em::timestamp + (d.prazo_sla_dias || ' days')::interval < %s
+            ''', mun_params + [now_iso])
+            sla_vencidos_total = cursor.fetchone()[0]
+            cursor.execute(f'''
                 SELECT d.id, d.titulo, d.categoria, d.status,
                        d.criado_em::timestamp, d.prazo_sla_dias
                 FROM defeitos d{mun_join}
@@ -462,7 +470,6 @@ class AdminEstatisticasView(APIView):
                 'status': r[3], 'criado_em': r[4].isoformat(),
                 'prazo_sla_dias': r[5],
             } for r in cursor.fetchall()]
-            sla_vencidos_total = len(sla_vencidos)
 
             cursor.execute(f'''
                 SELECT d.bairro, COUNT(*),

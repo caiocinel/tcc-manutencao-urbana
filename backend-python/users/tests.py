@@ -394,6 +394,30 @@ class TestAdminEstatisticas:
         assert 'SLA Vencido' in titulos
         assert 'Dentro do SLA' not in titulos
 
+    def test_sla_vencidos_total_uncapped(self, admin_client):
+        from datetime import timedelta
+        from django.utils import timezone
+        from defeitos.models import Defeito
+
+        resp = admin_client.get(reverse(self.URL))
+        assert resp.status_code == 200
+        baseline = resp.data['sla_vencidos_total']
+
+        now = timezone.now()
+        for i in range(60):
+            Defeito.objects.create(
+                titulo=f'SLA Vencido Mass {i}',
+                criado_em=now - timedelta(days=10),
+                atualizado_em=now - timedelta(days=10),
+                prazo_sla_dias=3,
+                status='pendente',
+            )
+
+        resp = admin_client.get(reverse(self.URL))
+        assert resp.status_code == 200
+        assert resp.data['sla_vencidos_total'] == baseline + 60
+        assert len(resp.data['sla_vencidos']) == 50
+
 
 class TestSubscribe:
 
