@@ -47,6 +47,8 @@ class Defeito(models.Model):
     prioridade = models.CharField(max_length=50, blank=True, default='')
     previsao_conclusao = models.TextField(blank=True, default='')
     atendido_em = models.TextField(blank=True, default='')
+    secretaria_responsavel = models.CharField(max_length=255, blank=True, default='', db_column='secretaria_responsavel')
+    prazo_sla_dias = models.IntegerField(default=0, db_column='prazo_sla_dias')
     usuario_email = models.CharField(max_length=255, blank=True, default='')
     imagem_thumbnail = models.BinaryField(null=True, blank=True, db_column='imagem_thumbnail')
     imagens_extra = models.TextField(default='[]')

@@ -65,6 +65,8 @@ SCHEMA = [
         prioridade TEXT NOT NULL DEFAULT '',
         previsao_conclusao TEXT NOT NULL DEFAULT '',
         atendido_em TEXT NOT NULL DEFAULT '',
+        secretaria_responsavel TEXT NOT NULL DEFAULT '',
+        prazo_sla_dias INTEGER NOT NULL DEFAULT 0,
         usuario_email TEXT NOT NULL DEFAULT '',
         imagem_thumbnail BYTEA,
         imagens_extra TEXT NOT NULL DEFAULT '[]',
@@ -76,6 +78,12 @@ SCHEMA = [
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_defeitos_usuario ON defeitos(usuario)
+    """,
+    """
+    ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS secretaria_responsavel TEXT NOT NULL DEFAULT ''
+    """,
+    """
+    ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS prazo_sla_dias INTEGER NOT NULL DEFAULT 0
     """,
     """
     CREATE TABLE IF NOT EXISTS apoios (
