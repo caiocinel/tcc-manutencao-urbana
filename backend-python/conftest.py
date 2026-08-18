@@ -6,6 +6,12 @@ import uuid
 import pytest
 from rest_framework.test import APIClient
 
+# Força o settings de teste (local) para todo o processo pytest. O container de
+# dev roda com DJANGO_SETTINGS_MODULE=core.settings.production, e se isso não
+# for sobrescrito aqui, o pytest-django e o _bootstrap_test_db usariam o banco
+# de produção (manutencao_urbana) em vez do banco de teste — apagando dados reais.
+os.environ['DJANGO_SETTINGS_MODULE'] = 'core.settings.local'
+
 
 def _bootstrap_test_db():
     """Cria o banco de teste (se não existir) e aplica o schema via manage.py.
@@ -20,12 +26,14 @@ def _bootstrap_test_db():
     pytest-django impõe dentro da sessão de teste.
     """
     import django
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings.local')
     django.setup()
 
     from django.conf import settings
     db = settings.DATABASES['default']
-    dbname = db['TEST']['NAME'] if 'TEST' in db and db['TEST'].get('NAME') else db['NAME']
+    # Nunca dropar o banco de produção local: deriva o nome do banco de teste
+    # exatamente como o pytest-django (prefixo test_ quando TEST.NAME ausente).
+    test_cfg = db.get('TEST') or {}
+    dbname = test_cfg.get('NAME') or f"test_{db['NAME']}"
 
     import psycopg2
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
