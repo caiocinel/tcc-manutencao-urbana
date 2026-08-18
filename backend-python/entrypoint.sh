@@ -1,6 +1,12 @@
 #!/bin/sh
 set -e
 
+# Se um comando explícito foi passado (ex: docker compose run --rm backend
+# python -c "..."), executa-o diretamente sem o bootstrap completo (usado pelo CI).
+if [ $# -gt 0 ]; then
+    exec "$@"
+fi
+
 echo "Waiting for PostgreSQL..."
 while ! pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" >/dev/null 2>&1; do
     sleep 1
