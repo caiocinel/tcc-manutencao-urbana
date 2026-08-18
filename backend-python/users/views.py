@@ -443,6 +443,27 @@ class AdminEstatisticasView(APIView):
                 'total_resolvidos': r[2],
             } for r in cursor.fetchall()]
 
+            resolvidos_status_sql = "('atendido','encerrado','concluido')"
+            now_iso = timezone.now().isoformat()
+            sla_vencidos_total = 0
+            sla_vencidos = []
+            cursor.execute(f'''
+                SELECT d.id, d.titulo, d.categoria, d.status,
+                       d.criado_em::timestamp, d.prazo_sla_dias
+                FROM defeitos d{mun_join}
+                {mun_where_and} d.status NOT IN {resolvidos_status_sql}
+                  AND d.prazo_sla_dias > 0
+                  AND d.criado_em::timestamp + (d.prazo_sla_dias || ' days')::interval < %s
+                ORDER BY d.criado_em::timestamp ASC
+                LIMIT 50
+            ''', mun_params + [now_iso])
+            sla_vencidos = [{
+                'id': str(r[0]), 'titulo': r[1], 'categoria': r[2],
+                'status': r[3], 'criado_em': r[4].isoformat(),
+                'prazo_sla_dias': r[5],
+            } for r in cursor.fetchall()]
+            sla_vencidos_total = len(sla_vencidos)
+
             cursor.execute(f'''
                 SELECT d.bairro, COUNT(*),
                     SUM(CASE WHEN d.status IN ('atendido','encerrado') THEN 1 ELSE 0 END)
@@ -567,6 +588,8 @@ class AdminEstatisticasView(APIView):
             'recorrencias': recorrencias,
             'tendencia_mensal': tendencia_mensal,
             'sla_por_categoria': sla_por_categoria,
+            'sla_vencidos_total': sla_vencidos_total,
+            'sla_vencidos': sla_vencidos,
             'top_bairros': top_bairros,
             'recomendacoes': recomendacoes,
             'medias_moveis': {

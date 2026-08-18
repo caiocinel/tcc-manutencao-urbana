@@ -362,6 +362,38 @@ class TestAdminEstatisticas:
         resp = client.get(reverse(self.URL))
         assert resp.status_code == 401
 
+    def test_sla_vencidos_total(self, admin_client):
+        from datetime import timedelta
+        from django.utils import timezone
+        from defeitos.models import Defeito
+
+        resp = admin_client.get(reverse(self.URL))
+        assert resp.status_code == 200
+        baseline = resp.data['sla_vencidos_total']
+
+        now = timezone.now()
+        Defeito.objects.create(
+            titulo='SLA Vencido',
+            criado_em=now - timedelta(days=10),
+            atualizado_em=now - timedelta(days=10),
+            prazo_sla_dias=3,
+            status='pendente',
+        )
+        Defeito.objects.create(
+            titulo='Dentro do SLA',
+            criado_em=now,
+            atualizado_em=now,
+            prazo_sla_dias=30,
+            status='pendente',
+        )
+
+        resp = admin_client.get(reverse(self.URL))
+        assert resp.status_code == 200
+        assert resp.data['sla_vencidos_total'] == baseline + 1
+        titulos = [d['titulo'] for d in resp.data['sla_vencidos']]
+        assert 'SLA Vencido' in titulos
+        assert 'Dentro do SLA' not in titulos
+
 
 class TestSubscribe:
 
