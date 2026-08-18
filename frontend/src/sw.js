@@ -2,6 +2,7 @@ import { precacheAndRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
+import { payloadToFormData } from './services/offline-payload';
 
 precacheAndRoute(self.__WB_MANIFEST);
 
@@ -84,8 +85,7 @@ async function processarFilaOffline() {
     for (const item of todos) {
       try {
         const token = item.token;
-        const formData = new FormData();
-        Object.entries(item.dados).forEach(([k, v]) => formData.append(k, v));
+        const formData = payloadToFormData(item.dados);
 
         const res = await fetch('/api/v1/defeitos/', {
           method: 'POST',

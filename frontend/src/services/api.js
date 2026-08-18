@@ -1,3 +1,5 @@
+import { formDataToOfflinePayload } from './offline-payload';
+
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 async function request(endpoint, options = {}) {
@@ -61,17 +63,11 @@ async function paginated(endpoint, options = {}) {
   return data?.results ?? data;
 }
 
-function formDataToObject(formData) {
-  const obj = {};
-  formData.forEach((value, key) => { obj[key] = value; });
-  return obj;
-}
-
 async function salvarOffline(formData) {
   const db = await openOfflineDB();
   const tx = db.transaction('defeitos', 'readwrite');
   tx.objectStore('defeitos').add({
-    dados: formDataToObject(formData),
+    dados: await formDataToOfflinePayload(formData),
     token: localStorage.getItem('token'),
     criado_em: new Date().toISOString(),
   });

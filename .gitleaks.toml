@@ -80,4 +80,7 @@ regexes = [
   '''AKIAIOSFODNN7EXAMPLE''',
   '''CHANGEME''',
   '''\$\{DB_PASSWORD\}''',
+  '''password": "super_secret_123"''',
+  '''postgresql://admin:password123@prod-db:5432/myapp''',
+  '''sk-proj-abc123''',
 ]
