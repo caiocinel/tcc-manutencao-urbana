@@ -1,4 +1,6 @@
 import itertools
+from datetime import timedelta
+
 import pytest
 from django.urls import reverse
 from django.utils import timezone
@@ -309,3 +311,21 @@ class TestApoiados:
         resp = auth_client.get(reverse(self.APOIADOS_URL))
         assert resp.status_code == 200
         assert resp.data['count'] == 0
+
+
+class TestSlaVencido:
+
+    def test_sla_vencido(self, auth_client, client):
+        created = _create_defeito(auth_client)
+        defeito = Defeito.objects.get(id=created['id'])
+        defeito.criado_em = timezone.now() - timedelta(days=30)
+        defeito.save()
+        resp = client.get(reverse('defeitos-detail', args=[created['id']]))
+        assert resp.status_code == 200
+        assert resp.data['sla_vencido'] is True
+
+    def test_sla_vencido_fresh(self, auth_client, client):
+        created = _create_defeito(auth_client)
+        resp = client.get(reverse('defeitos-detail', args=[created['id']]))
+        assert resp.status_code == 200
+        assert resp.data['sla_vencido'] is False

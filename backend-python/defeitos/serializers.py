@@ -1,8 +1,21 @@
 import base64
 import math
+from datetime import timedelta
 from rest_framework import serializers
 from django.conf import settings
 from .models import Defeito, Apoio
+
+RESOLVIDOS = {'atendido', 'encerrado', 'concluido'}
+
+
+def _is_sla_vencido(obj):
+    if obj.status in RESOLVIDOS or not obj.prazo_sla_dias:
+        return False
+    if not obj.criado_em:
+        return False
+    from django.utils import timezone
+    prazo = obj.criado_em + timedelta(days=obj.prazo_sla_dias)
+    return timezone.now() > prazo
 
 
 class ThumbnailField(serializers.Field):
@@ -20,6 +33,7 @@ class DefeitoListSerializer(serializers.ModelSerializer):
     autor_nome = serializers.CharField(source='usuario.nome', read_only=True, default='')
     categoria_nome = serializers.CharField(source='categoria', read_only=True, default='')
     total_apoios = serializers.SerializerMethodField()
+    sla_vencido = serializers.SerializerMethodField()
 
     class Meta:
         model = Defeito
@@ -28,10 +42,14 @@ class DefeitoListSerializer(serializers.ModelSerializer):
             'autor_nome', 'latitude', 'longitude',
             'rua', 'bairro', 'prioridade',
             'total_apoios', 'criado_em', 'imagem_url',
+            'sla_vencido',
         )
 
     def get_total_apoios(self, obj):
         return getattr(obj, 'total_apoios', 0)
+
+    def get_sla_vencido(self, obj):
+        return _is_sla_vencido(obj)
 
 
 class DefeitoDetailSerializer(serializers.ModelSerializer):
@@ -39,6 +57,7 @@ class DefeitoDetailSerializer(serializers.ModelSerializer):
     categoria_nome = serializers.CharField(source='categoria', read_only=True, default='')
     total_apoios = serializers.SerializerMethodField()
     imagem_thumbnail = ThumbnailField()
+    sla_vencido = serializers.SerializerMethodField()
 
     class Meta:
         model = Defeito
@@ -46,6 +65,9 @@ class DefeitoDetailSerializer(serializers.ModelSerializer):
 
     def get_total_apoios(self, obj):
         return getattr(obj, 'total_apoios', 0)
+
+    def get_sla_vencido(self, obj):
+        return _is_sla_vencido(obj)
 
 
 class DefeitoCreateSerializer(serializers.ModelSerializer):
