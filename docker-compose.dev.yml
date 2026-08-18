@@ -1,0 +1,123 @@
+# docker-compose.dev.yml — Ambiente de desenvolvimento local
+# Uso:
+#   docker compose -f docker-compose.dev.yml up -d backend redis
+#   docker compose -f docker-compose.dev.yml --profile ia up -d ia
+#   docker compose -f docker-compose.dev.yml exec backend python manage.py migrate
+#   cd frontend && npm run dev
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: manutencao_urbana
+      POSTGRES_USER: urbana
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    command: >
+      postgres
+      -c max_connections=50
+      -c shared_buffers=128MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=32MB
+      -c effective_cache_size=384MB
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U urbana -d manutencao_urbana"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend-python
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=core.settings.production
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL}
+      - SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD:-Admin@2026}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+      - IA_URL=http://ia:8000
+      - REDIS_URL=redis://redis:6379/0
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=manutencao_urbana
+      - DB_USER=urbana
+      - DB_PASSWORD=${DB_PASSWORD}
+      - PRIVACY_BLUR_SIGMA=${PRIVACY_BLUR_SIGMA:-0.6}
+      - PERIMETER_BUFFER_DEG=${PERIMETER_BUFFER_DEG:-0.01}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - FROM_EMAIL=${FROM_EMAIL:-Central Urbana <onboarding@resend.dev>}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,backend}
+      - SECURE_SSL_REDIRECT=${SECURE_SSL_REDIRECT:-false}
+    volumes:
+      - uploads:/app/uploads
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "-O", "/dev/null", "http://localhost:8000/api/v1/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ia:
+    profiles: ["ia"]
+    build:
+      context: ./ia
+      dockerfile: Dockerfile
+    ports:
+      - "8100:8000"
+    environment:
+      - PYTHON_ENV=production
+      - CLASSIFICATION_API_KEY=${HUGGINGFACE_API_TOKEN:-}
+      - CLASSIFICATION_API_URL=${CLASSIFICATION_API_URL:-https://api-inference.huggingface.co/models/facebook/bart-large-mnli}
+      - CLASSIFICATION_FORMAT=${CLASSIFICATION_FORMAT:-huggingface}
+      - CLASSIFICATION_CATEGORIES=${CLASSIFICATION_CATEGORIES:-Buraco,Iluminacao,Semafaro,Arvore Caida,Entulho,Calcada Danificada,Outro}
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; r=urllib.request.urlopen('http://localhost:8000/health'); sys.exit(0 if r.status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  uploads:
+
+networks:
+  app-network:
+    driver: bridge

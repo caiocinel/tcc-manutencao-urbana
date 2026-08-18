@@ -1,0 +1,104 @@
+# ============================================
+# Lychee Link Checker Configuration
+# ============================================
+# Documentation: https://github.com/lycheeverse/lychee
+# ============================================
+
+# -------------------------------------------
+# Basic Settings
+# -------------------------------------------
+
+# Maximum number of concurrent link checks
+max_concurrency = 10
+
+# Timeout for each link check (in seconds)
+timeout = 30
+
+# Maximum number of redirects to follow
+max_redirects = 5
+
+# Retry failed links
+retry = true
+
+# Number of retries for failed links
+max_retries = 3
+
+# Accept these HTTP status codes as valid
+accept = [200, 204, 301, 302]
+
+# -------------------------------------------
+# Link Resolution
+# -------------------------------------------
+
+# Base directory for resolving relative links
+root_dir = './'
+
+# Check anchor links (#section) to verify they exist in target
+# true = validate that #section exists in the target document
+# false = skip anchor validation (faster, but less thorough)
+include_fragments = true
+
+# Check links inside code blocks (```code```)
+# false = ignore links in code examples (recommended for docs)
+# true = check all links including those in code blocks
+include_verbatim = false
+
+# -------------------------------------------
+# Exclusions
+# -------------------------------------------
+
+# Exclude these URL patterns from checking
+exclude = [
+  '^https://github\.com/.*/(issues|pull)/\d+',  # GitHub issues/PRs (rate limited)
+  '^mailto:',                                     # Email addresses
+  '^file://',                                     # Local files
+  'localhost',                                    # Local development
+  '127\.0\.0\.1',                                 # Local development
+  'http://localhost.*',                           # Local development with port
+]
+
+# Exclude all private network addresses
+exclude_all_private = true
+
+# Check mail addresses
+include_mail = false
+
+# -------------------------------------------
+# Output Settings
+# -------------------------------------------
+
+# Use case-sensitive URLs
+include_verbatim = false
+
+# User agent string
+user_agent = "lychee/0.14.0"
+
+# Exclude specific domains
+exclude_domains = [
+  'example.com',
+  'example.org',
+]
+
+# Include specific URL patterns (if empty, all URLs are checked)
+include = []
+
+# Scheme to use for relative URLs
+scheme = "https"
+
+# Base URL for relative links
+base = ""
+
+# Output format (detailed, json, markdown)
+format = "detailed"
+
+# Colorize output
+color = true
+
+# Show progress bar
+progress = true
+
+# Quiet mode (minimal output)
+quiet = false
+
+# Verbose mode (show all checked links)
+verbose = false

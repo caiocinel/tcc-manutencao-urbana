@@ -1,0 +1,26 @@
+{
+  "name": "tcc-manutencao-urbana",
+  "version": "1.1.0",
+  "description": "Central de Inteligência Urbana — full-stack PWA (React + Django + PostGIS + IA ONNX)",
+  "private": true,
+  "scripts": {
+    "lint:md": "markdownlint-cli2 '**/*.md' '!node_modules/**/*.md' '!frontend/node_modules/**/*.md' '!docs/superpowers/**/*.md'",
+    "lint:md:fix": "markdownlint-cli2 '**/*.md' '!node_modules/**/*.md' '!frontend/node_modules/**/*.md' '!docs/superpowers/**/*.md' --fix",
+    "lint:links": "lychee '*.md' '**/*.md'",
+    "lint:secrets": "gitleaks detect --source . -v --config .gitleaks.toml",
+    "lint:secrets:staged": "gitleaks detect --source . -v --config .gitleaks.toml",
+    "verify:gitignore": "./scripts/verify-gitignore.sh",
+    "prepare": "husky",
+    "test": "npm run lint:md && npm run lint:secrets && npm run verify:gitignore"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "husky": "^9.0.0",
+    "markdownlint-cli2": "^0.13.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

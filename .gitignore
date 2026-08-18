@@ -1,4 +1,6 @@
+# ============================================
 # Dependencies
+# ============================================
 node_modules/
 .pnp/
 .pnp.js
@@ -23,11 +25,25 @@ dist/
 dist-ssr/
 *.local
 
-# Environment
+# ============================================
+# Secrets & Environment Files (CRITICAL)
+# ============================================
 .env
-.env.production
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+credentials.json
+service-account*.json
+*-credentials.json
+secrets.json
+*.secret
+*.secrets
 
 # Backend
 backend/uploads/
@@ -36,16 +52,26 @@ backend/public/
 # Database
 database/
 
-# AI/Agent files
+# AI/Agent files — ignora dados locais, mantém configs compartilhadas versionáveis
 .agents/
 .claude-mem.md
 skills-lock.json
 .opencode/
+.claude/local.json
+.claude/projects/
+.cursor/chats/
+.cursor/projects/
+.cursor/local.json
+.windsurf/config.local.json
+.windsurf/logs/
 
-# IDE
+# IDE — ignora apenas dados locais, mantém configs compartilhadas versionáveis
 .vscode/*
+!.vscode/settings.json
 !.vscode/extensions.json
-.idea/
+.idea/*
+!.idea/runConfigurations/
+!.idea/codeStyles/
 *.swp
 *.swo
 
@@ -58,5 +84,16 @@ todo.md
 SPEC.md
 doc.md
 
-# Dev compose (contains hardcoded dev credentials)
-docker-compose.dev.yml
+# Testes / cobertura
+coverage/
+.nyc_output/
+.pytest_cache/
+
+# Husky interno
+.husky/_
+
+# Temporários
+*.tmp
+*.temp
+*.log
+.eslintcache

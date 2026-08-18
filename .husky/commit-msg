@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# Skip hooks in CI environments
+if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; then
+  exit 0
+fi
+
+npx --no -- commitlint --edit "$1"

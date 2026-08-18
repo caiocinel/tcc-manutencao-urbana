@@ -48,6 +48,7 @@ Central de Inteligência Urbana é uma PWA full-stack para reportar e gerenciar 
 **Stack:** React 19 + Vite 8 + Django 5.2/DRF + PostgreSQL 16/PostGIS 3.4 + ONNX Runtime (Python)
 
 > **Requisitos de ambiente:**
+>
 > - **Node.js** ≥ 22.12 (Vite 8 exige `^20.19.0 || >=22.12.0`; testado localmente com v26.4)
 > - **Python** 3.12 / 3.13 / 3.14 (Django 5.2 suporta 3.10–3.14; a imagem Docker usa `python:3.13-slim`)
 > - **Docker** + Docker Compose v2
@@ -461,6 +462,7 @@ Central de Inteligência Urbana (Urban Intelligence Center) is a full-stack PWA 
 **Stack:** React 19 + Vite 8 + Django 5.2/DRF + PostgreSQL 16/PostGIS 3.4 + ONNX Runtime (Python)
 
 > **Environment requirements:**
+>
 > - **Python** 3.12 / 3.13 / 3.14 (Django 5.2 supports 3.10–3.14; the Docker image uses `python:3.13-slim`)
 > - **Docker** + Docker Compose v2
 > - **GDAL** on the host (`libgdal-dev`/`gdal-bin`) if running the Django backend outside Docker (djangorestframework-gis requires GDAL)

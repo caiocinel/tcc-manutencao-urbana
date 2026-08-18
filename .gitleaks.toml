@@ -1,0 +1,83 @@
+# ============================================
+# Gitleaks Configuration — Central de Inteligência Urbana
+# Docs: https://github.com/gitleaks/gitleaks
+# ============================================
+
+title = "gitleaks config"
+
+[extend]
+useDefault = true
+
+# -------------------------------------------
+# Custom Detection Rules
+# -------------------------------------------
+# Detects secret patterns comuns em Vibe Coding / projetos full-stack
+
+[[rules]]
+id = "github-pat"
+description = "GitHub Personal Access Token"
+regex = '''ghp_[a-zA-Z0-9]{36}'''
+tags = ["github", "token"]
+
+[[rules]]
+id = "github-fine-grained-pat"
+description = "GitHub Fine-Grained Personal Access Token"
+regex = '''github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}'''
+tags = ["github", "token"]
+
+[[rules]]
+id = "jwt-token"
+description = "JSON Web Token"
+regex = '''eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}'''
+tags = ["jwt", "token"]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key in code"
+regex = '''(?i)(api[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token)\s*[:=]\s*['"][a-zA-Z0-9_\-]{20,}['"]'''
+tags = ["generic", "api-key"]
+
+[[rules]]
+id = "private-key"
+description = "Private Key File Content"
+regex = '''-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'''
+tags = ["private-key"]
+
+[[rules]]
+id = "cloudflare-tunnel-token"
+description = "Cloudflare Tunnel Token"
+regex = '''eyJhIjoi[A-Za-z0-9_-]{10,}'''
+tags = ["cloudflare", "tunnel", "token"]
+
+[[rules]]
+id = "postgres-connection-string"
+description = "PostgreSQL connection string with credentials"
+regex = '''postgres(ql)?://[^:\s]+:[^@\s]+@[^\s]+'''
+tags = ["database", "connection-string"]
+
+# -------------------------------------------
+# Allowlist
+# -------------------------------------------
+[allowlist]
+description = "Arquivos e padrões permitidos (placeholders, docs, deps)"
+regexTarget = "match"
+
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)\.env\.sample$''',
+  '''(^|/)\.env\.template$''',
+  '''gitleaks\.toml''',
+  '''(^|/)node_modules/''',
+  '''(^|/)\.git/''',
+  '''(^|/)package-lock\.json$''',
+  '''docs/superpowers/specs/.*\.md''',
+]
+
+regexes = [
+  '''substitua[-_]?por[-_]?uma[-_]?(chave|senha|key|password)''',
+  '''your[_-]?(api[_-]?key|secret|token|password)[_-]?(here|placeholder)''',
+  '''example[_-]?(api[_-]?key|token|secret)''',
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''CHANGEME''',
+  '''\$\{DB_PASSWORD\}''',
+]

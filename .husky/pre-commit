@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# ============================================
+# Pre-commit Hook
+# ============================================
+# Runs before every git commit to ensure:
+# 1. No secrets are committed (gitleaks)
+# 2. Markdown files are properly formatted
+# ============================================
+
+# Skip hooks in CI environments
+if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; then
+  exit 0
+fi
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# -------------------------------------------
+# Layer 1: Secret Detection (Gitleaks)
+# -------------------------------------------
+echo "🔐 [1/2] Scanning for secrets (gitleaks)..."
+if command -v gitleaks &> /dev/null; then
+  gitleaks detect --source . --verbose --config .gitleaks.toml
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ SECRETS DETECTED! Commit blocked."
+    echo ""
+    echo "Gitleaks found potential secrets in your staged changes."
+    echo "Please review the output above and remove any secrets."
+    echo ""
+    echo "Common fixes:"
+    echo "  • Replace hardcoded keys with process.env / os.getenv"
+    echo "  • Add sensitive files to .gitignore"
+    echo "  • Use .env.example as a template"
+    echo ""
+    echo "If this is a false positive, update .gitleaks.toml allowlist."
+    exit 1
+  fi
+  echo "✅ No secrets detected"
+else
+  echo "⚠️  gitleaks not found. Install with: brew install gitleaks"
+  echo "   Skipping secret detection (CI will still check)"
+fi
+
+# -------------------------------------------
+# Layer 2: Markdown Linting
+# -------------------------------------------
+echo "📝 [2/2] Linting Markdown files..."
+if command -v npx &> /dev/null; then
+  npx --no -- markdownlint-cli2 '**/*.md' '!node_modules/**/*.md' '!frontend/node_modules/**/*.md' '!docs/superpowers/**/*.md' 2>/dev/null
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ Markdown linting failed!"
+    echo "Fix the issues above or run: npm run lint:md:fix"
+    exit 1
+  fi
+  echo "✅ Markdown files are valid"
+else
+  echo "⚠️  npx not found. Skipping markdown linting"
+fi
+
+echo ""
+echo "✅ All pre-commit checks passed!"
