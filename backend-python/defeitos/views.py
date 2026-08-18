@@ -62,11 +62,17 @@ class DefeitoViewSet(viewsets.ModelViewSet):
             result = process_image(self.request.FILES['imagem'].read())
             webp = result['webp_bytes']
 
+        from services.ia_client import routing
+        categoria = self.request.data.get('categoria', '')
+        rota = routing(categoria) if categoria else {}
+
         serializer.save(
             usuario=self.request.user,
             criado_em=timezone.now(),
             atualizado_em=timezone.now(),
             imagem_thumbnail=webp,
+            secretaria_responsavel=rota.get('secretaria', ''),
+            prazo_sla_dias=rota.get('prazo_sla_dias', 0),
         )
 
     @action(detail=True, methods=['post'])

@@ -3,6 +3,8 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
+from defeitos.models import Defeito
+
 pytestmark = pytest.mark.django_db(transaction=True)
 
 # Coordenadas únicas por chamada para evitar que a detecção de duplicados
@@ -107,6 +109,21 @@ class TestDefeitosCreate:
         assert resp.status_code == 201
         assert abs(float(resp.data['latitude']) - lat) < 0.01
         assert abs(float(resp.data['longitude']) - lng) < 0.01
+
+    def test_create_defeito_persists_routing(self, auth_client):
+        resp = auth_client.post(reverse('defeitos-list'), {
+            'titulo': 'Buraco na rua',
+            'descricao': 'Buraco grande na via',
+            'latitude': -21.17,
+            'longitude': -47.82,
+            'categoria': 'Buraco',
+            'status': 'pendente',
+        }, format='json')
+        assert resp.status_code == 201
+        defeito_id = resp.data['id']
+        defeito = Defeito.objects.get(id=defeito_id)
+        assert defeito.secretaria_responsavel == 'Secretaria de Obras e Infraestrutura'
+        assert defeito.prazo_sla_dias == 7
 
 
 class TestDefeitosRetrieve:
