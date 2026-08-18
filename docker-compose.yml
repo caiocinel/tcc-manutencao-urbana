@@ -98,7 +98,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL}
-      - SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD:-Admin@2026}
+      - SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD:?SUPER_ADMIN_PASSWORD is required}
       - FRONTEND_URL=https://${DOMAIN:-localhost}
       - IA_URL=http://ia:8000
       - REDIS_URL=redis://redis:6379/0

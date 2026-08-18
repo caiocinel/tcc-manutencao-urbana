@@ -40,7 +40,10 @@ if not email:
     print('SUPER_ADMIN_EMAIL not set; skipping')
     raise SystemExit(0)
 
-password = os.environ.get('SUPER_ADMIN_PASSWORD', 'Admin@2026')
+password = os.environ.get('SUPER_ADMIN_PASSWORD', '')
+if not password:
+    print('SUPER_ADMIN_PASSWORD not set; skipping super admin creation')
+    raise SystemExit(0)
 if not User.objects.filter(email__iexact=email).exists():
     user = User(
         email=email,
