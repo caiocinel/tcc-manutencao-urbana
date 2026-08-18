@@ -77,9 +77,7 @@ export default function Register() {
         className="w-full max-w-md border p-8" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex flex-col items-center mb-8">
           <div style={{ width: '3rem', height: '3rem', background: 'var(--color-gold-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.75rem' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--color-text-inverse)' }}>
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-            </svg>
+            <img src="/icon.svg" alt="Central de Inteligência Urbana" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>Criar Conta</h1>
           <p className="text-sm mt-2" style={{ color: 'var(--color-text-muted)' }}>Central de Inteligência Urbana</p>

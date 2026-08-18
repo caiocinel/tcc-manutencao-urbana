@@ -122,6 +122,19 @@ export const api = {
   login: (email, senha) =>
     request('/api/v1/auth/login/', { method: 'POST', body: { email, password: senha } }),
 
+  loginDemo: () =>
+    fetch(`${API_URL}/api/v1/auth/login/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Demo-Mode': 'true' },
+      body: JSON.stringify({ email: 'demo@ciu.app', password: 'Demo@2024' }),
+    }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Erro' }));
+        throw new Error(err.detail || 'Erro no login demo');
+      }
+      return res.json();
+    }),
+
   register: (nome, email, senha, municipioId, cpf) =>
     request('/api/v1/auth/register/', { method: 'POST', body: {
       nome, email, password: senha, confirm_password: senha,

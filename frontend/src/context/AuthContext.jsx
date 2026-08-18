@@ -48,7 +48,7 @@ export function AuthProvider({ children }) {
         municipio: userData.municipio || null,
         nome: userData.nome || '',
         cpf: userData.cpf || null,
-        email_verificado: userData.email_verificado || false,
+        email_verificado: userData.email_verified || false,
       };
       setUser(userBase);
       subscribeToPush();
@@ -106,7 +106,7 @@ export function AuthProvider({ children }) {
 
   const enterDemoMode = useCallback(async () => {
     try {
-      const res = await api.login('demo@ciu.app', 'Demo@2024');
+      const res = await api.loginDemo();
       login(res);
       setIsDemoMode(true);
       localStorage.setItem('ciu-demo-mode', 'true');

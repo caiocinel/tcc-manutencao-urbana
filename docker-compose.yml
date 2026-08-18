@@ -165,6 +165,44 @@ services:
           memory: 350M
     restart: unless-stopped
 
+  demo-reset:
+    profiles: ["demo"]
+    build:
+      context: ./backend-python
+      dockerfile: Dockerfile
+    environment:
+      - DJANGO_SETTINGS_MODULE=core.settings.production
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=manutencao_urbana
+      - DB_DEMO_NAME=manutencao_urbana_demo
+      - DB_USER=urbana
+      - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - ./backend-python/scripts/reset_demo.sh:/app/reset_demo.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+    entrypoint: >
+      sh -c "
+        echo 'Modo demo: seed inicial...' &&
+        /bin/sh /app/reset_demo.sh || true &&
+        while true; do
+          sleep 86400
+          echo 'Modo demo: reset diário...' &&
+          /bin/sh /app/reset_demo.sh
+        done
+      "
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+
   backup:
     profiles: ["backup"]
     image: alpine:3.19

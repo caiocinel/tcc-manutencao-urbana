@@ -90,7 +90,7 @@ async function processarFilaOffline() {
         const res = await fetch('/api/v1/defeitos/', {
           method: 'POST',
           headers: {
-            Authorization: token,
+            Authorization: `Bearer ${token}`,
           },
           body: formData,
         });

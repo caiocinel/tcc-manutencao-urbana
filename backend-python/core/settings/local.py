@@ -19,7 +19,18 @@ DATABASES = {
         'TEST': {
             'NAME': 'test_manutencao_urbana',
         },
-    }
+    },
+    'demo': {
+        'ENGINE': 'django.contrib.gis.db.backends.postgis',
+        'NAME': os.environ.get('DB_DEMO_NAME', 'manutencao_urbana_demo'),
+        'USER': os.environ.get('DB_USER', 'urbana'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
+        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
+        'OPTIONS': {
+            'options': '-c timezone=UTC',
+        },
+    },
 }
 
 REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = (
