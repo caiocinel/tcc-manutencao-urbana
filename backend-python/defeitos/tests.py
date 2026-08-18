@@ -1,16 +1,23 @@
+import itertools
 import pytest
 from django.urls import reverse
 from django.utils import timezone
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
+# Coordenadas únicas por chamada para evitar que a detecção de duplicados
+# (raio espacial + similaridade) rejeite defeitos criados em testes distintos
+# que usariam as mesmas coordenadas de São Paulo.
+_COORD_COUNTER = itertools.count()
+
 
 def _create_defeito(auth_client, **overrides):
+    i = next(_COORD_COUNTER)
     data = {
-        'titulo': 'Test Bug Report',
-        'descricao': 'A test bug for integration testing',
+        'titulo': f'Test Bug Report {i}',
+        'descricao': f'A test bug for integration testing numero {i}',
         'latitude': -23.5505,
-        'longitude': -46.6333,
+        'longitude': -46.6333 + i * 0.01,
         'rua': 'Avenida Paulista',
         'bairro': 'Bela Vista',
         'categoria': 'Buraco',

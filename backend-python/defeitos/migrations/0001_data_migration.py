@@ -1,56 +1,56 @@
 from django.db import migrations
 
 
+def _convert_text_to_timestamptz(table, column):
+    """Gera um bloco DO que converte a coluna de TEXT para TIMESTAMPTZ apenas
+    se ela ainda for TEXT (schema legado). Em schemas modernos (bootstrap_schema
+    já cria TIMESTAMPTZ) a conversão é um no-op, evitando o erro
+    'operator does not exist: timestamp with time zone ~ unknown'."""
+    return f"""
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = '{table}' AND column_name = '{column}'
+              AND data_type = 'text'
+        ) THEN
+            EXECUTE format(
+                'ALTER TABLE {table} ALTER COLUMN {column} TYPE TIMESTAMPTZ USING CASE
+                    WHEN %I ~ ''^\\d{{4}}-\\d{{2}}-\\d{{2}}T'' THEN %I::TIMESTAMPTZ
+                    WHEN %I ~ ''^\\d{{4}}-\\d{{2}}-\\d{{2}} '' THEN %I::TIMESTAMPTZ
+                    ELSE ''1970-01-01T00:00:00Z''::TIMESTAMPTZ
+                END',
+                '{column}', '{column}', '{column}', '{column}'
+            );
+        END IF;
+    END $$;
+    """
+
+
 class Migration(migrations.Migration):
     dependencies = []
 
     operations = [
         migrations.RunSQL(
-            sql=r"""
-            -- Convert TEXT dates to TIMESTAMPTZ in defeitos
-            ALTER TABLE defeitos ALTER COLUMN criado_em TYPE TIMESTAMPTZ
-                USING CASE
-                    WHEN criado_em ~ '^\d{4}-\d{2}-\d{2}T' THEN criado_em::TIMESTAMPTZ
-                    WHEN criado_em ~ '^\d{4}-\d{2}-\d{2} ' THEN criado_em::TIMESTAMPTZ
-                    ELSE '1970-01-01T00:00:00Z'::TIMESTAMPTZ
-                END;
-            ALTER TABLE defeitos ALTER COLUMN atualizado_em TYPE TIMESTAMPTZ
-                USING CASE
-                    WHEN atualizado_em ~ '^\d{4}-\d{2}-\d{2}T' THEN atualizado_em::TIMESTAMPTZ
-                    WHEN atualizado_em ~ '^\d{4}-\d{2}-\d{2} ' THEN atualizado_em::TIMESTAMPTZ
-                    ELSE '1970-01-01T00:00:00Z'::TIMESTAMPTZ
-                END;
+            sql="""
+            -- Conversão TEXT -> TIMESTAMPTZ condicional (apenas schema legado)
+            """ + '\n'.join(
+                _convert_text_to_timestamptz(t, c)
+                for t, c in [
+                    ('defeitos', 'criado_em'),
+                    ('defeitos', 'atualizado_em'),
+                    ('users', 'criado_em'),
+                    ('users', 'atualizado_em'),
+                    ('apoios', 'criado_em'),
+                ]
+            ) + """
+
+            -- Set defaults (idempotente)
             ALTER TABLE defeitos ALTER COLUMN criado_em SET DEFAULT NOW();
             ALTER TABLE defeitos ALTER COLUMN atualizado_em SET DEFAULT NOW();
-
-            -- Convert TEXT dates in users
-            ALTER TABLE users ALTER COLUMN criado_em TYPE TIMESTAMPTZ
-                USING CASE
-                    WHEN criado_em ~ '^\d{4}-\d{2}-\d{2}T' THEN criado_em::TIMESTAMPTZ
-                    WHEN criado_em ~ '^\d{4}-\d{2}-\d{2} ' THEN criado_em::TIMESTAMPTZ
-                    ELSE '1970-01-01T00:00:00Z'::TIMESTAMPTZ
-                END;
-            ALTER TABLE users ALTER COLUMN atualizado_em TYPE TIMESTAMPTZ
-                USING CASE
-                    WHEN atualizado_em ~ '^\d{4}-\d{2}-\d{2}T' THEN atualizado_em::TIMESTAMPTZ
-                    WHEN atualizado_em ~ '^\d{4}-\d{2}-\d{2} ' THEN atualizado_em::TIMESTAMPTZ
-                    ELSE '1970-01-01T00:00:00Z'::TIMESTAMPTZ
-                END;
             ALTER TABLE users ALTER COLUMN criado_em SET DEFAULT NOW();
             ALTER TABLE users ALTER COLUMN atualizado_em SET DEFAULT NOW();
-
-            -- Convert TEXT dates in apoios
-            ALTER TABLE apoios ALTER COLUMN criado_em TYPE TIMESTAMPTZ
-                USING CASE
-                    WHEN criado_em ~ '^\d{4}-\d{2}-\d{2}T' THEN criado_em::TIMESTAMPTZ
-                    WHEN criado_em ~ '^\d{4}-\d{2}-\d{2} ' THEN criado_em::TIMESTAMPTZ
-                    ELSE '1970-01-01T00:00:00Z'::TIMESTAMPTZ
-                END;
             ALTER TABLE apoios ALTER COLUMN criado_em SET DEFAULT NOW();
-
-            -- Populate PointField from latitude/longitude
-            UPDATE defeitos SET localizacao = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
-                WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND localizacao IS NULL;
             """,
             reverse_sql='',
         ),
