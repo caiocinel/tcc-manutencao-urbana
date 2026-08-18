@@ -6,7 +6,8 @@ import { MapContainer, TileLayer, Marker, Polygon, useMap } from 'react-leaflet'
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { api } from '../services/api';
-import { StatusBadge, getStatusColor } from '../components/ui/status-badge';
+import { StatusBadge } from '../components/ui/status-badge';
+import { getStatusColor } from '../components/ui/status-utils';
 import { createDefectIcon } from '../utils/map-markers';
 
 const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';

@@ -3,7 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from
 import { motion } from 'framer-motion';
 import { IconContext, Sun, Moon, MagnifyingGlass } from '@phosphor-icons/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { ToastProvider, useToast } from './components/Toast';
+import { ToastProvider } from './components/Toast';
+import { useToast } from './components/toast-context';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { useKeyboardNav } from './hooks/useKeyboardNav';

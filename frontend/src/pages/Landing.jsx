@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { MapPin, Brain, ShieldCheck, DeviceMobile, ArrowRight, WarningCircle, Lock } from '@phosphor-icons/react';
 import { useAuth } from '../context/AuthContext';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/toast-context';
 
 const features = [
   { icon: MapPin, title: 'Reporte com GPS', desc: 'Localização precisa do defeito' },

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Camera, CheckCircle, WarningCircle, User, Lock, Bell, Sliders, Trash } from '@phosphor-icons/react';
 import { useAuth } from '../context/AuthContext';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/toast-context';
 import { api } from '../services/api';
 import { Button } from '../components/ui/button';
 import SearchableSelect from '../components/ui/searchable-select';

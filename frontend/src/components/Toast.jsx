@@ -1,8 +1,7 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, WarningCircle, XCircle, Info, X } from '@phosphor-icons/react';
-
-const ToastContext = createContext(null);
+import { ToastContext } from './toast-context';
 
 const config = {
   success: {
@@ -89,8 +88,4 @@ export function ToastProvider({ children }) {
       </div>
     </ToastContext.Provider>
   );
-}
-
-export function useToast() {
-  return useContext(ToastContext);
 }

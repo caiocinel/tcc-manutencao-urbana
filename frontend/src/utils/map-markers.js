@@ -1,5 +1,5 @@
 import L from 'leaflet';
-import { getStatusColor } from '../components/ui/status-badge';
+import { getStatusColor } from '../components/ui/status-utils';
 
 export function createPlacementPinIcon() {
   return L.divIcon({

@@ -5,7 +5,7 @@ import { ChartLineUp, Warning, Timer, Buildings, ChartBar, Article, Clock, Check
 import { motion } from 'framer-motion';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/toast-context';
 import { STATUS_CONFIG } from '../constants';
 import { KpiCard } from '../components/ui/kpi-card';
 const GOLD = '#D4AF37', GOLD_DARK = '#AA7C11', SUCCESS = '#4CAF7D', ERROR = '#CF4444';

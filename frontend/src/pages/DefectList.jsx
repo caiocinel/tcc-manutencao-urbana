@@ -3,8 +3,9 @@ import { Handshake, Calendar, User as UserIcon, MapPin, Camera, ThumbsUp, X, Car
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { useToast } from '../components/Toast';
-import { StatusBadge, getStatusColor } from '../components/ui/status-badge';
+import { useToast } from '../components/toast-context';
+import { StatusBadge } from '../components/ui/status-badge';
+import { getStatusColor } from '../components/ui/status-utils';
 import { Timeline } from '../components/ui/timeline';
 import { Button } from '../components/ui/button';
 

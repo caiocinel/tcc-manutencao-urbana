@@ -75,7 +75,7 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, [token, subscribeToPush]);
 
-  function login(responseData) {
+  const login = useCallback((responseData) => {
     const { access, refresh, user } = responseData;
     localStorage.setItem('token', access);
     if (refresh) localStorage.setItem('refresh', refresh);
@@ -83,7 +83,7 @@ export function AuthProvider({ children }) {
     setToken(access);
     setUser(user || null);
     subscribeToPush();
-  }
+  }, [subscribeToPush]);
 
   const updateUser = useCallback((updates) => {
     setUser(prev => {

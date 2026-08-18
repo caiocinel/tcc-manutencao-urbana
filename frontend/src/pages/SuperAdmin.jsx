@@ -5,7 +5,7 @@ import { ShieldCheck, Shield, MapPin, Check, X } from '@phosphor-icons/react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Button } from '../components/ui/button';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/toast-context';
 
 export default function SuperAdmin() {
   const { user, isAuthenticated } = useAuth();
