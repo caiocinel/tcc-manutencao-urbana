@@ -54,6 +54,7 @@ database/
 
 # AI/Agent files — ignora dados locais, mantém configs compartilhadas versionáveis
 .agents/
+.superpowers/
 .claude-mem.md
 skills-lock.json
 .opencode/
