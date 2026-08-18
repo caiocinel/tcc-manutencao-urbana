@@ -276,6 +276,12 @@ fi
 # ============================================
 # Check 9: .env should be ignored
 # ============================================
+# Preserva um .env real (se existir) antes do teste
+ENV_BACKUP_EXISTS=0
+if [ -f .env ]; then
+    ENV_BACKUP_EXISTS=1
+    cp .env /tmp/verify-gitignore-env-backup 2>/dev/null || ENV_BACKUP_EXISTS=0
+fi
 touch .env
 if git check-ignore -q .env 2>/dev/null; then
     pass ".env is ignored"
@@ -303,7 +309,13 @@ echo ""
 
 # Cleanup test files
 info "Cleaning up test files..."
-rm -rf .cursor .claude .windsurf .vscode .idea .env test.key
+rm -rf .cursor .claude .windsurf .vscode .idea test.key
+rm -f .env
+# Restaura um .env real se havia backup
+if [ "$ENV_BACKUP_EXISTS" = "1" ]; then
+    cp /tmp/verify-gitignore-env-backup .env 2>/dev/null
+    rm -f /tmp/verify-gitignore-env-backup
+fi
 
 echo ""
 
