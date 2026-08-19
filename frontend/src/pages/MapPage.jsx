@@ -15,6 +15,7 @@ import { createPlacementPinIcon, createDefectIcon } from '../utils/map-markers';
 import { getTimelineItems } from '../utils/timeline';
 import { Timeline } from '../components/ui/timeline';
 import HeatmapLayer from '../components/HeatmapLayer';
+import SyncIndicator from '../components/ui/sync-indicator';
 
 const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const LIGHT_TILES = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
@@ -285,6 +286,7 @@ export default function MapPage() {
           </div>
         ) : (
           <div className="flex items-center gap-2">
+            <SyncIndicator />
             {isAuthenticated && (
               <button onClick={() => setCmdOpen(true)} className="flex items-center gap-1.5 h-8 px-3 rounded-md text-xs transition-colors"
                 style={{ color: 'var(--color-text-secondary)', background: 'transparent' }}

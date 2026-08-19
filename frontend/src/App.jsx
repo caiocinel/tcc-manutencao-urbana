@@ -11,6 +11,7 @@ import { useKeyboardNav } from './hooks/useKeyboardNav';
 import UserDropdown from './components/ui/user-dropdown';
 import { CommandMenu } from './components/ui/command-menu';
 import DemoBanner from './components/ui/DemoBanner';
+import SyncIndicator from './components/ui/sync-indicator';
 import './styles/tokens.css';
 import './styles/globals.css';
 
@@ -80,6 +81,7 @@ function AppHeader({ onToggleTheme, onOpenCmd, theme }) {
       </div>
 
       <div className="flex items-center gap-2">
+        <SyncIndicator />
         {isAuthenticated && (
           <button onClick={onOpenCmd} className="flex items-center gap-1.5 h-8 px-3 rounded-md text-xs transition-colors"
             style={{ color: 'var(--color-text-secondary)', background: 'transparent' }}
