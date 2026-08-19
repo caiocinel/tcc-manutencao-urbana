@@ -1,6 +1,6 @@
 """
 Dataset sintético de relatos urbanos em PT-BR para validação do classificador.
-100 relatos distribuídos em 7 categorias (~14-15 por categoria).
+100 relatos curados + expansão determinística até 75 por categoria (total 525).
 """
 
 DATASET = [
@@ -120,15 +120,18 @@ DATASET = [
 ]
 
 
+import random
+
+
 def get_dataset():
-    """Retorna o dataset sintético completo."""
-    return DATASET
+    """Retorna o dataset sintético completo (curado + expandido determinístico)."""
+    return DATASET + _generate_more()
 
 
 def get_dataset_by_category():
     """Retorna dataset agrupado por categoria."""
     by_cat = {}
-    for item in DATASET:
+    for item in get_dataset():
         cat = item["categoria"]
         if cat not in by_cat:
             by_cat[cat] = []
@@ -138,11 +141,184 @@ def get_dataset_by_category():
 
 def get_categories():
     """Retorna lista de categorias únicas."""
-    return list(set(item["categoria"] for item in DATASET))
+    return list(set(item["categoria"] for item in get_dataset()))
+
+
+# ---------------------------------------------------------------------------
+# Gerador determinístico para expandir o dataset até 75 relatos por categoria.
+# Mantém o estilo ASCII do dataset curado (sem acentos) e usa seed fixo.
+# ---------------------------------------------------------------------------
+
+_TEMPLATES = {
+    "Buraco": [
+        "Buraco {tam} na {via}",
+        "Cratera aberta {local}",
+        "Pavimento esburacado {local}",
+        "Afundamento no asfalto {local}",
+        "Rua com buracos {local}",
+        "Depressao na pista {local}",
+        "Erosao formando buraco {local}",
+        "Buraqueira na {via} {local}",
+        "Sulco profundo {local}",
+        "Asfalto deteriorado {local}",
+        "Pista com crateras {local}",
+        "Buraco fundo oferecendo risco {local}",
+        "Desgaste do pavimento {local}",
+        "Buraco na {via} proximo {local}",
+        "Reboco do asfalto solto {local}",
+    ],
+    "Iluminacao": [
+        "Poste apagado {local}",
+        "Lampada queimada na {via}",
+        "Iluminacao publica falha {local}",
+        "Rua escura a noite {local}",
+        "Luminaria quebrada {local}",
+        "Falta de luz na via {local}",
+        "Poste com luz piscando {local}",
+        "Beco escuro por falta de lampada {local}",
+        "Refletor apagado {local}",
+        "Iluminacao insuficiente {local}",
+        "Poste sem lampada {local}",
+        "Rua sem iluminacao a noite {local}",
+        "Luz publica falhando {local}",
+        "Ponto de luz queimado {local}",
+        "Iluminacao fraca na {via} {local}",
+    ],
+    "Semafaro": [
+        "Semafaro quebrado {local}",
+        "Sinaleira com defeito {local}",
+        "Farol de transito apagado {local}",
+        "Semafaro de pedestre parado {local}",
+        "Cruzamento sem sinal {local}",
+        "Semafaro travado no verde {local}",
+        "Sinal luminoso piscando errado {local}",
+        "Semafaro apagado na {via} {local}",
+        "Farol piscando amarelo constante {local}",
+        "Sinaleira sem funcionar {local}",
+        "Semafaro com luz vermelha fixa {local}",
+        "Controle de transito falho {local}",
+        "Sinal de pedestre quebrado {local}",
+        "Semafaro com defeito no cruzamento {local}",
+        "Luz do semafaro apagada {local}",
+    ],
+    "Arvore Caida": [
+        "Arvore caida {local}",
+        "Galho grande caido na {via}",
+        "Tronco obstruindo a passagem {local}",
+        "Queda de arvore na tempestade {local}",
+        "Arvore tombada {local}",
+        "Galhos quebrados pela chuva {local}",
+        "Arvore com risco de cair {local}",
+        "Poda urgente de arvore {local}",
+        "Tronco na pista {local}",
+        "Arvore bloqueando a rua {local}",
+        "Galho caido sobre o fio {local}",
+        "Arvore caida sobre o muro {local}",
+        "Ramos obstruindo a calcada {local}",
+        "Arvore arrancada pela ventania {local}",
+        "Toco de arvore na {via} {local}",
+    ],
+    "Entulho": [
+        "Entulho acumulado {local}",
+        "Lixo irregular descartado {local}",
+        "Residuos de construcao {local}",
+        "Sujeira acumulada {local}",
+        "Material de obra jogado {local}",
+        "Restos de demolicao {local}",
+        "Terra e pedras na via {local}",
+        "Moveis velhos abandonados {local}",
+        "Descarte irregular de entulho {local}",
+        "Acumulo de residuos {local}",
+        "Detritos espalhados {local}",
+        "Restos de obra na calcada {local}",
+        "Lixo de construcao {local}",
+        "Sucata abandonada {local}",
+        "Entulho bloqueando passagem {local}",
+    ],
+    "Calcada Danificada": [
+        "Calcada rachada {local}",
+        "Passeio publico quebrado {local}",
+        "Tampa de bueiro solta {local}",
+        "Piso irregular na calcada {local}",
+        "Calçamento quebrado {local}",
+        "Desnivel perigoso na calcada {local}",
+        "Passeio danificado por raizes {local}",
+        "Calcada esburacada {local}",
+        "Piso levantado {local}",
+        "Bueiro aberto na calcada {local}",
+        "Placas de calcada soltas {local}",
+        "Passeio deteriorado {local}",
+        "Rachaduras profundas no piso {local}",
+        "Calcada quebrada na frente {local}",
+        "Piso da calcada irregular {local}",
+    ],
+    "Outro": [
+        "Vazamento de agua {local}",
+        "Esgoto estourado {local}",
+        "Fio eletrico partido {local}",
+        "Placa de transito caida {local}",
+        "Barulho excessivo de obra {local}",
+        "Mato alto no terreno {local}",
+        "Animal solto na via {local}",
+        "Carro abandonado {local}",
+        "Politica sonora constante {local}",
+        "Falta de coleta de lixo {local}",
+        "Alagamento apos chuva {local}",
+        "Desmoronamento de muro {local}",
+        "Obras paralisadas {local}",
+        "Falta de manutencao {local}",
+        "Problema na rede de esgoto {local}",
+    ],
+}
+
+_SUFIXOS = [
+    "perto da escola",
+    "em frente ao mercado",
+    "na praca central",
+    "no bairro centro",
+    "proximo ao hospital",
+    "na avenida principal",
+    "em frente a igreja",
+    "na rua principal",
+    "no cruzamento movimentado",
+    "proximo ao terminal",
+    "na praca da matriz",
+    "em frente ao posto",
+    "na orla do rio",
+    "na entrada do bairro",
+    "na rua do comercio",
+    "proximo ao parque",
+    "na esquina da padaria",
+    "em frente ao predio publico",
+]
+
+_TAMS = ["enorme", "fundo", "perigoso", "grande", "medio", "pequeno", "largo", "profundo"]
+_VIAS = ["avenida", "rua", "alameda", "travessa", "rodovia"]
+
+
+def _generate_more(seed=42, alvo=75):
+    """Gera relatos determinísticos até cada categoria atingir `alvo` exemplos."""
+    rng = random.Random(seed)
+    extra = []
+    contador = {}
+    for item in DATASET:
+        contador[item["categoria"]] = contador.get(item["categoria"], 0) + 1
+    for categoria, templates in _TEMPLATES.items():
+        while contador.get(categoria, 0) < alvo:
+            tpl = rng.choice(templates)
+            sufixo = rng.choice(_SUFIXOS)
+            texto = tpl.format(
+                tam=rng.choice(_TAMS),
+                via=rng.choice(_VIAS),
+                local=sufixo,
+            )
+            extra.append({"text": texto, "categoria": categoria})
+            contador[categoria] = contador.get(categoria, 0) + 1
+    return extra
 
 
 if __name__ == "__main__":
-    print(f"Total de relatos: {len(DATASET)}")
+    print(f"Total de relatos: {len(get_dataset())}")
     by_cat = get_dataset_by_category()
     for cat, texts in sorted(by_cat.items()):
         print(f"  {cat}: {len(texts)} relatos")

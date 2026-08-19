@@ -10,25 +10,41 @@
 
 - **Modelo:** paraphrase-multilingual-MiniLM-L12-v2
 - **Quantização:** INT8
-- **Dataset:** 100 relatos sintéticos
+- **Dataset:** 525 relatos sintéticos (75 por categoria)
 - **Categorias:** 7
 
 ### Métricas Globais
 
-- **Acurácia:** 45.77%
-- **Confiança Média:** 0.2621
+- **Acurácia:** 43.73%
+- **Confiança Média:** 0.2456
 
 ### Métricas por Categoria
 
 | Categoria | Precision | Recall | F1-Score | Support |
 |-----------|-----------|--------|----------|---------|
-| Arvore Caida | 0.4286 | 0.4286 | 0.4286 | 14 |
-| Buraco | 0.3333 | 0.7333 | 0.4583 | 15 |
-| Calcada Danificada | 0.5000 | 0.4286 | 0.4615 | 14 |
-| Entulho | 0.7500 | 0.6429 | 0.6923 | 14 |
-| Iluminacao | 0.7333 | 0.7857 | 0.7586 | 14 |
-| Outro | 0.0000 | 0.0000 | 0.0000 | 15 |
-| Semafaro | 0.5000 | 0.5000 | 0.5000 | 14 |
+| Arvore Caida | 0.4444 | 0.3200 | 0.3721 | 75 |
+| Buraco | 0.2632 | 0.6667 | 0.3774 | 75 |
+| Calcada Danificada | 0.3529 | 0.4800 | 0.4068 | 75 |
+| Entulho | 0.7174 | 0.4400 | 0.5455 | 75 |
+| Iluminacao | 0.7903 | 0.6533 | 0.7153 | 75 |
+| Outro | 0.0000 | 0.0000 | 0.0000 | 75 |
+| Semafaro | 0.4930 | 0.4667 | 0.4795 | 75 |
+
+**Média Ponderada:** Precision 0.4373 · Recall 0.4324 · F1 0.4138 · Support 525
+
+### Matriz de Confusão
+
+```
+         Real \ Pred Arvore C   Buraco Calcada   Entulho Iluminac    Outro Semafaro
+-----------------------------------------------------------------------------------
+        Arvore Caida       24       33       12        0        1        0        5
+              Buraco        4       50       17        1        0        0        3
+  Calcada Danificada        4       28       36        2        0        0        5
+             Entulho        2       21       10       33        0        0        9
+          Iluminacao        3       11        9        0       49        0        3
+               Outro       13       31       10       10        0        0       11
+            Semafaro        4       16        8        0       12        0       35
+```
 
 ## 2. Benchmark de Performance
 
@@ -94,9 +110,9 @@
 
 ### Classificador
 
-- ⚠️ **Acurácia baixa (45.77%)**: O modelo requer fine-tuning com mais exemplos por categoria
-- A categoria 'Outro' não possui centróide definido, resultando em 0% de acerto
-- Recomenda-se aumentar o dataset de treinamento para 50+ exemplos por categoria
+- ⚠️ **Acurácia abaixo do alvo (43.73% vs. alvo ≥70%)**: A expansão do dataset (100→525 relatos, 75 por categoria) não elevou a acurácia; o modelo ainda requer fine-tuning/retreinamento do centróide.
+- A categoria 'Outro' não possui centróide definido, resultando em 0% de acerto (75 relatos todos classificados como outras categorias). Esta categoria é um "catch-all" e o classificador atual não consegue representá-la.
+- **Próximos passos:** (1) adicionar mais templates por categoria para aumentar a variedade lexical; (2) tuning de temperatura do centróide/limiar de confiança; (3) re-treinar os centróides do modelo ONNX com o dataset expandido (75 exemplos por categoria, incluindo 'Outro'); (4) avaliar a separabilidade das categorias no espaço de embedding (muitas confusões Buraco↔Calcada Danificada↔Arvore Caida indicam baixa distância entre centróides).
 
 ### Performance
 
