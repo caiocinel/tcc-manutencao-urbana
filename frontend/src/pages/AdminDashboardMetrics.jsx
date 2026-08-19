@@ -193,7 +193,7 @@ export default function AdminDashboardMetrics() {
             <WarningOctagon size={18} style={{ color: 'var(--color-error)' }} /> Chamados com SLA Vencido
           </h2>
           <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
-            Prazo de atendimento ultrapassado — priorizar resolução.
+            Prazo de atendimento ultrapassado. Priorizar resolução.
           </p>
           <div className="space-y-2">
             {stats.sla_vencidos.map(v => (
