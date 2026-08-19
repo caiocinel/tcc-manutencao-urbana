@@ -15,8 +15,10 @@
 
 ### Métricas Globais
 
-- **Acurácia:** 43.73%
+- **Acurácia:** 43.24%
 - **Confiança Média:** 0.2456
+
+> **Nota de honestidade metodológica:** o "Acurácia Global" impresso pelo script de avaliação (`avaliar_classificador.py`) é, na verdade, a **precisão ponderada** (média de `Σ(precision × support) / total_support`), não a acurácia real. Este é um bug pré-existente do script, não relacionado ao novo dataset. A acurácia verdadeira, derivada da matriz de confusão acima (soma da diagonal 24+50+36+33+49+0+35 = 227 de 525), é **43.24%** — consistente com a Média Ponderada Recall de 0.4324.
 
 ### Métricas por Categoria
 
@@ -110,7 +112,7 @@
 
 ### Classificador
 
-- ⚠️ **Acurácia abaixo do alvo (43.73% vs. alvo ≥70%)**: A expansão do dataset (100→525 relatos, 75 por categoria) não elevou a acurácia; o modelo ainda requer fine-tuning/retreinamento do centróide.
+- ⚠️ **Acurácia abaixo do alvo (43.24% vs. alvo ≥70%)**: A expansão do dataset (100→525 relatos, 75 por categoria) não elevou a acurácia; o modelo ainda requer fine-tuning/retreinamento do centróide.
 - A categoria 'Outro' não possui centróide definido, resultando em 0% de acerto (75 relatos todos classificados como outras categorias). Esta categoria é um "catch-all" e o classificador atual não consegue representá-la.
 - **Próximos passos:** (1) adicionar mais templates por categoria para aumentar a variedade lexical; (2) tuning de temperatura do centróide/limiar de confiança; (3) re-treinar os centróides do modelo ONNX com o dataset expandido (75 exemplos por categoria, incluindo 'Outro'); (4) avaliar a separabilidade das categorias no espaço de embedding (muitas confusões Buraco↔Calcada Danificada↔Arvore Caida indicam baixa distância entre centróides).
 
