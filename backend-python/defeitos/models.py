@@ -51,6 +51,7 @@ class Defeito(models.Model):
     prazo_sla_dias = models.IntegerField(default=0, db_column='prazo_sla_dias')
     usuario_email = models.CharField(max_length=255, blank=True, default='')
     imagem_thumbnail = models.BinaryField(null=True, blank=True, db_column='imagem_thumbnail')
+    foto_resolucao = models.BinaryField(null=True, blank=True, db_column='foto_resolucao')
     imagens_extra = models.TextField(default='[]')
     atualizacoes = models.TextField(default='[]')
     atendente = models.ForeignKey(

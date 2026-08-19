@@ -155,6 +155,20 @@ export const api = {
   updateDefeito: (id, data) =>
     request(`/api/v1/defeitos/${id}/`, { method: 'PATCH', body: data }),
 
+  updateDefeitoComArquivo: async (id, formData) => {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API_URL}/api/v1/defeitos/${id}/status/`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Erro na requisição' }));
+      throw new Error(err.error || 'Erro na requisição');
+    }
+    return res.json();
+  },
+
   listMunicipios: () =>
     paginated('/api/v1/municipios/'),
 

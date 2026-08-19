@@ -96,7 +96,26 @@ class DefeitoViewSet(viewsets.ModelViewSet):
                 {'error': 'Invalid status'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        resolvidos = {'atendido', 'encerrado', 'concluido'}
+        if novo_status in resolvidos and defeito.status not in resolvidos:
+            arquivo = request.FILES.get('foto_resolucao')
+            if arquivo is None:
+                return Response(
+                    {'error': 'Foto de resolucao obrigatoria para concluir o chamado'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from services.image_processor import process_image
+            try:
+                result = process_image(arquivo.read())
+                defeito.foto_resolucao = result['webp_bytes']
+            except Exception:
+                return Response(
+                    {'error': 'Imagem de resolucao invalida'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         defeito.status = novo_status
+        if novo_status in resolvidos:
+            defeito.atendido_em = timezone.now().isoformat()
         defeito.save()
         return Response(DefeitoDetailSerializer(defeito).data)
 

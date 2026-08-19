@@ -28,6 +28,8 @@ export default function DefectList() {
   const [ordemDir, setOrdemDir] = useState('desc');
   const anexarRef = useRef(null);
   const [anexando, setAnexando] = useState(null);
+  const [fotoResolucao, setFotoResolucao] = useState(null);
+  const fotoResolucaoRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,15 +75,24 @@ export default function DefectList() {
 
   const handleFinalizar = useCallback(async (id, e) => {
     e?.stopPropagation();
+    const file = fotoResolucao;
+    if (!file) {
+      addToast('Selecione a foto de resolução antes de finalizar.', 'error');
+      return;
+    }
     setFinalizando(id);
     try {
-      await api.updateDefeito(id, { status: 'atendido' });
+      const fd = new FormData();
+      fd.append('status', 'atendido');
+      fd.append('foto_resolucao', file);
+      await api.updateDefeitoComArquivo(id, fd);
       addToast('Chamado finalizado!');
       setDefeitos(prev => prev.map(d => d.id === id ? { ...d, status: 'atendido' } : d));
       setSelectedDefect(prev => prev?.id === id ? { ...prev, status: 'atendido' } : prev);
+      setFotoResolucao(null);
     } catch (err) { addToast('Erro: ' + err.message, 'error'); }
     finally { setFinalizando(null); }
-  }, [addToast]);
+  }, [addToast, fotoResolucao]);
 
   const handleApoiar = useCallback(async (id) => {
     setApoiando(id);
@@ -158,6 +169,8 @@ export default function DefectList() {
 
   return (
     <div className="p-5 max-w-6xl mx-auto">
+      <input ref={fotoResolucaoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+        onChange={e => setFotoResolucao(e.target.files?.[0] || null)} />
       <h1 className="text-lg font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>Lista de Chamados</h1>
       <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>Acompanhe todos os chamados de serviços públicos</p>
 
@@ -264,7 +277,7 @@ export default function DefectList() {
                         </Button>
                       )}
                       {isAdmin && d.atendente_id && ['vinculado_sem_resposta', 'vinculado_com_resposta'].includes(d.status) && (
-                        <Button variant="danger" size="xs" onClick={e => handleFinalizar(d.id, e)} disabled={finalizando === d.id}>
+                        <Button variant="danger" size="xs" onClick={e => fotoResolucao ? handleFinalizar(d.id, e) : fotoResolucaoRef.current?.click()} disabled={finalizando === d.id}>
                           {finalizando === d.id ? '...' : 'Finalizar'}
                         </Button>
                       )}
@@ -351,10 +364,13 @@ export default function DefectList() {
                   </Button>
                 )}
                 {user?.admin && selectedDefect.atendente_id && ['vinculado_sem_resposta', 'vinculado_com_resposta'].includes(selectedDefect.status) && (
-                  <Button variant="danger" onClick={e => handleFinalizar(selectedDefect.id, e)} disabled={finalizando === selectedDefect.id}
+                  <Button variant="danger" onClick={e => fotoResolucao ? handleFinalizar(selectedDefect.id, e) : fotoResolucaoRef.current?.click()} disabled={finalizando === selectedDefect.id}
                     className="flex items-center gap-1.5">
                     {finalizando === selectedDefect.id ? '...' : 'Finalizar'}
                   </Button>
+                )}
+                {fotoResolucao && (
+                  <span className="text-xs truncate max-w-[120px]" style={{ color: 'var(--color-text-muted)' }}>{fotoResolucao?.name}</span>
                 )}
                 <button onClick={() => handleApoiar(selectedDefect.id)} disabled={apoiando === selectedDefect.id}
                   className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"

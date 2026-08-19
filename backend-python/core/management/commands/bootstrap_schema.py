@@ -69,6 +69,7 @@ SCHEMA = [
         prazo_sla_dias INTEGER NOT NULL DEFAULT 0,
         usuario_email TEXT NOT NULL DEFAULT '',
         imagem_thumbnail BYTEA,
+        foto_resolucao BYTEA,
         imagens_extra TEXT NOT NULL DEFAULT '[]',
         atualizacoes TEXT NOT NULL DEFAULT '[]',
         atendente_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -84,6 +85,9 @@ SCHEMA = [
     """,
     """
     ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS prazo_sla_dias INTEGER NOT NULL DEFAULT 0
+    """,
+    """
+    ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS foto_resolucao BYTEA
     """,
     """
     CREATE TABLE IF NOT EXISTS apoios (

@@ -267,6 +267,29 @@ class TestStatusAction:
         )
         assert resp.status_code == 400
 
+    def test_resolvido_exige_foto_resolucao(self, auth_client):
+        created = _create_defeito(auth_client)
+        resp = auth_client.patch(
+            reverse(self.STATUS_URL, args=[created['id']]),
+            {'status': 'atendido'}, format='json',
+        )
+        assert resp.status_code == 400
+
+    def test_resolvido_com_foto_resolucao(self, auth_client):
+        import io
+        from PIL import Image
+        created = _create_defeito(auth_client)
+        buf = io.BytesIO()
+        Image.new('RGB', (64, 64), color='red').save(buf, format='JPEG')
+        buf.seek(0)
+        resp = auth_client.patch(
+            reverse(self.STATUS_URL, args=[created['id']]),
+            {'status': 'atendido', 'foto_resolucao': buf},
+            format='multipart',
+        )
+        assert resp.status_code == 200
+        assert resp.data['status'] == 'atendido'
+
 
 class TestMeus:
 

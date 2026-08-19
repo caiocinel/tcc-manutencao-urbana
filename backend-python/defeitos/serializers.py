@@ -57,6 +57,7 @@ class DefeitoDetailSerializer(serializers.ModelSerializer):
     categoria_nome = serializers.CharField(source='categoria', read_only=True, default='')
     total_apoios = serializers.SerializerMethodField()
     imagem_thumbnail = ThumbnailField()
+    foto_resolucao_url = ThumbnailField(source='foto_resolucao', read_only=True)
     sla_vencido = serializers.SerializerMethodField()
 
     class Meta:
