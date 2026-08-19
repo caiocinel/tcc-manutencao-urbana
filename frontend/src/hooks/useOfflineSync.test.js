@@ -69,4 +69,19 @@ describe('useOfflineSync', () => {
     });
     expect(result.current.online).toBe(false);
   });
+
+  it('reset syncing para false apos registrar sync', async () => {
+    mockIndexedDBCount(1);
+    const reg = { sync: { register: vi.fn().mockResolvedValue({}) } };
+    vi.stubGlobal('navigator', {
+      onLine: true,
+      serviceWorker: { ready: Promise.resolve(reg) },
+    });
+    const win = window;
+    win.SyncManager = function SyncManager() {};
+
+    const { result } = renderHook(() => useOfflineSync());
+    await waitFor(() => expect(reg.sync.register).toHaveBeenCalledWith('sync-defeitos'));
+    await waitFor(() => expect(result.current.syncing).toBe(false));
+  });
 });

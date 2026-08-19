@@ -31,13 +31,15 @@ export function useOfflineSync() {
       try {
         const reg = await navigator.serviceWorker.ready;
         await reg.sync.register('sync-defeitos');
-      } catch { /* ignore */ }
+      } catch { /* ignore */ } finally {
+        setSyncing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     const onOnline = () => { setOnline(true); refresh(); };
-    const onOffline = () => setOnline(false);
+    const onOffline = () => { setOnline(false); setSyncing(false); };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     refresh();
