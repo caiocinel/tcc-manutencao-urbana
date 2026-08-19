@@ -166,6 +166,24 @@ class TestDefeitosRetrieve:
         assert 'status' in resp.data
         assert 'total_apoios' in resp.data
 
+    def test_detail_nao_expoe_foto_resolucao_bruta(self, auth_client):
+        """O serializer de detalhe NÃO deve expor o binário bruto foto_resolucao."""
+        import io
+        from PIL import Image
+        created = _create_defeito(auth_client)
+        buf = io.BytesIO()
+        Image.new('RGB', (64, 64), color='red').save(buf, format='JPEG')
+        buf.seek(0)
+        auth_client.patch(
+            reverse('defeitos-status', args=[created['id']]),
+            {'status': 'atendido', 'foto_resolucao': buf},
+            format='multipart',
+        )
+        resp = auth_client.get(reverse('defeitos-detail', args=[created['id']]))
+        assert resp.status_code == 200
+        assert 'foto_resolucao' not in resp.data
+        assert 'foto_resolucao_url' in resp.data
+
 
 class TestDefeitosUpdate:
 

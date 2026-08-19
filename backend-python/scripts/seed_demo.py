@@ -57,10 +57,15 @@ USUARIOS_DEMO = [
 
 
 def create_demo_database():
-    """Cria o banco demo vazio (DROP + CREATE)."""
+    """Cria o banco demo vazio (DROP + CREATE), terminando conexões pendentes."""
     conn = connections['default']
     conn.set_autocommit(True)
     with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = %s AND pid <> pg_backend_pid()",
+            [DEMO_DB_NAME],
+        )
         cursor.execute(f"DROP DATABASE IF EXISTS {DEMO_DB_NAME}")
         cursor.execute(f"CREATE DATABASE {DEMO_DB_NAME}")
     conn.set_autocommit(False)

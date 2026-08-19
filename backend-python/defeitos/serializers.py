@@ -62,7 +62,7 @@ class DefeitoDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Defeito
-        fields = '__all__'
+        exclude = ('foto_resolucao',)
 
     def get_total_apoios(self, obj):
         return getattr(obj, 'total_apoios', 0)
