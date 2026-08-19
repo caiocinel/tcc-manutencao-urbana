@@ -261,7 +261,7 @@ _TEMPLATES = {
         "Mato alto no terreno {local}",
         "Animal solto na via {local}",
         "Carro abandonado {local}",
-        "Politica sonora constante {local}",
+        "Poluicao sonora constante {local}",
         "Falta de coleta de lixo {local}",
         "Alagamento apos chuva {local}",
         "Desmoronamento de muro {local}",

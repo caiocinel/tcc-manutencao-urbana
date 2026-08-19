@@ -152,6 +152,10 @@ export default function MapPage() {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    setFotoResolucao(null);
+  }, [selected]);
+
+  useEffect(() => {
     if (isAuthenticated) return;
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
@@ -594,7 +598,7 @@ export default function MapPage() {
                     finally { setAnexando(null); e.target.value = ''; }
                   }} />
                 <input ref={fotoResolucaoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
-                  onChange={e => setFotoResolucao(e.target.files?.[0] || null)} />
+                  onChange={e => { setFotoResolucao(e.target.files?.[0] || null); e.target.value = ''; }} />
               </div>
             </motion.div>
           </div>

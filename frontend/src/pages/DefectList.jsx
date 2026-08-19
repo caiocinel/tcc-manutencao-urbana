@@ -50,6 +50,10 @@ export default function DefectList() {
     return () => { cancelled = true; };
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    setFotoResolucao(null);
+  }, [selectedDefect]);
+
   const handleAtender = useCallback(async (id, e) => {
     e?.stopPropagation();
     setAtendendo(id);
@@ -170,7 +174,7 @@ export default function DefectList() {
   return (
     <div className="p-5 max-w-6xl mx-auto">
       <input ref={fotoResolucaoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
-        onChange={e => setFotoResolucao(e.target.files?.[0] || null)} />
+        onChange={e => { setFotoResolucao(e.target.files?.[0] || null); e.target.value = ''; }} />
       <h1 className="text-lg font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>Lista de Chamados</h1>
       <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>Acompanhe todos os chamados de serviços públicos</p>
 
