@@ -90,6 +90,11 @@ class DefeitoViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'])
     def status(self, request, pk=None):
         defeito = self.get_object()
+        if not (request.user.admin or (defeito.atendente_id and defeito.atendente == request.user)):
+            return Response(
+                {'error': 'Permissao negada'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         novo_status = request.data.get('status')
         if novo_status not in dict(Defeito.STATUS_CHOICES):
             return Response(
@@ -114,7 +119,7 @@ class DefeitoViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         defeito.status = novo_status
-        if novo_status in resolvidos:
+        if novo_status in resolvidos and not defeito.atendido_em:
             defeito.atendido_em = timezone.now().isoformat()
         defeito.save()
         return Response(DefeitoDetailSerializer(defeito).data)

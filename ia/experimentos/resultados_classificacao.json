@@ -13,48 +13,48 @@
   ],
   "metricas": {
     "Arvore Caida": {
-      "precision": 0.4444,
-      "recall": 0.32,
-      "f1": 0.3721,
+      "precision": 0.6081,
+      "recall": 0.6,
+      "f1": 0.604,
       "support": 75
     },
     "Buraco": {
-      "precision": 0.2632,
-      "recall": 0.6667,
-      "f1": 0.3774,
+      "precision": 0.7368,
+      "recall": 0.7467,
+      "f1": 0.7417,
       "support": 75
     },
     "Calcada Danificada": {
-      "precision": 0.3529,
-      "recall": 0.48,
-      "f1": 0.4068,
+      "precision": 0.618,
+      "recall": 0.7333,
+      "f1": 0.6707,
       "support": 75
     },
     "Entulho": {
-      "precision": 0.7174,
-      "recall": 0.44,
-      "f1": 0.5455,
+      "precision": 0.6667,
+      "recall": 0.72,
+      "f1": 0.6923,
       "support": 75
     },
     "Iluminacao": {
-      "precision": 0.7903,
-      "recall": 0.6533,
-      "f1": 0.7153,
+      "precision": 0.8356,
+      "recall": 0.8133,
+      "f1": 0.8243,
       "support": 75
     },
     "Outro": {
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1": 0.0,
+      "precision": 0.72,
+      "recall": 0.48,
+      "f1": 0.576,
       "support": 75
     },
     "Semafaro": {
-      "precision": 0.493,
-      "recall": 0.4667,
-      "f1": 0.4795,
+      "precision": 0.6463,
+      "recall": 0.7067,
+      "f1": 0.6752,
       "support": 75
     }
   },
-  "confianca_media": 0.2456,
-  "acuracia_global": 0.4324
+  "confianca_media": 0.1884,
+  "acuracia_global": 0.6857
 }

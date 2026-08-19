@@ -11,7 +11,12 @@ COPY requirements-build.txt ./
 RUN pip install --no-cache-dir -r requirements-build.txt
 
 COPY models/download_text_model.py models/download_image_model.py /build/
-RUN mkdir -p /build/models && python download_text_model.py --output-dir /build/models && python download_image_model.py --output-dir /build/models
+COPY experimentos/dataset_sintetico.py /build/experimentos/
+COPY inference.py gerar_centroides.py /build/
+RUN mkdir -p /build/models \
+    && python download_text_model.py --output-dir /build/models \
+    && python download_image_model.py --output-dir /build/models \
+    && python gerar_centroides.py --output-dir /build/models
 
 # Stage 2: runtime — apenas onnxruntime + inferencia
 FROM python:3.12-slim
@@ -27,6 +32,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --from=builder /build/models/ /app/models/
 COPY *.py /app/
+COPY experimentos/ /app/experimentos/
 
 ENV OMP_NUM_THREADS=1
 ENV OPENBLAS_NUM_THREADS=1

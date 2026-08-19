@@ -7,7 +7,6 @@ async function request(endpoint, options = {}) {
   const isDemoMode = localStorage.getItem('ciu-demo-mode') === 'true';
 
   const headers = {
-    'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
     ...(isDemoMode && { 'X-Demo-Mode': 'true' }),
     ...options.headers,
@@ -18,8 +17,12 @@ async function request(endpoint, options = {}) {
     headers,
   };
 
-  if (options.body) {
+  const isFormData = options.body instanceof FormData;
+  if (options.body && !isFormData) {
+    headers['Content-Type'] = 'application/json';
     fetchOptions.body = JSON.stringify(options.body);
+  } else if (isFormData) {
+    fetchOptions.body = options.body;
   }
 
   const res = await fetch(`${API_URL}${endpoint}`, fetchOptions);
@@ -37,7 +40,8 @@ async function request(endpoint, options = {}) {
           const { access } = await refreshRes.json();
           localStorage.setItem('token', access);
           options.headers = { ...options.headers, Authorization: `Bearer ${access}` };
-          const retryRes = await fetch(`${API_URL}${endpoint}`, { ...fetchOptions, headers: options.headers });
+          headers.Authorization = `Bearer ${access}`;
+          const retryRes = await fetch(`${API_URL}${endpoint}`, { ...fetchOptions, headers });
           if (!retryRes.ok) {
             const retryErr = await retryRes.json().catch(() => ({ error: 'Erro desconhecido' }));
             throw new Error(retryErr.error || 'Erro na requisição');
@@ -90,27 +94,10 @@ async function openOfflineDB() {
 }
 
 async function uploadDefeito(formData) {
-  const token = localStorage.getItem('token');
-  const isDemoMode = localStorage.getItem('ciu-demo-mode') === 'true';
-
   try {
-    const res = await fetch(`${API_URL}/api/v1/defeitos/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(isDemoMode && { 'X-Demo-Mode': 'true' }),
-      },
-      body: formData,
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
-      throw new Error(err.error || 'Erro na requisição');
-    }
-
-    return res.json();
+    return await request('/api/v1/defeitos/', { method: 'POST', body: formData });
   } catch (err) {
-    if (!navigator.onLine || err.message === 'Failed to fetch') {
+    if (!navigator.onLine || err.message === 'Failed to fetch' || err.message.includes('NetworkError')) {
       await salvarOffline(formData);
       return { offline: true, message: 'Chamado salvo offline. Será enviado quando houver conexão.' };
     }
@@ -155,19 +142,8 @@ export const api = {
   updateDefeito: (id, data) =>
     request(`/api/v1/defeitos/${id}/`, { method: 'PATCH', body: data }),
 
-  updateDefeitoComArquivo: async (id, formData) => {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${API_URL}/api/v1/defeitos/${id}/status/`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Erro na requisição' }));
-      throw new Error(err.error || 'Erro na requisição');
-    }
-    return res.json();
-  },
+  updateDefeitoComArquivo: (id, formData) =>
+    request(`/api/v1/defeitos/${id}/status/`, { method: 'PATCH', body: formData }),
 
   listMunicipios: () =>
     paginated('/api/v1/municipios/'),
@@ -211,17 +187,10 @@ export const api = {
   detalharDefeito: (id) =>
     request(`/api/v1/defeitos/${id}/`),
 
-  anexarImagem: async (id, file) => {
-    const token = localStorage.getItem('token');
+  anexarImagem: (id, file) => {
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch(`${API_URL}/api/v1/defeitos/${id}/anexar/`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: fd,
-    });
-    if (!res.ok) { const err = await res.json().catch(() => ({ error: 'Erro' })); throw new Error(err.error); }
-    return res.json();
+    return request(`/api/v1/defeitos/${id}/anexar/`, { method: 'POST', body: fd });
   },
 
   atenderDefeito: (id) =>

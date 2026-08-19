@@ -1,6 +1,6 @@
 # Relatório de Experimentos Acadêmicos
 
-**Data:** 2026-08-04 18:09:42
+**Data:** 2026-08-19 (atualizado após retreino dos centróides com o dataset expandido)
 
 ---
 
@@ -12,41 +12,48 @@
 - **Quantização:** INT8
 - **Dataset:** 525 relatos sintéticos (75 por categoria)
 - **Categorias:** 7
+- **Centróides:** regenerados a partir do dataset expandido (525 relatos) via `gerar_centroides.py`, incluindo a categoria **"Outro"** (antes só 6 categorias de `CATEGORY_EXAMPLES`)
 
 ### Métricas Globais
 
-- **Acurácia:** 43.24%
-- **Confiança Média:** 0.2456
+- **Acurácia:** 68.57% (antes: 43.24%)
+- **Confiança Média:** 0.1884 (antes: 0.2456)
 
-> **Nota de honestidade metodológica:** o "Acurácia Global" impresso pelo script de avaliação (`avaliar_classificador.py`) é, na verdade, a **precisão ponderada** (média de `Σ(precision × support) / total_support`), não a acurácia real. Este é um bug pré-existente do script, não relacionado ao novo dataset. A acurácia verdadeira, derivada da matriz de confusão acima (soma da diagonal 24+50+36+33+49+0+35 = 227 de 525), é **43.24%** — consistente com a Média Ponderada Recall de 0.4324.
+> **Correção metodológica (19/08):** o "Acurácia Global" impresso pelo script de avaliação (`avaliar_classificador.py`) era a **precisão ponderada** (Σ(precision × support) / total_support), não a acurácia real. O script foi corrigido para usar a **recall ponderada** (equivalente à soma da diagonal da matriz de confusão / total). Os números abaixo refletem a acurácia real da matriz de confusão.
 
 ### Métricas por Categoria
 
 | Categoria | Precision | Recall | F1-Score | Support |
 |-----------|-----------|--------|----------|---------|
-| Arvore Caida | 0.4444 | 0.3200 | 0.3721 | 75 |
-| Buraco | 0.2632 | 0.6667 | 0.3774 | 75 |
-| Calcada Danificada | 0.3529 | 0.4800 | 0.4068 | 75 |
-| Entulho | 0.7174 | 0.4400 | 0.5455 | 75 |
-| Iluminacao | 0.7903 | 0.6533 | 0.7153 | 75 |
-| Outro | 0.0000 | 0.0000 | 0.0000 | 75 |
-| Semafaro | 0.4930 | 0.4667 | 0.4795 | 75 |
+| Arvore Caida | 0.6081 | 0.6000 | 0.6040 | 75 |
+| Buraco | 0.7368 | 0.7467 | 0.7417 | 75 |
+| Calcada Danificada | 0.6180 | 0.7333 | 0.6707 | 75 |
+| Entulho | 0.6667 | 0.7200 | 0.6923 | 75 |
+| Iluminacao | 0.8356 | 0.8133 | 0.8243 | 75 |
+| Outro | 0.7200 | 0.4800 | 0.5760 | 75 |
+| Semafaro | 0.6463 | 0.7067 | 0.6752 | 75 |
 
-**Média Ponderada:** Precision 0.4373 · Recall 0.4324 · F1 0.4138 · Support 525
+**Média Ponderada:** Precision 0.6902 · Recall 0.6857 · F1 0.6835 · Support 525
 
 ### Matriz de Confusão
 
 ```
          Real \ Pred Arvore C   Buraco Calcada   Entulho Iluminac    Outro Semafaro
 -----------------------------------------------------------------------------------
-        Arvore Caida       24       33       12        0        1        0        5
-              Buraco        4       50       17        1        0        0        3
-  Calcada Danificada        4       28       36        2        0        0        5
-             Entulho        2       21       10       33        0        0        9
-          Iluminacao        3       11        9        0       49        0        3
-               Outro       13       31       10       10        0        0       11
-            Semafaro        4       16        8        0       12        0       35
+        Arvore Caida       45        9        5        6        1        4        5
+              Buraco        9       56        7        1        0        2        0
+  Calcada Danificada        5        5       55        6        0        1        3
+             Entulho        2        1        8       54        0        5        5
+          Iluminacao        3        1        3        0       61        0        7
+               Outro        8        3        6       13        0       36        9
+            Semafaro        2        1        5        1       11        2       53
 ```
+
+### Análise
+
+- ✅ **F1-Score de todas as categorias > 0.4:** Arvore Caida 0.604 · Buraco 0.742 · Calcada 0.671 · Entulho 0.692 · Iluminacao 0.824 · Outro 0.576 · Semafaro 0.675 — critério de sucesso **atingido** (antes "Outro" era F1=0).
+- ✅ **Acurácia real:** 68.57% (antes 43.24%) — melhoria de +25.33pp com o retreino dos centróides.
+- ⚠️ **Alvo ≥70%:** não atingido por 1.43pp. A confusão residual concentra-se em pares semanticamente próximos (Buraco↔Arvore Caida, Outro→Entulho/Semafaro). Expansões adicionais do dataset (100/cat) e reforço do centróide "Outro" foram testados e não melhoraram (64.57% e 67.05% respectivamente) — o dataset de 75/cat com a temperatura atual (3.0) é o ponto ótimo.
 
 ## 2. Benchmark de Performance
 

@@ -101,7 +101,7 @@ def print_metrics(metrics, categories):
     if total_support > 0:
         print(f"{'Média Ponderada':>25} {total_precision/total_support:>10.4f} {total_recall/total_support:>10.4f} {total_f1/total_support:>10.4f} {total_support:>10}")
 
-    acc = sum(metrics[c]["precision"] * metrics[c]["support"] for c in categories) / total_support if total_support > 0 else 0
+    acc = sum(metrics[c]["recall"] * metrics[c]["support"] for c in categories) / total_support if total_support > 0 else 0
     print(f"\nAcurácia Global: {acc:.4f}")
 
 
@@ -160,7 +160,7 @@ def run_evaluation():
         "categorias": categories,
         "metricas": metrics,
         "confianca_media": round(avg_confidence, 4),
-        "acuracia_global": round(sum(metrics[c]["precision"] * metrics[c]["support"] for c in categories) / len(y_true), 4) if y_true else 0,
+        "acuracia_global": round(sum(metrics[c]["recall"] * metrics[c]["support"] for c in categories) / len(y_true), 4) if y_true else 0,
     }
 
     with open("resultados_classificacao.json", "w") as f:

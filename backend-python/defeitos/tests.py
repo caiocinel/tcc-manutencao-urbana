@@ -32,6 +32,23 @@ def _create_defeito(auth_client, **overrides):
     return resp.data
 
 
+def _new_user_client(client):
+    """Registra um usuário independente e retorna um APIClient autenticado."""
+    import uuid as uuid_mod
+    uid = str(uuid_mod.uuid4())[:8]
+    creds = {
+        'email': f'other-{uid}@example.com',
+        'nome': f'Other User {uid}',
+        'password': 'Test@123456',
+    }
+    from rest_framework.test import APIClient
+    resp = client.post(reverse('auth-register'), {**creds, 'confirm_password': creds['password']}, format='json')
+    assert resp.status_code == 201
+    new_client = APIClient()
+    new_client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['access']}")
+    return new_client
+
+
 class TestDefeitosList:
 
     def test_list_unauthenticated(self, client):
@@ -250,45 +267,136 @@ class TestStatusAction:
 
     STATUS_URL = 'defeitos-status'
 
-    def test_update_status(self, auth_client):
-        created = _create_defeito(auth_client)
-        resp = auth_client.patch(
+    def test_update_status(self, admin_client):
+        created = _create_defeito(admin_client)
+        resp = admin_client.patch(
             reverse(self.STATUS_URL, args=[created['id']]),
             {'status': 'em_andamento'}, format='json',
         )
         assert resp.status_code == 200
         assert resp.data['status'] == 'em_andamento'
 
-    def test_invalid_status(self, auth_client):
-        created = _create_defeito(auth_client)
-        resp = auth_client.patch(
+    def test_invalid_status(self, admin_client):
+        created = _create_defeito(admin_client)
+        resp = admin_client.patch(
             reverse(self.STATUS_URL, args=[created['id']]),
             {'status': 'invalid_status'}, format='json',
         )
         assert resp.status_code == 400
 
-    def test_resolvido_exige_foto_resolucao(self, auth_client):
-        created = _create_defeito(auth_client)
-        resp = auth_client.patch(
+    def test_resolvido_exige_foto_resolucao(self, admin_client):
+        created = _create_defeito(admin_client)
+        resp = admin_client.patch(
             reverse(self.STATUS_URL, args=[created['id']]),
             {'status': 'atendido'}, format='json',
         )
         assert resp.status_code == 400
 
-    def test_resolvido_com_foto_resolucao(self, auth_client):
+    def test_resolvido_com_foto_resolucao(self, admin_client):
         import io
         from PIL import Image
-        created = _create_defeito(auth_client)
+        created = _create_defeito(admin_client)
         buf = io.BytesIO()
         Image.new('RGB', (64, 64), color='red').save(buf, format='JPEG')
         buf.seek(0)
-        resp = auth_client.patch(
+        resp = admin_client.patch(
             reverse(self.STATUS_URL, args=[created['id']]),
             {'status': 'atendido', 'foto_resolucao': buf},
             format='multipart',
         )
         assert resp.status_code == 200
         assert resp.data['status'] == 'atendido'
+
+    def test_update_status_unauthenticated(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        resp = client.patch(
+            reverse(self.STATUS_URL, args=[created['id']]),
+            {'status': 'em_andamento'}, format='json',
+        )
+        assert resp.status_code == 401
+
+    def test_update_status_denied_for_plain_user(self, client, admin_client):
+        """Cidadão comum NÃO pode alterar status de defeito de outro cidadão."""
+        created = _create_defeito(admin_client)
+        other = _new_user_client(client)
+        resp = other.patch(
+            reverse(self.STATUS_URL, args=[created['id']]),
+            {'status': 'em_andamento'}, format='json',
+        )
+        assert resp.status_code == 403
+
+    def test_update_status_denied_for_plain_user_to_resolved(self, client, admin_client):
+        """Cidadão comum NÃO pode marcar como atendido sem ser admin/atendente."""
+        import io
+        from PIL import Image
+        created = _create_defeito(admin_client)
+        other = _new_user_client(client)
+        buf = io.BytesIO()
+        Image.new('RGB', (64, 64), color='red').save(buf, format='JPEG')
+        buf.seek(0)
+        resp = other.patch(
+            reverse(self.STATUS_URL, args=[created['id']]),
+            {'status': 'atendido', 'foto_resolucao': buf},
+            format='multipart',
+        )
+        assert resp.status_code == 403
+
+    def test_update_status_allowed_for_admin(self, admin_client):
+        created = _create_defeito(admin_client)
+        resp = admin_client.patch(
+            reverse(self.STATUS_URL, args=[created['id']]),
+            {'status': 'em_andamento'}, format='json',
+        )
+        assert resp.status_code == 200
+
+    def test_update_status_allowed_for_atendente(self, auth_client):
+        """Atendente vinculado ao defeito pode alterar o status."""
+        created = _create_defeito(auth_client)
+        resp = auth_client.patch(
+            reverse('defeitos-atender', args=[created['id']]), format='json',
+        )
+        assert resp.status_code == 200
+        resp = auth_client.patch(
+            reverse(self.STATUS_URL, args=[created['id']]),
+            {'status': 'em_andamento'}, format='json',
+        )
+        assert resp.status_code == 200
+
+    def test_update_status_denied_for_own_plain_user(self, auth_client):
+        """Mesmo o autor do defeito (sem ser admin/atendente) NÃO pode mudar status."""
+        created = _create_defeito(auth_client)
+        resp = auth_client.patch(
+            reverse(self.STATUS_URL, args=[created['id']]),
+            {'status': 'em_andamento'}, format='json',
+        )
+        assert resp.status_code == 403
+
+    def test_atendido_em_imutavel_apos_resolvido(self, admin_client):
+        """Transição resolvido→resolvido NÃO sobrescreve o timestamp original."""
+        import io
+        from PIL import Image
+        created = _create_defeito(admin_client)
+        buf = io.BytesIO()
+        Image.new('RGB', (64, 64), color='red').save(buf, format='JPEG')
+        buf.seek(0)
+        first = admin_client.patch(
+            reverse(self.STATUS_URL, args=[created['id']]),
+            {'status': 'atendido', 'foto_resolucao': buf},
+            format='multipart',
+        )
+        assert first.status_code == 200
+        first_ts = first.data['atendido_em']
+
+        buf = io.BytesIO()
+        Image.new('RGB', (64, 64), color='red').save(buf, format='JPEG')
+        buf.seek(0)
+        second = admin_client.patch(
+            reverse(self.STATUS_URL, args=[created['id']]),
+            {'status': 'concluido', 'foto_resolucao': buf},
+            format='multipart',
+        )
+        assert second.status_code == 200
+        assert second.data['atendido_em'] == first_ts
 
 
 class TestMeus:
