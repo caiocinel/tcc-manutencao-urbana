@@ -41,6 +41,9 @@ jobs:
       - name: Django imports check
         run: docker compose -f docker-compose.yml run --rm backend python -c "import django, rest_framework, corsheaders, django_filters, django_ratelimit, rest_framework_gis; print('django imports OK')"
 
+      - name: Run backend tests (pytest)
+        run: docker compose -f docker-compose.yml run --rm -e DJANGO_SETTINGS_MODULE=core.settings.local backend python -m pytest
+
       - name: Build frontend
         run: docker run --rm -v ${{ github.workspace }}/frontend:/app -w /app node:20-alpine sh -c "npm install --silent && npm run lint && npm run build"
 
