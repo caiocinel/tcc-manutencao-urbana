@@ -228,6 +228,12 @@ export default function DefectList() {
                     <span className="inline-flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: getStatusColor(d.status, d.atendido_em || d.atualizado_em) }} />
                       <StatusBadge status={d.status} concluido_em={d.atendido_em || d.atualizado_em} />
+                      {d.sla_vencido && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-semibold"
+                          style={{ borderColor: 'var(--color-error)', color: 'var(--color-error)', background: 'rgba(207,68,68,0.1)' }}>
+                          SLA VENCIDO
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td className="px-3 py-3 max-w-[200px]">
@@ -303,6 +309,12 @@ export default function DefectList() {
                   <h3 className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>{selectedDefect.titulo}</h3>
                   <div className="flex items-center gap-2 mt-1">
                     <StatusBadge status={selectedDefect.status} concluido_em={selectedDefect.atendido_em || selectedDefect.atualizado_em} />
+                    {selectedDefect.sla_vencido && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-semibold"
+                        style={{ borderColor: 'var(--color-error)', color: 'var(--color-error)', background: 'rgba(207,68,68,0.1)' }}>
+                        SLA VENCIDO
+                      </span>
+                    )}
                     <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                       {selectedDefect.usuario?.nome ? `${selectedDefect.usuario.nome.charAt(0)}${'*'.repeat(selectedDefect.usuario.nome.length - 1)}` : 'Anônimo'}
                     </span>

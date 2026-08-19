@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
-import { ChartLineUp, Warning, Timer, Buildings, ChartBar, Article, Clock, CheckCircle, TrendUp } from '@phosphor-icons/react';
+import { ChartLineUp, Warning, WarningOctagon, Timer, Buildings, ChartBar, Article, Clock, CheckCircle, TrendUp } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/toast-context';
 import { STATUS_CONFIG } from '../constants';
 import { KpiCard } from '../components/ui/kpi-card';
+import { StatusBadge } from '../components/ui/status-badge';
 const GOLD = '#D4AF37', GOLD_DARK = '#AA7C11', SUCCESS = '#4CAF7D', ERROR = '#CF4444';
 
 const statusCores = {};
@@ -72,6 +73,7 @@ export default function AdminDashboardMetrics() {
         <KpiCard title="Taxa de Resolução" value={stats.taxa_resolucao} format="percent" icon={TrendUp} />
         <KpiCard title="Tempo Médio (SLA)" value={stats.sla_medio_minutos < 60 ? `${stats.sla_medio_minutos}min` : `${(stats.sla_medio_minutos / 60).toFixed(1)}h`} format="time" icon={Timer} />
         <KpiCard title="Este Mês" value={stats.sazonalidade?.mes_atual || 0} icon={ChartBar} variation={stats.sazonalidade?.variacao_percentual} />
+        <KpiCard title="SLA Vencidos" value={stats.sla_vencidos_total || 0} icon={WarningOctagon} className="!before:bg-[var(--color-error)]" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -181,6 +183,30 @@ export default function AdminDashboardMetrics() {
                 <Bar dataKey="sla_medio_minutos" fill={GOLD_DARK} radius={[0,4,4,0]} />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {stats.sla_vencidos && stats.sla_vencidos.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-bold mb-1 flex items-center gap-1.5" style={{ color: 'var(--color-text-primary)' }}>
+            <WarningOctagon size={18} style={{ color: 'var(--color-error)' }} /> Chamados com SLA Vencido
+          </h2>
+          <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
+            Prazo de atendimento ultrapassado — priorizar resolução.
+          </p>
+          <div className="space-y-2">
+            {stats.sla_vencidos.map(v => (
+              <div key={v.id} className="flex items-center gap-3 p-3 rounded-xl border" style={{ background: 'var(--color-bg-surface)', borderColor: 'rgba(107,18,26,0.5)', borderLeftColor: 'var(--color-error)' }}>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-semibold block truncate" style={{ color: 'var(--color-text-primary)' }}>{v.titulo}</span>
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    {v.categoria} · {new Date(v.criado_em).toLocaleDateString()} · prazo {v.prazo_sla_dias}d
+                  </span>
+                </div>
+                <StatusBadge status={v.status} />
+              </div>
+            ))}
           </div>
         </div>
       )}
