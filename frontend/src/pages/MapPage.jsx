@@ -12,6 +12,8 @@ import UserDropdown from '../components/ui/user-dropdown';
 import { CommandMenu } from '../components/ui/command-menu';
 import { useTheme } from '../context/ThemeContext';
 import { createPlacementPinIcon, createDefectIcon } from '../utils/map-markers';
+import { getTimelineItems } from '../utils/timeline';
+import { Timeline } from '../components/ui/timeline';
 import HeatmapLayer from '../components/HeatmapLayer';
 
 const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
@@ -504,6 +506,10 @@ export default function MapPage() {
                 <img key={i} src={url} alt="" className="w-full h-32 object-cover rounded-lg mb-2 cursor-pointer"
                   onClick={() => setSelectedImage(url)} />
               ))}
+              <div className="mb-4 mt-4">
+                <h4 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>Histórico</h4>
+                <Timeline items={getTimelineItems(selected)} />
+              </div>
               <div className="flex items-center gap-3 text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>
                 <span>{new Date(selected.criado_em).toLocaleDateString()}</span>
                 {selected.apoios_total > 0 && <span className="flex items-center gap-1"><ThumbsUp size={12} /> {selected.apoios_total}</span>}
