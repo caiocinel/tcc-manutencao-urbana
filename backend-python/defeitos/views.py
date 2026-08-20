@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
@@ -42,6 +43,7 @@ class DefeitoViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'apoiar', 'meus', 'apoiados', 'apoiei', 'atender', 'status',
+                           'batch_status', 'ordem_servico',
                            'update', 'partial_update', 'destroy', 'anexar'):
             return (permissions.IsAuthenticated(),)
         return (permissions.AllowAny(),)
@@ -181,6 +183,54 @@ class DefeitoViewSet(viewsets.ModelViewSet):
     def apoiei(self, request):
         ids = Apoio.objects.filter(usuario=request.user).values_list('defeito_id', flat=True)
         return Response({'ids': [str(i) for i in ids]})
+
+    @action(detail=True, methods=['get'])
+    def ordem_servico(self, request, pk=None):
+        if not request.user.admin:
+            return Response(
+                {'error': 'Permissao negada'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        defeito = self.get_object()
+        from services.ordem_servico import gerar_ordem_servico
+        pdf_bytes = gerar_ordem_servico(defeito)
+        id_curto = str(defeito.id)[:8]
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="OS-{id_curto}.pdf"'
+        return response
+
+    @action(detail=False, methods=['patch'])
+    def batch_status(self, request):
+        if not request.user.admin:
+            return Response(
+                {'error': 'Permissao negada'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        ids = request.data.get('ids')
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {'error': 'Informe ao menos um id'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(ids) > 100:
+            return Response(
+                {'error': 'Maximo de 100 chamados por lote'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        novo_status = request.data.get('status')
+        if novo_status not in dict(Defeito.STATUS_CHOICES):
+            return Response(
+                {'error': 'Invalid status'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if novo_status in {'atendido', 'encerrado', 'concluido'}:
+            return Response(
+                {'error': 'Status resolvido exige foto de resolucao - use a acao individual'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        qs = self.get_queryset().filter(id__in=ids)
+        updated = qs.update(status=novo_status, atualizado_em=timezone.now())
+        return Response({'updated': updated})
 
     @action(detail=False, methods=['post'])
     def imagem(self, request):

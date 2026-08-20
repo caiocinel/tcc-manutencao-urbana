@@ -417,6 +417,154 @@ class TestStatusAction:
         assert second.data['atendido_em'] == first_ts
 
 
+class TestBatchStatus:
+
+    URL = 'defeitos-batch-status'
+
+    def test_batch_status_updates_multiple(self, admin_client):
+        d1 = _create_defeito(admin_client)
+        d2 = _create_defeito(admin_client)
+        d3 = _create_defeito(admin_client)
+        resp = admin_client.patch(
+            reverse(self.URL),
+            {'ids': [d1['id'], d2['id']], 'status': 'em_andamento'},
+            format='json',
+        )
+        assert resp.status_code == 200
+        assert resp.data['updated'] == 2
+        for d in (d1, d2):
+            assert Defeito.objects.get(id=d['id']).status == 'em_andamento'
+        assert Defeito.objects.get(id=d3['id']).status == 'pendente'
+
+    def test_batch_status_invalid_status(self, admin_client):
+        d1 = _create_defeito(admin_client)
+        resp = admin_client.patch(
+            reverse(self.URL),
+            {'ids': [d1['id']], 'status': 'status_invalido'},
+            format='json',
+        )
+        assert resp.status_code == 400
+
+    def test_batch_status_denied_for_plain_user(self, client, admin_client):
+        d1 = _create_defeito(admin_client)
+        other = _new_user_client(client)
+        resp = other.patch(
+            reverse(self.URL),
+            {'ids': [d1['id']], 'status': 'em_andamento'},
+            format='json',
+        )
+        assert resp.status_code == 403
+
+    def test_batch_status_unauthenticated(self, client, admin_client):
+        d1 = _create_defeito(admin_client)
+        resp = client.patch(
+            reverse(self.URL),
+            {'ids': [d1['id']], 'status': 'em_andamento'},
+            format='json',
+        )
+        assert resp.status_code == 401
+
+    def test_batch_status_rejects_empty_ids(self, admin_client):
+        resp = admin_client.patch(
+            reverse(self.URL),
+            {'ids': [], 'status': 'em_andamento'},
+            format='json',
+        )
+        assert resp.status_code == 400
+
+    def test_batch_status_rejects_missing_ids(self, admin_client):
+        resp = admin_client.patch(
+            reverse(self.URL),
+            {'status': 'em_andamento'},
+            format='json',
+        )
+        assert resp.status_code == 400
+
+    def test_batch_status_rejects_more_than_100_ids(self, admin_client):
+        import uuid
+        ids = [str(uuid.uuid4()) for _ in range(101)]
+        resp = admin_client.patch(
+            reverse(self.URL),
+            {'ids': ids, 'status': 'em_andamento'},
+            format='json',
+        )
+        assert resp.status_code == 400
+
+    def test_batch_status_updates_atualizado_em(self, admin_client):
+        d1 = _create_defeito(admin_client)
+        antes = Defeito.objects.get(id=d1['id']).atualizado_em
+        resp = admin_client.patch(
+            reverse(self.URL),
+            {'ids': [d1['id']], 'status': 'em_andamento'},
+            format='json',
+        )
+        assert resp.status_code == 200
+        depois = Defeito.objects.get(id=d1['id']).atualizado_em
+        assert depois >= antes
+
+    def test_batch_status_ignores_nonexistent_ids(self, admin_client):
+        d1 = _create_defeito(admin_client)
+        import uuid
+        resp = admin_client.patch(
+            reverse(self.URL),
+            {'ids': [d1['id'], str(uuid.uuid4())], 'status': 'em_andamento'},
+            format='json',
+        )
+        assert resp.status_code == 200
+        assert resp.data['updated'] == 1
+        assert Defeito.objects.get(id=d1['id']).status == 'em_andamento'
+
+    def test_batch_status_rejects_resolved_status(self, admin_client):
+        """Status resolvidos exigem foto de resolução — inválido em lote."""
+        d1 = _create_defeito(admin_client)
+        resp = admin_client.patch(
+            reverse(self.URL),
+            {'ids': [d1['id']], 'status': 'atendido'},
+            format='json',
+        )
+        assert resp.status_code == 400
+
+
+class TestOrdemServico:
+
+    URL = 'defeitos-ordem-servico'
+
+    def test_ordem_servico_pdf(self, admin_client):
+        created = _create_defeito(admin_client, titulo='Buraco na Avenida')
+        resp = admin_client.get(reverse(self.URL, args=[created['id']]))
+        assert resp.status_code == 200
+        assert resp['Content-Type'] == 'application/pdf'
+        assert 'attachment' in resp['Content-Disposition']
+        assert resp['Content-Disposition'].startswith('attachment; filename="OS-')
+        assert b'%PDF' in resp.content
+
+    def test_ordem_servico_contains_defeito_titulo(self, admin_client):
+        from pypdf import PdfReader
+        import io
+        created = _create_defeito(admin_client, titulo='Buraco gigante no centro')
+        resp = admin_client.get(reverse(self.URL, args=[created['id']]))
+        assert resp.status_code == 200
+        reader = PdfReader(io.BytesIO(resp.content))
+        texto = ' '.join(page.extract_text() for page in reader.pages)
+        assert 'Buraco gigante no centro' in texto
+
+    def test_ordem_servico_denied_for_plain_user(self, client, admin_client):
+        created = _create_defeito(admin_client)
+        other = _new_user_client(client)
+        resp = other.get(reverse(self.URL, args=[created['id']]))
+        assert resp.status_code == 403
+
+    def test_ordem_servico_unauthenticated(self, client, admin_client):
+        created = _create_defeito(admin_client)
+        resp = client.get(reverse(self.URL, args=[created['id']]))
+        assert resp.status_code == 401
+
+    def test_ordem_servico_nonexistent(self, admin_client):
+        import uuid
+        resp = admin_client.get(reverse(self.URL, args=[uuid.uuid4()]))
+        assert resp.status_code == 404
+
+
 class TestMeus:
 
     URL = 'defeitos-meus'

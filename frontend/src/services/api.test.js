@@ -126,3 +126,66 @@ describe('api request helper com FormData', () => {
     );
   });
 });
+
+describe('api.batchStatusDefeitos', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockReset();
+  });
+
+  it('envia PATCH em batch_status com ids e status', async () => {
+    localStorage.setItem('token', 'tok123');
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ updated: 2 }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    const res = await apiModule.api.batchStatusDefeitos(['a-1', 'b-2'], 'em_andamento');
+
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/v1/defeitos/batch_status/');
+    expect(opts.method).toBe('PATCH');
+    expect(opts.headers.Authorization).toBe('Bearer tok123');
+    expect(opts.headers['Content-Type']).toBe('application/json');
+    expect(JSON.parse(opts.body)).toEqual({ ids: ['a-1', 'b-2'], status: 'em_andamento' });
+    expect(res).toEqual({ updated: 2 });
+  });
+});
+
+describe('api.gerarOS', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockReset();
+    vi.unstubAllGlobals();
+    delete globalThis.Blob;
+    delete globalThis.URL;
+  });
+
+  it('busca o PDF como blob com Authorization', async () => {
+    localStorage.setItem('token', 'tok123');
+    const clickFn = vi.fn();
+    const removeFn = vi.fn();
+    globalThis.document = {
+      createElement: vi.fn(() => ({ click: clickFn, remove: removeFn, set href(v) {}, set download(v) {} })),
+      body: { appendChild: vi.fn() },
+    };
+    globalThis.Blob = class { constructor(parts, opts) { this.parts = parts; this.type = opts?.type; } };
+    globalThis.URL = { createObjectURL: vi.fn(() => 'blob:os'), revokeObjectURL: vi.fn() };
+    globalThis.window = { location: { href: '' } };
+    fetchMock.mockResolvedValueOnce(
+      new Response(new Blob(['%PDF'], { type: 'application/pdf' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="OS-abc123.pdf"' },
+      }),
+    );
+
+    const blob = await apiModule.api.gerarOS('abc-123');
+
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/v1/defeitos/abc-123/ordem_servico/');
+    expect(opts.method ?? 'GET').toBe('GET');
+    expect(opts.headers.Authorization).toBe('Bearer tok123');
+    expect(blob.type).toBe('application/pdf');
+    expect(clickFn).toHaveBeenCalled();
+    expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith('blob:os');
+  });
+});

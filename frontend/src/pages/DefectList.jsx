@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Handshake, Calendar, User as UserIcon, MapPin, Camera, ThumbsUp, X, CaretUp, CaretDown } from '@phosphor-icons/react';
+import { Handshake, Calendar, User as UserIcon, MapPin, Camera, ThumbsUp, X, CaretUp, CaretDown, FilePdf } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -30,6 +30,17 @@ export default function DefectList() {
   const [anexando, setAnexando] = useState(null);
   const [fotoResolucao, setFotoResolucao] = useState(null);
   const fotoResolucaoRef = useRef(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [batchStatusPending, setBatchStatusPending] = useState(null);
+  const [enviandoBatch, setEnviandoBatch] = useState(false);
+  const [gerandoOS, setGerandoOS] = useState(null);
+
+  const BATCH_STATUS_OPTIONS = [
+    ['pendente', 'Pendente'],
+    ['em_andamento', 'Em Andamento'],
+    ['vinculado_sem_resposta', 'Vinculado'],
+    ['rejeitado', 'Rejeitar'],
+  ];
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +149,51 @@ export default function DefectList() {
     finally { setAnexando(null); e.target.value = ''; }
   }, [addToast]);
 
+  function toggleSelecao(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelecaoTudo() {
+    setSelectedIds(prev => {
+      const visiveis = sorted.map(d => d.id);
+      const todosSelecionados = visiveis.length > 0 && visiveis.every(id => prev.has(id));
+      const next = new Set(prev);
+      if (todosSelecionados) {
+        visiveis.forEach(id => next.delete(id));
+      } else {
+        visiveis.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  }
+
+  const handleBatchConfirm = useCallback(async () => {
+    if (!batchStatusPending || selectedIds.size === 0) return;
+    setEnviandoBatch(true);
+    try {
+      const res = await api.batchStatusDefeitos([...selectedIds], batchStatusPending);
+      addToast(`Status atualizado em ${res.updated} chamado(s)!`);
+      setDefeitos(prev => prev.map(d => selectedIds.has(d.id) ? { ...d, status: batchStatusPending } : d));
+      setSelectedIds(new Set());
+      setBatchStatusPending(null);
+    } catch (err) { addToast('Erro: ' + err.message, 'error'); }
+    finally { setEnviandoBatch(false); }
+  }, [addToast, batchStatusPending, selectedIds]);
+
+  const handleGerarOS = useCallback(async (id, e) => {
+    e?.stopPropagation();
+    setGerandoOS(id);
+    try {
+      await api.gerarOS(id);
+      addToast('Ordem de Serviço gerada!');
+    } catch (err) { addToast('Erro: ' + err.message, 'error'); }
+    finally { setGerandoOS(null); }
+  }, [addToast]);
+
   const filtrados = defeitos.filter(d => {
     if (filtro === 'todos') return true;
     if (filtro === 'pendentes') return ['pendente','em_andamento','vinculado_sem_resposta','vinculado_com_resposta'].includes(d.status);
@@ -200,6 +256,14 @@ export default function DefectList() {
           <table className="w-full text-sm" style={{ color: 'var(--color-text-primary)' }}>
             <thead>
               <tr style={{ background: 'var(--color-bg-elevated)' }}>
+                {isAdmin && (
+                  <th className="px-3 py-2.5 w-8">
+                    <input type="checkbox" aria-label="Selecionar todos os chamados"
+                      checked={sorted.length > 0 && sorted.every(d => selectedIds.has(d.id))}
+                      onChange={toggleSelecaoTudo}
+                      style={{ accentColor: 'var(--color-gold-500)', cursor: 'pointer' }} />
+                  </th>
+                )}
                 <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort('status')} style={{ color: 'var(--color-text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Status {renderSortIcon("status")}
                 </th>
@@ -231,6 +295,14 @@ export default function DefectList() {
                     setSelectedDefect(d);
                     api.detalharDefeito(d.id).then(full => setSelectedDefect(full)).catch(() => {});
                   }}>
+                  {isAdmin && (
+                    <td className="px-3 py-3 w-8" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" aria-label={`Selecionar chamado ${d.titulo}`}
+                        checked={selectedIds.has(d.id)}
+                        onChange={() => toggleSelecao(d.id)}
+                        style={{ accentColor: 'var(--color-gold-500)', cursor: 'pointer' }} />
+                    </td>
+                  )}
                   <td className="px-3 py-3 whitespace-nowrap">
                     <span className="inline-flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: getStatusColor(d.status, d.atendido_em || d.atualizado_em) }} />
@@ -293,6 +365,16 @@ export default function DefectList() {
                         title="Anexar imagem">
                         <Camera size={13} />
                       </button>
+                      {isAdmin && (
+                        <button onClick={e => handleGerarOS(d.id, e)} disabled={gerandoOS === d.id}
+                          className="w-7 h-7 rounded-md flex items-center justify-center transition-colors disabled:opacity-50"
+                          style={{ color: 'var(--color-text-muted)' }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-hover)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                          title="Gerar Ordem de Serviço (PDF)">
+                          {gerandoOS === d.id ? '...' : <FilePdf size={13} />}
+                        </button>
+                      )}
                       <input id={`anexar-${d.id}`} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
                         onChange={e => handleAnexarFile(d.id, e)} />
                     </div>
@@ -301,6 +383,48 @@ export default function DefectList() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {isAdmin && selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[1500] flex items-center gap-3 px-4 py-2.5 rounded-lg border"
+          style={{ background: 'rgba(10,10,10,0.95)', borderColor: 'rgba(180,140,50,0.4)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+          <span className="text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--color-gold-500)' }}>
+            {selectedIds.size} selecionado{selectedIds.size === 1 ? '' : 's'}
+          </span>
+          <span className="w-px h-5" style={{ background: 'var(--color-border-default)' }} />
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {BATCH_STATUS_OPTIONS.map(([valor, rotulo]) => (
+              <button key={valor} onClick={() => setBatchStatusPending(valor)} disabled={enviandoBatch}
+                className="px-2.5 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
+                style={batchStatusPending === valor
+                  ? { background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)', border: '1px solid var(--color-gold-500)' }
+                  : { border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)', background: 'transparent' }}>
+                {rotulo}
+              </button>
+            ))}
+          </div>
+          {batchStatusPending && (
+            <div className="flex items-center gap-1.5">
+              <span className="w-px h-5" style={{ background: 'var(--color-border-default)' }} />
+              <span className="text-xs whitespace-nowrap" style={{ color: 'var(--color-text-muted)' }}>
+                Aplicar "{BATCH_STATUS_OPTIONS.find(([v]) => v === batchStatusPending)?.[1]}" em {selectedIds.size}?
+              </span>
+              <Button variant="secondary" size="xs" onClick={handleBatchConfirm} disabled={enviandoBatch}
+                className="flex items-center gap-1">
+                {enviandoBatch ? '...' : 'Confirmar'}
+              </Button>
+              <Button variant="ghost" size="xs" onClick={() => setBatchStatusPending(null)} disabled={enviandoBatch}>Voltar</Button>
+            </div>
+          )}
+          <span className="w-px h-5" style={{ background: 'var(--color-border-default)' }} />
+          <button onClick={() => { setSelectedIds(new Set()); setBatchStatusPending(null); }}
+            className="text-xs font-medium whitespace-nowrap transition-colors"
+            style={{ color: 'var(--color-text-muted)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-error)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
+            Cancelar
+          </button>
         </div>
       )}
 
@@ -375,6 +499,12 @@ export default function DefectList() {
                 )}
                 {fotoResolucao && (
                   <span className="text-xs truncate max-w-[120px]" style={{ color: 'var(--color-text-muted)' }}>{fotoResolucao?.name}</span>
+                )}
+                {user?.admin && (
+                  <Button variant="secondary" onClick={e => handleGerarOS(selectedDefect.id, e)} disabled={gerandoOS === selectedDefect.id}
+                    className="flex items-center gap-1.5">
+                    <FilePdf size={14} /> {gerandoOS === selectedDefect.id ? '...' : 'Gerar OS'}
+                  </Button>
                 )}
                 <button onClick={() => handleApoiar(selectedDefect.id)} disabled={apoiando === selectedDefect.id}
                   className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"

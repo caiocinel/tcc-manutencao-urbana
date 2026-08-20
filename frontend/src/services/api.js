@@ -196,6 +196,34 @@ export const api = {
   atenderDefeito: (id) =>
     request(`/api/v1/defeitos/${id}/atender/`, { method: 'PATCH' }),
 
+  batchStatusDefeitos: (ids, status) =>
+    request('/api/v1/defeitos/batch_status/', { method: 'PATCH', body: { ids, status } }),
+
+  gerarOS: async (id) => {
+    const token = localStorage.getItem('token');
+    const isDemoMode = localStorage.getItem('ciu-demo-mode') === 'true';
+    const headers = {
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...(isDemoMode && { 'X-Demo-Mode': 'true' }),
+    };
+    const res = await fetch(`${API_URL}/api/v1/defeitos/${id}/ordem_servico/`, { headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Erro ao gerar OS' }));
+      throw new Error(err.error || 'Erro ao gerar OS');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const filename = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || `OS-${id}.pdf`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return blob;
+  },
+
   adminListUsers: () =>
     request('/api/v1/auth/admin/users/'),
 
