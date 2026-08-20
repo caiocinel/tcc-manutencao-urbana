@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { MapPin, Plus, X, Camera, ThumbsUp, Sun, Moon, MagnifyingGlass, Fire, Funnel, Handshake } from '@phosphor-icons/react';
-import { MapContainer, TileLayer, Marker, Polygon, useMapEvents } from 'react-leaflet';
+import { MapPin, Plus, X, Camera, ThumbsUp, Sun, Moon, MagnifyingGlass, Fire, Funnel, Handshake, Crosshair } from '@phosphor-icons/react';
+import { MapContainer, TileLayer, Marker, Polygon, Circle, useMapEvents } from 'react-leaflet';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/toast-context';
 import { api } from '../services/api';
@@ -13,7 +13,7 @@ import { CommandMenu } from '../components/ui/command-menu';
 import { useTheme } from '../context/ThemeContext';
 import { createPlacementPinIcon, createDefectIcon } from '../utils/map-markers';
 import { getTimelineItems } from '../utils/timeline';
-import { getInitialHeatmapState } from '../utils/map-heatmap';
+import { getInitialHeatmapState, filterByRadius } from '../utils/map-heatmap';
 import { Timeline } from '../components/ui/timeline';
 import HeatmapLayer from '../components/HeatmapLayer';
 import SyncIndicator from '../components/ui/sync-indicator';
@@ -57,6 +57,7 @@ export default function MapPage() {
   const [defeitos, setDefeitos] = useState([]);
   const [filtro, setFiltro] = useState('todos');
   const [heatmap, setHeatmap] = useState(() => getInitialHeatmapState(isDemoMode));
+  const [pertoDeMim, setPertoDeMim] = useState(null); // { ativo, lat, lng, raio }
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const creatingRef = useRef(false);
@@ -95,8 +96,9 @@ export default function MapPage() {
     if (filtro === 'pendentes') f = f.filter(d => ['pendente','em_andamento','vinculado_sem_resposta','vinculado_com_resposta'].includes(d.status));
     if (filtro === 'atendidos') f = f.filter(d => ['atendido','encerrado','concluido'].includes(d.status));
     if (filtro === 'meus' && user) f = f.filter(d => d.usuario?.id === user.id);
+    if (pertoDeMim?.ativo) f = filterByRadius(f, pertoDeMim.lat, pertoDeMim.lng, pertoDeMim.raio);
     return f;
-  }, [defeitos, filtro, user]);
+  }, [defeitos, filtro, user, pertoDeMim]);
 
   const leafletPolyCoords = useMemo(() => {
     if (!polygonCoords) return [];
@@ -297,6 +299,28 @@ export default function MapPage() {
 
   const mapKey = `${theme}-${hasMunicipio ? `${user?.municipio_id}-${user?.municipio?.min_lat}-${user?.municipio?.min_lng}` : 'default'}`;
 
+  const ativarPertoDeMim = () => {
+    if (!navigator.geolocation) {
+      addToast('Geolocalização não suportada neste navegador.', 'error');
+      return;
+    }
+    addToast('Buscando sua localização...');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setPertoDeMim({ ativo: true, lat: latitude, lng: longitude, raio: 500 });
+        addToast('Filtro "Perto de Mim" ativado.');
+      },
+      () => addToast('Não foi possível obter sua localização.', 'error'),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+  };
+
+  const desativarPertoDeMim = () => {
+    setPertoDeMim(null);
+    addToast('Filtro "Perto de Mim" desativado.');
+  };
+
   return (
     <div className="flex flex-col" style={{ height: '100%', minHeight: 0, position: 'relative' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56, padding: '0 16px', flexShrink: 0, borderBottom: '1px solid var(--color-border-default)', background: 'var(--color-bg-elevated)', zIndex: 1000 }}>
@@ -382,6 +406,13 @@ export default function MapPage() {
               )}
             </>
           )}
+          {pertoDeMim?.ativo && (
+            <Circle
+              center={[pertoDeMim.lat, pertoDeMim.lng]}
+              radius={pertoDeMim.raio}
+              pathOptions={{ color: '#D4A017', weight: 2, fillColor: 'rgb(212,160,23)', fillOpacity: 0.15 }}
+            />
+          )}
           {(heatmap || !isAuthenticated) ? (
             <HeatmapLayer pontos={filteredDefeitos} ativo={true} />
           ) : (
@@ -403,6 +434,46 @@ export default function MapPage() {
         {isAuthenticated && (
           <div className="fixed right-5 z-[1500]" style={{ bottom: '5.5rem' }}>
             <MapControlsDropdown filtro={filtro} setFiltro={setFiltro} heatmap={heatmap} setHeatmap={setHeatmap} direction="up" />
+          </div>
+        )}
+
+        {isAuthenticated && (
+          <div className="fixed right-5 z-[1500] flex flex-col items-end gap-2" style={{ bottom: '8rem' }}>
+            {pertoDeMim?.ativo ? (
+              <>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl border shadow-lg"
+                  style={{ background: 'var(--color-bg-elevated)', borderColor: 'var(--color-gold-500)' }}>
+                  <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                    {filteredDefeitos.length} no raio de {pertoDeMim.raio}m
+                  </span>
+                  <select
+                    value={pertoDeMim.raio}
+                    onChange={e => setPertoDeMim(p => ({ ...p, raio: Number(e.target.value) }))}
+                    className="h-7 px-1 rounded border text-xs outline-none bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
+                    style={{ borderColor: 'var(--color-border-default)' }}
+                    aria-label="Raio de busca">
+                    <option value={200}>200m</option>
+                    <option value={500}>500m</option>
+                    <option value={1000}>1km</option>
+                  </select>
+                  <button onClick={desativarPertoDeMim} className="flex items-center justify-center w-6 h-6 rounded-full transition-colors"
+                    style={{ color: 'var(--color-text-secondary)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg-hover)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    aria-label="Desativar filtro Perto de Mim">
+                    <X size={14} />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button onClick={ativarPertoDeMim}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-semibold transition-colors select-none"
+                style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--color-gold-500)'; e.currentTarget.style.color = 'var(--color-gold-500)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--color-border-default)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>
+                <Crosshair size={14} /> Perto de Mim
+              </button>
+            )}
           </div>
         )}
 
