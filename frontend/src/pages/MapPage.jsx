@@ -13,6 +13,7 @@ import { CommandMenu } from '../components/ui/command-menu';
 import { useTheme } from '../context/ThemeContext';
 import { createPlacementPinIcon, createDefectIcon } from '../utils/map-markers';
 import { getTimelineItems } from '../utils/timeline';
+import { getInitialHeatmapState } from '../utils/map-heatmap';
 import { Timeline } from '../components/ui/timeline';
 import HeatmapLayer from '../components/HeatmapLayer';
 import SyncIndicator from '../components/ui/sync-indicator';
@@ -49,13 +50,13 @@ function MapClickHandler({ creatingRef, polygonCoordsRef, setCoords, setShowForm
 }
 
 export default function MapPage() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isDemoMode } = useAuth();
   const navigate = useNavigate();
   const addToast = useToast();
   const mapRef = useRef(null);
   const [defeitos, setDefeitos] = useState([]);
   const [filtro, setFiltro] = useState('todos');
-  const [heatmap, setHeatmap] = useState(true);
+  const [heatmap, setHeatmap] = useState(() => getInitialHeatmapState(isDemoMode));
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const creatingRef = useRef(false);
