@@ -71,7 +71,7 @@ function AppHeader({ onToggleTheme, onOpenCmd, theme }) {
       background: 'var(--color-bg-elevated)', zIndex: 1000,
     }}>
       <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/mapa')} role="button" aria-label="Ir para o mapa">
-        <div style={{ width: '1.75rem', height: '1.75rem', background: 'var(--color-gold-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div style={{ width: '1.75rem', height: '1.75rem', background: 'transparent', border: '1px solid var(--color-icon)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <img src="/icon.svg" alt="Central de Inteligência Urbana" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
         <div className="max-sm:hidden">

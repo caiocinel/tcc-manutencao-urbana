@@ -76,7 +76,7 @@ export default function Register() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
         className="w-full max-w-md border p-8" style={{ background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex flex-col items-center mb-8">
-          <div style={{ width: '3rem', height: '3rem', background: 'var(--color-gold-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.75rem' }}>
+          <div style={{ width: '3rem', height: '3rem', background: 'transparent', border: '1px solid var(--color-icon)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.75rem' }}>
             <img src="/icon.svg" alt="Central de Inteligência Urbana" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>Criar Conta</h1>

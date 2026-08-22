@@ -15,6 +15,9 @@
   --color-gold-700: #8B6508;
   --color-gold-muted: rgba(212, 175, 55, 0.12);
 
+  /* Logo — cor dominante do ícone */
+  --color-icon: #AF8F57;
+
   /* Secondary — Burgundy */
   --color-burgundy: #4A0E17;
   --color-sangria: #6B121A;
