@@ -2,6 +2,17 @@ import { formDataToOfflinePayload } from './offline-payload';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+function extractError(err) {
+  if (!err) return 'Erro na requisição';
+  if (typeof err === 'string') return err;
+  if (err.detail) return err.detail;
+  if (err.error) return err.error;
+  const field = Object.values(err)[0];
+  if (Array.isArray(field)) return field[0];
+  if (typeof field === 'string') return field;
+  return 'Erro na requisição';
+}
+
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem('token');
   const isDemoMode = localStorage.getItem('ciu-demo-mode') === 'true';
@@ -31,7 +42,7 @@ async function request(endpoint, options = {}) {
     if (res.status === 401) {
       const refreshToken = localStorage.getItem('refresh');
       if (refreshToken && !endpoint.includes('/auth/login/') && !endpoint.includes('/auth/register/')) {
-        const refreshRes = await fetch(`${API_URL}/api/v1/auth/login/refresh/`, {
+        const refreshRes = await fetch(`${API_URL}/api/v1/auth/refresh/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refresh: refreshToken }),
@@ -43,8 +54,8 @@ async function request(endpoint, options = {}) {
           headers.Authorization = `Bearer ${access}`;
           const retryRes = await fetch(`${API_URL}${endpoint}`, { ...fetchOptions, headers });
           if (!retryRes.ok) {
-            const retryErr = await retryRes.json().catch(() => ({ error: 'Erro desconhecido' }));
-            throw new Error(retryErr.error || 'Erro na requisição');
+            const retryErr = await retryRes.json().catch(() => ({}));
+            throw new Error(extractError(retryErr));
           }
           return retryRes.json();
         }
@@ -55,8 +66,8 @@ async function request(endpoint, options = {}) {
         throw new Error('Sessão expirada. Faça login novamente.');
       }
     }
-    const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
-    throw new Error(err.error || 'Erro na requisição');
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractError(err));
   }
 
   return res.json();

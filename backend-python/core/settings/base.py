@@ -1,4 +1,5 @@
 import os
+import base64
 from pathlib import Path
 from datetime import timedelta
 
@@ -144,7 +145,13 @@ PERIMETER_BUFFER_DEG = float(os.environ.get('PERIMETER_BUFFER_DEG', '0.01'))
 DUPLICATE_RADIUS_M = float(os.environ.get('DUPLICATE_RADIUS_M', '50'))
 DUPLICATE_SIMILARITY_THRESHOLD = float(os.environ.get('DUPLICATE_SIMILARITY_THRESHOLD', '0.75'))
 VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
-VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
+_vapid_priv = os.environ.get('VAPID_PRIVATE_KEY', '')
+if _vapid_priv and not _vapid_priv.startswith('-----BEGIN'):
+    try:
+        _vapid_priv = base64.b64decode(_vapid_priv).decode()
+    except Exception:
+        pass
+VAPID_PRIVATE_KEY = _vapid_priv
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 FROM_EMAIL = os.environ.get('FROM_EMAIL', 'Central Urbana <onboarding@resend.dev>')
 

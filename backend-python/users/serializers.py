@@ -25,6 +25,8 @@ class RegisterSerializer(serializers.ModelSerializer):
             return ''
         if len(nums) != 11 or not validar_digitos(nums):
             raise serializers.ValidationError('CPF inválido')
+        if User.objects.filter(cpf_hash=hash_text(nums)).exists():
+            raise serializers.ValidationError('CPF já cadastrado')
         return nums
 
     def validate(self, attrs):

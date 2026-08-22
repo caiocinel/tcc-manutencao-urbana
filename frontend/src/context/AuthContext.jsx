@@ -41,10 +41,10 @@ export function AuthProvider({ children }) {
       const stored = localStorage.getItem('userData');
       const userData = stored ? JSON.parse(stored) : {};
       const userBase = {
-        id: payload.userId,
-        email: payload.email,
-        municipio_id: payload.municipio_id || userData.municipio_id || null,
-        admin: payload.admin || userData.admin || false,
+        id: userData.id || payload.user_id,
+        email: userData.email || payload.email,
+        municipio_id: userData.municipio_id || null,
+        admin: userData.admin || false,
         municipio: userData.municipio || null,
         nome: userData.nome || '',
         cpf: userData.cpf || null,
