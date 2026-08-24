@@ -157,7 +157,7 @@ export const api = {
     request(`/api/v1/defeitos/${id}/status/`, { method: 'PATCH', body: formData }),
 
   listMunicipios: () =>
-    paginated('/api/v1/municipios/'),
+    request('/api/v1/municipios/lista/'),
 
   getMunicipio: (codigo) =>
     request(`/api/v1/municipios/${codigo}/`),
