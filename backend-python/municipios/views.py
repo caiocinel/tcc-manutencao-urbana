@@ -1,4 +1,6 @@
 from django.db import connection
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,6 +12,14 @@ class MunicipioViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Municipio.objects.all().order_by('nome')
     serializer_class = MunicipioSerializer
     permission_classes = (permissions.AllowAny,)
+
+    @action(detail=False, methods=['get'])
+    @method_decorator(cache_page(60 * 60))
+    def lista(self, request):
+        rows = Municipio.objects.order_by('uf_sigla', 'nome').values(
+            'codigo', 'nome', 'uf_sigla'
+        )
+        return Response(list(rows))
 
     @action(detail=False, methods=['get'])
     def com_admin(self, request):
