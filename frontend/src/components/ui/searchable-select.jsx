@@ -69,7 +69,7 @@ export default function SearchableSelect({ options = [], value, onChange, placeh
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen(o => !o)}
-        className="flex items-center w-full h-12 px-4 pt-4 rounded-lg border text-sm outline-none transition-colors bg-[var(--color-bg-input)] text-left"
+        className={`flex items-center w-full h-12 px-4 ${label ? 'pt-4' : ''} rounded-lg border text-sm outline-none transition-colors bg-[var(--color-bg-input)] text-left`}
         style={{ borderColor: open ? 'var(--color-gold-500)' : 'var(--color-border-default)', color: selected ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
         <span className="flex-1 truncate">{selected ? `${selected.label} - ${selected.group}` : placeholder}</span>
         <CaretUpDown size={14} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
