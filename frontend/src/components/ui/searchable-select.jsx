@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Check, CaretUpDown, MagnifyingGlass } from '@phosphor-icons/react';
 
 const ROW_ITEM = 36;
 const ROW_GROUP = 26;
-const VIEWPORT = 240;
 const OVERSCAN = 6;
 
 function normalize(str) {
@@ -13,7 +13,6 @@ function normalize(str) {
 export default function SearchableSelect({ options = [], value, onChange, placeholder = 'Selecione...', label }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [scrollTop, setScrollTop] = useState(0);
   const ref = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
@@ -56,35 +55,16 @@ export default function SearchableSelect({ options = [], value, onChange, placeh
     return out;
   }, [grouped]);
 
-  const offsets = useMemo(() => {
-    const acc = new Array(rows.length + 1);
-    acc[0] = 0;
-    for (let i = 0; i < rows.length; i++) {
-      acc[i + 1] = acc[i] + (rows[i].type === 'group' ? ROW_GROUP : ROW_ITEM);
-    }
-    return acc;
-  }, [rows]);
-
-  const totalHeight = offsets[rows.length];
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => listRef.current,
+    estimateSize: i => (rows[i].type === 'group' ? ROW_GROUP : ROW_ITEM),
+    overscan: OVERSCAN,
+  });
 
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = 0;
-    setScrollTop(0);
   }, [search, open]);
-
-  const rowAt = (y) => {
-    let lo = 0;
-    let hi = rows.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (offsets[mid + 1] <= y) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  };
-
-  const start = Math.max(0, rowAt(scrollTop) - OVERSCAN);
-  const end = Math.min(rows.length, rowAt(scrollTop + VIEWPORT) + 1 + OVERSCAN);
 
   return (
     <div className="relative" ref={ref}>
@@ -112,14 +92,14 @@ export default function SearchableSelect({ options = [], value, onChange, placeh
               style={{ color: 'var(--color-text-primary)' }}
               onKeyDown={e => e.stopPropagation()} />
           </div>
-          <div ref={listRef} className="max-h-60 overflow-y-auto"
-            onScroll={e => setScrollTop(e.currentTarget.scrollTop)}>
+          <div ref={listRef} className="max-h-60 overflow-y-auto">
             {rows.length === 0 ? (
               <p className="text-xs text-center py-6" style={{ color: 'var(--color-text-muted)' }}>Nenhum município encontrado</p>
             ) : (
-              <div style={{ height: totalHeight, position: 'relative' }}>
-                {rows.slice(start, end).map((row, i) => {
-                  const top = offsets[start + i];
+              <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+                {virtualizer.getVirtualItems().map(virtualRow => {
+                  const row = rows[virtualRow.index];
+                  const top = virtualRow.start;
                   if (row.type === 'group') {
                     return (
                       <div key={row.key} className="absolute left-0 right-0 flex items-center px-3 text-[10px] font-bold uppercase tracking-wider"
