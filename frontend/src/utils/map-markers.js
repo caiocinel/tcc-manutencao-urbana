@@ -11,6 +11,24 @@ export function createPlacementPinIcon() {
   });
 }
 
+// Bandeira de demarcacao: mastro plantado na coordenada + etiqueta de acao.
+// Tudo em um unico divIcon — o mastro nasce no ponto ancora, entao nao existe desalinhamento possivel.
+const FLAG_W = 150;
+const FLAG_H = 70;
+
+export function createOpenCallIcon(label = 'Abrir chamado') {
+  return L.divIcon({
+    html: `<div class="map-flag">
+      <span class="map-flag__tip"></span>
+      <span class="map-flag__mast"></span>
+      <span class="map-flag__tag" role="button" tabindex="-1">${label}</span>
+    </div>`,
+    className: 'map-flag-icon',
+    iconSize: [FLAG_W, FLAG_H],
+    iconAnchor: [0, FLAG_H],
+  });
+}
+
 export function createDefectIcon(status, concluido_em) {
   const color = getStatusColor(status, concluido_em);
   return L.divIcon({
