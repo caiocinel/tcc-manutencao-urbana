@@ -1,0 +1,124 @@
+/** Tipos do domínio, espelhando os serializers do backend Django. */
+
+export type Municipio = {
+  id?: string;
+  codigo: string;
+  nome: string;
+  uf_sigla: string;
+  poligono_json?: string | GeoJsonPolygon | null;
+  min_lat?: number;
+  max_lat?: number;
+  min_lng?: number;
+  max_lng?: number;
+};
+
+export type GeoJsonPolygon = {
+  type: 'Polygon' | 'MultiPolygon';
+  /** [lng, lat][] em Polygon; [lng, lat][][] em MultiPolygon. */
+  coordinates: any;
+};
+
+export type User = {
+  id: number | string;
+  nome: string;
+  email: string;
+  cpf?: string | null;
+  admin?: boolean;
+  super_admin?: boolean;
+  municipio_id?: string | null;
+  municipio?: Municipio | null;
+  email_verificado?: boolean;
+  email_verified?: boolean;
+};
+
+export type Categoria = {
+  nome: string;
+  icone?: string;
+};
+
+export type Defeito = {
+  id: number;
+  titulo: string;
+  descricao: string;
+  categoria?: string;
+  status: string;
+  latitude: number;
+  longitude: number;
+  rua?: string;
+  bairro?: string;
+  criado_em: string;
+  atualizado_em?: string;
+  atendido_em?: string | null;
+  atendente_id?: number | string | null;
+  total_apoios?: number;
+  apoios_total?: number;
+  imagem_thumbnail?: string | null;
+  imagens_extra?: string | null;
+  usuario?: { id: number | string; nome?: string } | null;
+};
+
+export type AuthResponse = {
+  access: string;
+  refresh?: string;
+  user?: User;
+};
+
+export type Estatisticas = {
+  total: number;
+  pendentes: number;
+  resolvidos: number;
+  taxa_resolucao: number;
+  sla_medio_minutos: number;
+  sla_vencidos_total?: number;
+  por_status?: { status: string; total: number }[];
+  por_categoria?: {
+    categoria: string;
+    total: number;
+    variacao?: number | null;
+    mes_atual?: number;
+    mes_anterior?: number;
+  }[];
+  tendencia_mensal?: { mes: string; ano?: number; total: number }[];
+  sla_por_categoria?: { categoria: string; sla_medio_minutos: number }[];
+  top_bairros?: { bairro: string; total: number; taxa_resolucao: number }[];
+  recomendacoes?: {
+    tipo: string;
+    impacto: string;
+    sugestao: string;
+    local?: string;
+    bairro?: string;
+    ocorrencias: number;
+  }[];
+  medias_moveis?: {
+    semana_atual?: number;
+    media_4_semanas?: number;
+    variacao_percentual?: number;
+  };
+  anomalias?: {
+    bairro: string;
+    total_mes: number;
+    media_historica: number;
+    z_score: number;
+    intensidade: string;
+  }[];
+  sazonalidade?: {
+    mes_atual?: number;
+    mes_anterior?: number;
+    variacao_percentual?: number | null;
+  };
+  sla_vencidos?: {
+    id: number;
+    titulo: string;
+    categoria: string;
+    criado_em: string;
+    prazo_sla_dias: number;
+    status: string;
+  }[];
+};
+
+/** Arquivo local selecionado pelo image picker, pronto para virar FormData. */
+export type PickedImage = {
+  uri: string;
+  name: string;
+  type: string;
+};

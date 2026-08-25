@@ -28,6 +28,7 @@
 - [Status do Projeto](#status-do-projeto)
 - [Funcionalidades e Demonstração da Aplicação](#funcionalidades-e-demonstração-da-aplicação)
 - [Acesso ao Projeto](#acesso-ao-projeto)
+- [App Mobile (Expo)](#app-mobile-expo)
 - [Tecnologias utilizadas](#tecnologias-utilizadas)
 - [Arquitetura](#arquitetura)
 - [API Endpoints](#api-endpoints)
@@ -151,8 +152,25 @@ docker compose run --rm certbot certonly --webroot \
 curl https://tcc.josemurilors.com.br/api/health
 ```
 
+### App Mobile (Expo)
+
+O app iOS/Android/web vive em [`mobile/`](mobile/) e consome a mesma API.
+
+```bash
+cd mobile
+npm install
+npm start        # leia o QR code com o Expo Go
+npm run web      # ou abra no navegador: http://localhost:8081
+```
+
+Em desenvolvimento a URL da API é derivada do host do Metro (backend local na
+porta 8000) — não precisa configurar nada. Detalhes de configuração,
+equivalência tela a tela com o frontend web e limitações conhecidas estão em
+[`mobile/README.md`](mobile/README.md).
+
 ## Tecnologias utilizadas
 
+- **Mobile:** Expo SDK 57 + React Native 0.86 + Expo Router + react-native-maps (Leaflet no web) + react-native-svg
 - **Frontend:** React 19 + Vite 8 + Phosphor Icons + Framer Motion + Leaflet + react-leaflet + leaflet.heat + CartoDB
 - **Backend:** Django 5.2 + Django REST Framework (Gunicorn)
 - **Database:** PostgreSQL 16 + PostGIS 3.4 (consultas espaciais)
@@ -442,6 +460,7 @@ Este projeto está licenciado sob a licença **MIT**. O texto completo está dis
 - [Project Status](#project-status)
 - [Features and Application Demo](#features-and-application-demo)
 - [Project Access](#project-access)
+- [Mobile App (Expo)](#mobile-app-expo)
 - [Technologies Used](#technologies-used)
 - [Architecture](#architecture)
 - [API Endpoints](#api-endpoints)
@@ -564,8 +583,25 @@ docker compose run --rm certbot certonly --webroot \
 curl https://tcc.josemurilors.com.br/api/health
 ```
 
+### Mobile App (Expo)
+
+The iOS/Android/web app lives in [`mobile/`](mobile/) and consumes the same API.
+
+```bash
+cd mobile
+npm install
+npm start        # scan the QR code with Expo Go
+npm run web      # or open it in the browser: http://localhost:8081
+```
+
+In development the API base URL is derived from the Metro host (local backend
+on port 8000) — no configuration needed. Configuration, a screen-by-screen
+mapping against the web frontend, and known limitations are documented in
+[`mobile/README.md`](mobile/README.md).
+
 ## Technologies Used
 
+- **Mobile:** Expo SDK 57 + React Native 0.86 + Expo Router + react-native-maps + react-native-svg
 - **Frontend:** React 19 + Vite 8 + Phosphor Icons + Framer Motion + Leaflet (react-leaflet, leaflet.heat, CartoDB)
 - **Backend:** Django 5.2 + Django REST Framework (DRF) served by Gunicorn
 - **Database:** PostgreSQL 16 + PostGIS 3.4 (spatial queries)
