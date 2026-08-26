@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 
+import { GoogleButton } from '@/components/google-button';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { FontSize, FontWeight, Spacing } from '@/constants/theme';
@@ -113,6 +114,8 @@ export default function LoginScreen() {
           <Button block onPress={handleSubmit} loading={loading}>
             Entrar
           </Button>
+
+          <GoogleButton />
 
           <Button block variant="secondary" onPress={handleDemo} loading={demoLoading}>
             Entrar no modo demonstração

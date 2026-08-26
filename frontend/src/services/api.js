@@ -120,6 +120,12 @@ export const api = {
   login: (email, senha) =>
     request('/api/v1/auth/login/', { method: 'POST', body: { email, password: senha } }),
 
+  /** Client IDs do Google por plataforma (vazios = login com Google desligado). */
+  googleConfig: () => request('/api/v1/auth/google/'),
+
+  loginGoogle: (idToken) =>
+    request('/api/v1/auth/google/', { method: 'POST', body: { id_token: idToken } }),
+
   loginDemo: () =>
     fetch(`${API_URL}/api/v1/auth/login/`, {
       method: 'POST',

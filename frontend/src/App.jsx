@@ -18,6 +18,7 @@ import './styles/globals.css';
 const Landing = lazy(() => import('./pages/Landing'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
+const EscolherNome = lazy(() => import('./pages/EscolherNome'));
 const MapPage = lazy(() => import('./pages/MapPage'));
 const DefectList = lazy(() => import('./pages/DefectList'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -153,6 +154,7 @@ function AppLayout() {
             <Route path="/mapa" element={<div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}><MapPage /></div>} />
             <Route path="/login" element={<AnimatedRoute><Login /></AnimatedRoute>} />
             <Route path="/registro" element={<AnimatedRoute><Register /></AnimatedRoute>} />
+            <Route path="/escolher-nome" element={<ProtectedRoute><AnimatedRoute><EscolherNome /></AnimatedRoute></ProtectedRoute>} />
             <Route path="/lista" element={<ProtectedRoute><AnimatedRoute><DefectList /></AnimatedRoute></ProtectedRoute>} />
             <Route path="/config" element={<ProtectedRoute><AnimatedRoute><Settings /></AnimatedRoute></ProtectedRoute>} />
             <Route path="/conta" element={<ProtectedRoute><AnimatedRoute><ProfileSettings /></AnimatedRoute></ProtectedRoute>} />

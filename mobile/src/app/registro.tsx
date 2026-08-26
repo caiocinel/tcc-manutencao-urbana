@@ -1,8 +1,13 @@
-/** Cadastro — porte de `frontend/src/pages/Register.jsx`. */
+/**
+ * Cadastro — porte de `frontend/src/pages/Register.jsx`.
+ *
+ * Só nome, e-mail e senha: CPF e município são opcionais no backend e podem
+ * ser preenchidos depois na aba Conta.
+ */
 
 import { Image } from 'expo-image';
 import { Link, router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -13,16 +18,14 @@ import {
   View,
 } from 'react-native';
 
+import { GoogleButton } from '@/components/google-button';
 import { Button } from '@/components/ui/button';
-import { SearchableSelect } from '@/components/ui/searchable-select';
 import { TextField } from '@/components/ui/text-field';
 import { FontSize, FontWeight, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useColors } from '@/context/theme-context';
 import { useToast } from '@/context/toast-context';
 import { api } from '@/services/api';
-import type { Municipio } from '@/types';
-import { formatarCpf, validarCpf } from '@/utils/format';
 
 const LOGO = require('@/assets/images/icon.png');
 
@@ -33,29 +36,16 @@ export default function RegistroScreen() {
 
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
-  const [cpf, setCpf] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
-  const [municipioId, setMunicipioId] = useState('');
-  const [municipios, setMunicipios] = useState<Municipio[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  // Só municípios que já têm admin podem receber chamados.
-  useEffect(() => {
-    api.getMunicipiosComAdmin().then(setMunicipios).catch(() => {});
-  }, []);
-
-  const opcoes = useMemo(
-    () => municipios.map((m) => ({ value: m.codigo, label: m.nome, group: m.uf_sigla })),
-    [municipios],
-  );
 
   const senhasDiferem = !!confirmarSenha && senha !== confirmarSenha;
 
   async function handleSubmit() {
     setError('');
-    if (!nome || !email || !senha || !confirmarSenha || !cpf) {
+    if (!nome || !email || !senha || !confirmarSenha) {
       setError('Preencha todos os campos.');
       return;
     }
@@ -67,20 +57,10 @@ export default function RegistroScreen() {
       setError('Senhas não conferem.');
       return;
     }
-    if (!validarCpf(cpf)) {
-      setError('CPF inválido.');
-      return;
-    }
 
     setLoading(true);
     try {
-      const res = await api.register(
-        nome.trim(),
-        email.trim(),
-        senha,
-        municipioId || undefined,
-        cpf.replace(/\D/g, ''),
-      );
+      const res = await api.register(nome.trim(), email.trim(), senha);
       await login(res);
       addToast('Conta criada com sucesso!');
       router.replace('/(tabs)/mapa');
@@ -127,23 +107,6 @@ export default function RegistroScreen() {
           />
 
           <TextField
-            label="CPF *"
-            value={cpf}
-            onChangeText={(v) => setCpf(formatarCpf(v))}
-            placeholder="000.000.000-00"
-            keyboardType="number-pad"
-            maxLength={14}
-          />
-
-          <SearchableSelect
-            label="Município"
-            options={opcoes}
-            value={municipioId}
-            onChange={setMunicipioId}
-            placeholder="Selecione um município"
-          />
-
-          <TextField
             label="Senha"
             value={senha}
             onChangeText={setSenha}
@@ -167,6 +130,8 @@ export default function RegistroScreen() {
           <Button block onPress={handleSubmit} loading={loading}>
             Cadastrar
           </Button>
+
+          <GoogleButton />
 
           <Link href="/login" asChild>
             <Pressable accessibilityRole="link" style={styles.rodape}>

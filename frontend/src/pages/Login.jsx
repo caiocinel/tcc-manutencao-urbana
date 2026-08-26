@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/toast-context';
 import { api } from '../services/api';
+import GoogleButton from '../components/GoogleButton';
 
 export default function Login() {
   const { login, isAuthenticated, loading: authLoading } = useAuth();
@@ -73,6 +74,7 @@ export default function Login() {
             style={{ background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)' }}>
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
+          <GoogleButton />
           <div className="flex items-center justify-between text-sm mt-4">
             <Link to="/registro" className="transition-colors hover:underline" style={{ color: 'var(--color-text-secondary)' }}>
               Não tem conta? Cadastre-se

@@ -148,6 +148,13 @@ async function request<T = any>(endpoint: string, options: RequestOptions = {}):
       }
     }
     const err = await res.json().catch(() => ({}));
+    if (res.status === 409 && err?.duplicado) {
+      throw new DefeitoDuplicadoError(
+        extractError(err),
+        String(err.defeito_existente_id ?? ''),
+        Number(err.distancia_m ?? 0),
+      );
+    }
     throw new Error(extractError(err));
   }
 
@@ -168,6 +175,9 @@ export function appendImage(fd: FormData, field: string, image: PickedImage) {
     type: image.type,
   } as any);
 }
+
+/** Client IDs do Google por plataforma; vazios = login com Google desligado. */
+export type GoogleConfig = { web: string; android: string; ios: string };
 
 export type NovoDefeito = {
   titulo: string;
@@ -191,6 +201,18 @@ export function buildDefeitoFormData(dados: NovoDefeito) {
   fd.append('longitude', String(dados.longitude));
   if (dados.imagem) appendImage(fd, 'imagem', dados.imagem);
   return fd;
+}
+
+/** 409 do backend: já existe um chamado igual (mesma categoria) a poucos metros. */
+export class DefeitoDuplicadoError extends Error {
+  constructor(
+    message: string,
+    public readonly defeitoExistenteId: string,
+    public readonly distanciaM: number,
+  ) {
+    super(message);
+    this.name = 'DefeitoDuplicadoError';
+  }
 }
 
 function isNetworkError(err: unknown) {
@@ -237,6 +259,14 @@ export const api = {
     request<AuthResponse>('/api/v1/auth/login/', {
       method: 'POST',
       body: { email, password: senha },
+    }),
+
+  googleConfig: () => request<GoogleConfig>('/api/v1/auth/google/'),
+
+  loginGoogle: (idToken: string) =>
+    request<AuthResponse>('/api/v1/auth/google/', {
+      method: 'POST',
+      body: { id_token: idToken },
     }),
 
   loginDemo: async (): Promise<AuthResponse> => {
