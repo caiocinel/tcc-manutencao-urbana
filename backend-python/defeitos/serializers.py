@@ -3,6 +3,7 @@ import math
 from datetime import timedelta
 from rest_framework import serializers
 from django.conf import settings
+from django.db import connection
 from .models import Defeito, Apoio
 
 RESOLVIDOS = {'atendido', 'encerrado', 'concluido'}
@@ -39,7 +40,7 @@ class DefeitoListSerializer(serializers.ModelSerializer):
         model = Defeito
         fields = (
             'id', 'titulo', 'status', 'categoria_nome',
-            'autor_nome', 'latitude', 'longitude',
+            'autor_nome', 'latitude', 'longitude', 'municipio_id',
             'rua', 'bairro', 'prioridade',
             'total_apoios', 'criado_em', 'imagem_url',
             'sla_vencido',
@@ -59,6 +60,7 @@ class DefeitoDetailSerializer(serializers.ModelSerializer):
     imagem_thumbnail = ThumbnailField()
     foto_resolucao_url = ThumbnailField(source='foto_resolucao', read_only=True)
     sla_vencido = serializers.SerializerMethodField()
+    municipio = serializers.SerializerMethodField()
 
     class Meta:
         model = Defeito
@@ -67,8 +69,53 @@ class DefeitoDetailSerializer(serializers.ModelSerializer):
     def get_total_apoios(self, obj):
         return getattr(obj, 'total_apoios', 0)
 
+    def get_municipio(self, obj):
+        """{codigo, nome, uf_sigla} do município do chamado, ou None."""
+        if not obj.municipio_id:
+            return None
+        with connection.cursor() as cur:
+            cur.execute('SELECT codigo, nome, uf_sigla FROM municipios WHERE codigo = %s', [obj.municipio_id])
+            row = cur.fetchone()
+        return {'codigo': str(row[0]), 'nome': row[1], 'uf_sigla': row[2]} if row else None
+
     def get_sla_vencido(self, obj):
         return _is_sla_vencido(obj)
+
+
+def municipio_do_ponto(lat, lng):
+    """
+    Município (código IBGE, nome, UF) que contém o ponto, ou None.
+
+    Usa o polígono PostGIS de `municipios`; se o ponto não cair em nenhum
+    (fronteira, mar, dado ausente), tenta a bounding box mais próxima do centro.
+    """
+    if lat is None or lng is None:
+        return None
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            SELECT codigo, nome, uf_sigla FROM municipios
+            WHERE polygon_geom IS NOT NULL
+              AND ST_Contains(polygon_geom::geometry, ST_SetSRID(ST_MakePoint(%s, %s), 4326))
+            LIMIT 1
+            """,
+            [lng, lat],
+        )
+        row = cur.fetchone()
+        if not row:
+            cur.execute(
+                """
+                SELECT codigo, nome, uf_sigla FROM municipios
+                WHERE %s BETWEEN min_lat AND max_lat AND %s BETWEEN min_lng AND max_lng
+                ORDER BY ABS((min_lat + max_lat) / 2 - %s) + ABS((min_lng + max_lng) / 2 - %s)
+                LIMIT 1
+                """,
+                [lat, lng, lat, lng],
+            )
+            row = cur.fetchone()
+    if not row:
+        return None
+    return {'codigo': str(row[0]), 'nome': row[1], 'uf_sigla': row[2]}
 
 
 def _distancia_m(lat1, lng1, lat2, lng2):
@@ -131,6 +178,10 @@ class DefeitoCreateSerializer(serializers.ModelSerializer):
                     },
                     code='duplicate_defect',
                 )
+
+        # Em qual cidade o ponto caiu — gravado no chamado, não no usuário.
+        municipio = municipio_do_ponto(lat, lng) if lat and lng else None
+        validated_data['municipio_id'] = municipio['codigo'] if municipio else None
 
         # 2) Similaridade de texto (IA) num raio maior, só quando há descrição.
         if lat and lng and descricao:
@@ -201,4 +252,4 @@ class ApoioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Apoio
         fields = '__all__'
-        read_only_fields = ('criado_em',)
+        read_only_fields = ('criado_em', 'municipio_id')

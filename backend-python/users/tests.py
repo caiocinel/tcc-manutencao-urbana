@@ -532,3 +532,23 @@ class TestGoogleLogin:
     def test_requires_token(self, client):
         resp = client.post(reverse(self.URL), {}, format='json')
         assert resp.status_code == 400
+
+
+class TestRefreshExigeUsuario:
+    def test_refresh_de_conta_apagada_da_401(self, client):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        uid = uuid.uuid4().hex[:8]
+        user = User.objects.create_user(email=f'sumiu-{uid}@example.com', nome='Sumiu', password='Test@123456')
+        refresh = str(RefreshToken.for_user(user))
+        user.delete()
+        resp = client.post(reverse('auth-refresh'), {'refresh': refresh}, format='json')
+        assert resp.status_code == 401
+
+    def test_refresh_normal_continua_funcionando(self, client):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        uid = uuid.uuid4().hex[:8]
+        user = User.objects.create_user(email=f'vivo-{uid}@example.com', nome='Vivo', password='Test@123456')
+        refresh = str(RefreshToken.for_user(user))
+        resp = client.post(reverse('auth-refresh'), {'refresh': refresh}, format='json')
+        assert resp.status_code == 200
+        assert 'access' in resp.data

@@ -18,18 +18,6 @@ DATABASES = {
             'options': '-c timezone=UTC',
         },
     },
-    'demo': {
-        'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': os.environ.get('DB_DEMO_NAME', 'manutencao_urbana_demo'),
-        'USER': os.environ.get('DB_USER', 'urbana'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': os.environ.get('DB_HOST', 'postgres'),
-        'PORT': os.environ.get('DB_PORT', '5432'),
-        'CONN_MAX_AGE': 60,
-        'OPTIONS': {
-            'options': '-c timezone=UTC',
-        },
-    },
 }
 
 CORS_ALLOWED_ORIGINS = os.environ.get('FRONTEND_URL', '').split(',')

@@ -145,6 +145,21 @@ class LoginView(TokenObtainPairView):
 class RefreshView(TokenRefreshView):
     permission_classes = (permissions.AllowAny,)
 
+    def post(self, request, *args, **kwargs):
+        # O simplejwt renova pelo assinado do token sem olhar o banco; se a
+        # conta sumiu (apagada, ou token de um banco antigo) o cliente ficaria
+        # num loop de 401 com refresh "válido". Aqui a renovação exige o usuário.
+        from rest_framework_simplejwt.exceptions import TokenError
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        try:
+            user_id = RefreshToken(request.data.get('refresh', ''))[settings.SIMPLE_JWT.get('USER_ID_CLAIM', 'user_id')]
+        except (TokenError, KeyError):
+            return Response({'detail': 'Sessão expirada'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not User.objects.filter(pk=user_id).exists():
+            return Response({'detail': 'Usuário não encontrado'}, status=status.HTTP_401_UNAUTHORIZED)
+        return super().post(request, *args, **kwargs)
+
 
 class ProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = UserSerializer

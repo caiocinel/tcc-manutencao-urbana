@@ -1,7 +1,9 @@
 import itertools
 from datetime import timedelta
 
+import base64
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
 
@@ -12,6 +14,18 @@ pytestmark = pytest.mark.django_db(transaction=True)
 # Coordenadas únicas por chamada para evitar que a detecção de duplicados
 # (raio espacial + similaridade) rejeite defeitos criados em testes distintos
 # que usariam as mesmas coordenadas de São Paulo.
+
+# PNG 1x1 válido: todo chamado exige uma foto (o backend recusa sem `imagem`).
+_PNG_1X1 = base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+)
+
+
+def com_foto(data):
+    """Copia `data` acrescentando um arquivo `imagem` (multipart)."""
+    return {**data, 'imagem': SimpleUploadedFile('foto.png', _PNG_1X1, content_type='image/png')}
+
+
 _COORD_COUNTER = itertools.count()
 
 
@@ -27,7 +41,7 @@ def _create_defeito(auth_client, **overrides):
         'categoria': 'Buraco',
     }
     data.update(overrides)
-    resp = auth_client.post(reverse('defeitos-list'), data, format='json')
+    resp = auth_client.post(reverse('defeitos-list'), com_foto(data), format='multipart')
     assert resp.status_code == 201
     return resp.data
 
@@ -103,7 +117,7 @@ class TestDefeitosCreate:
             'bairro': 'Centro',
             'categoria': 'Iluminacao',
         }
-        resp = auth_client.post(reverse('defeitos-list'), data, format='json')
+        resp = auth_client.post(reverse('defeitos-list'), com_foto(data), format='multipart')
         assert resp.status_code == 201
         assert resp.data['titulo'] == 'New Bug'
         assert 'id' in resp.data
@@ -113,31 +127,31 @@ class TestDefeitosCreate:
         assert resp.status_code == 401
 
     def test_create_minimal_fields(self, auth_client):
-        resp = auth_client.post(reverse('defeitos-list'), {
+        resp = auth_client.post(reverse('defeitos-list'), com_foto({
             'titulo': 'Minimal bug',
-        }, format='json')
+        }), format='multipart')
         assert resp.status_code == 201
 
     def test_create_with_coordinates(self, auth_client):
         lat, lng = -22.9068, -43.1729
-        resp = auth_client.post(reverse('defeitos-list'), {
+        resp = auth_client.post(reverse('defeitos-list'), com_foto({
             'titulo': 'Bug with coords',
             'latitude': lat,
             'longitude': lng,
-        }, format='json')
+        }), format='multipart')
         assert resp.status_code == 201
         assert abs(float(resp.data['latitude']) - lat) < 0.01
         assert abs(float(resp.data['longitude']) - lng) < 0.01
 
     def test_create_defeito_persists_routing(self, auth_client):
-        resp = auth_client.post(reverse('defeitos-list'), {
+        resp = auth_client.post(reverse('defeitos-list'), com_foto({
             'titulo': 'Buraco na rua',
             'descricao': 'Buraco grande na via',
             'latitude': -21.17,
             'longitude': -47.82,
             'categoria': 'Buraco',
             'status': 'pendente',
-        }, format='json')
+        }), format='multipart')
         assert resp.status_code == 201
         defeito_id = resp.data['id']
         defeito = Defeito.objects.get(id=defeito_id)
@@ -636,7 +650,7 @@ class TestDuplicadoPorCategoria:
     def _post(self, auth_client, **over):
         i = next(_COORD_COUNTER)
         data = {'titulo': f'Buraco {i}', 'rua': 'Rua X', 'bairro': 'Centro', **self.BASE, **over}
-        return auth_client.post(reverse('defeitos-list'), data, format='json')
+        return auth_client.post(reverse('defeitos-list'), com_foto(data), format='multipart')
 
     def test_mesma_categoria_a_5m_e_rejeitada(self, auth_client):
         primeiro = self._post(auth_client, longitude=-43.2000)
@@ -667,3 +681,45 @@ class TestDuplicadoPorCategoria:
     def test_categoria_ignora_caixa(self, auth_client):
         assert self._post(auth_client, latitude=-22.94).status_code == 201
         assert self._post(auth_client, latitude=-22.94, categoria='buraco').status_code == 409
+
+
+class TestMunicipioDoChamado:
+    """O backend grava em qual município o ponto caiu (tabela `municipios`)."""
+
+    def _post(self, auth_client, lat, lng):
+        i = next(_COORD_COUNTER)
+        return auth_client.post(reverse('defeitos-list'), com_foto({
+            'titulo': f'Poste {i}', 'rua': 'Rua X', 'bairro': 'Centro', 'categoria': 'Iluminação',
+            'descricao': '', 'latitude': lat, 'longitude': lng,
+        }), format='multipart')
+
+    def test_resolve_pelo_poligono(self, auth_client):
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("""
+                INSERT INTO municipios (codigo, nome, uf, uf_sigla, min_lat, max_lat, min_lng, max_lng, polygon_geom)
+                VALUES ('9999901', 'Cidade Teste', '35', 'SP', -23.1, -22.9, -49.4, -49.2,
+                        ST_Multi(ST_GeomFromText('POLYGON((-49.4 -23.1, -49.2 -23.1, -49.2 -22.9, -49.4 -22.9, -49.4 -23.1))', 4326)))
+                ON CONFLICT (codigo) DO NOTHING
+            """)
+        resp = self._post(auth_client, -23.0, -49.3)
+        assert resp.status_code == 201, resp.data
+        assert resp.data['municipio_id'] == '9999901'
+        detalhe = auth_client.get(reverse('defeitos-detail', args=[resp.data['id']]))
+        assert detalhe.data['municipio'] == {'codigo': '9999901', 'nome': 'Cidade Teste', 'uf_sigla': 'SP'}
+
+    def test_fora_de_qualquer_municipio_fica_nulo(self, auth_client):
+        resp = self._post(auth_client, 0.0, -30.0)  # Atlântico
+        assert resp.status_code == 201, resp.data
+        assert resp.data['municipio_id'] is None
+
+
+class TestFotoObrigatoria:
+    def test_sem_imagem_da_400(self, auth_client):
+        resp = auth_client.post(reverse('defeitos-list'), {
+            'titulo': 'Buraco sem foto', 'rua': 'Rua X', 'bairro': 'Centro', 'categoria': 'Buraco',
+            'descricao': '', 'latitude': -22.95, 'longitude': -43.25,
+        }, format='json')
+        assert resp.status_code == 400
+        assert 'imagem' in resp.data
+

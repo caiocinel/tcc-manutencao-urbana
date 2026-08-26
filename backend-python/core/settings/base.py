@@ -36,7 +36,6 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'core.middleware.DemoModeMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -46,8 +45,6 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-
-DATABASE_ROUTERS = ['core.db_router.DemoRouter']
 
 ROOT_URLCONF = 'core.urls'
 
@@ -115,10 +112,6 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
     'FRONTEND_URL', 'http://localhost:5173'
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
-# O modo demonstração (web e app Expo) marca a requisição com X-Demo-Mode;
-# sem liberar o header aqui o preflight falha e o browser acusa "Failed to fetch".
-from corsheaders.defaults import default_headers  # noqa: E402
-CORS_ALLOW_HEADERS = (*default_headers, 'x-demo-mode')
 
 # Login com Google (OAuth / OpenID Connect). Um client ID por plataforma; o
 # backend aceita ID tokens emitidos para qualquer um deles e entrega os IDs aos

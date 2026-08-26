@@ -26,10 +26,13 @@ class DefeitoViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = self.queryset
         user = self.request.user
-        if user.is_authenticated and user.admin:
+        # Admin vinculado a um município enxerga só os chamados que caíram nele
+        # (pelo `municipio_id` do chamado, resolvido por lat/lng). Admin sem
+        # município — ou o super admin — vê tudo.
+        if user.is_authenticated and user.admin and user.municipio_id:
             super_admin_email = getattr(settings, 'SUPER_ADMIN_EMAIL', None)
-            if super_admin_email and user.email != super_admin_email:
-                qs = qs.filter(usuario__municipio_id=user.municipio_id)
+            if not super_admin_email or user.email != super_admin_email:
+                qs = qs.filter(municipio_id=user.municipio_id)
         return qs
 
     def get_serializer_class(self):
@@ -49,6 +52,13 @@ class DefeitoViewSet(viewsets.ModelViewSet):
         return (permissions.AllowAny(),)
 
     def create(self, request, *args, **kwargs):
+        # Chamado só com foto do local, tirada na hora (o app abre a câmera;
+        # galeria não entra). Sem imagem não há como a prefeitura triar.
+        if 'imagem' not in request.FILES:
+            return Response(
+                {'imagem': 'Tire uma foto do problema para abrir o chamado.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             return super().create(request, *args, **kwargs)
         except ValidationError as e:

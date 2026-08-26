@@ -73,12 +73,19 @@ SCHEMA = [
         imagens_extra TEXT NOT NULL DEFAULT '[]',
         atualizacoes TEXT NOT NULL DEFAULT '[]',
         atendente_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        municipio_id TEXT,
         criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_defeitos_usuario ON defeitos(usuario)
+    """,
+    """
+    ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS municipio_id TEXT
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_defeitos_municipio ON defeitos(municipio_id)
     """,
     """
     ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS secretaria_responsavel TEXT NOT NULL DEFAULT ''
