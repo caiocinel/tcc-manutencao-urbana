@@ -9,28 +9,24 @@
 
 import 'leaflet/dist/leaflet.css';
 
+import './map-surface.web.css';
+
 import L, { type Map as LeafletMap } from 'leaflet';
-import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
-import { Circle, MapContainer, Marker, Polygon, TileLayer, useMapEvents } from 'react-leaflet';
+import { forwardRef, useImperativeHandle, useRef } from 'react';
+import { Circle, MapContainer, Marker, TileLayer, useMapEvents } from 'react-leaflet';
 
 import type { LatLng } from '@/utils/geo';
 
 import type { MapSurfaceHandle, MapSurfaceProps, Regiao } from './map-surface.types';
 
-const TILES_ESCURO = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-const TILES_CLARO = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+// OpenStreetMap não exige chave (o Carto passou a exigir e estampa
+// "API KEY REQUIRED" nos tiles). No tema escuro, `.tiles-escuro` inverte as
+// cores via CSS — ver global.css.
+const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const ATRIBUICAO = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
 /** Zoom de rua ao seguir o usuário (18 ≈ quarteirão inteiro na tela). */
 const ZOOM_NAVEGACAO = 18;
-const OURO = '#D4AF37';
-
-/** Anel que cobre o mundo; com o município como buraco, escurece o entorno. */
-const ANEL_MUNDO: [number, number][] = [
-  [85, -180],
-  [85, 180],
-  [-85, 180],
-  [-85, -180],
-];
 
 /** O react-native-maps pensa em deltas de grau; o Leaflet, em níveis de zoom. */
 function zoomDaRegiao(regiao: Regiao) {
@@ -39,18 +35,33 @@ function zoomDaRegiao(regiao: Regiao) {
   return Math.min(Math.max(zoom, 3), 18);
 }
 
-function paraLeaflet(pontos: LatLng[]): [number, number][] {
-  return pontos.map((p) => [p.latitude, p.longitude]);
-}
-
-function iconePino(cor: string, icone: string | undefined, emAlcance: boolean, selecionado: boolean) {
-  const tamanho = selecionado ? 40 : 30;
-  const borda = emAlcance ? `3px solid ${OURO}` : '2px solid #fff';
+/**
+ * "Beacon": ponto exato no chão (com halo pulsante), haste subindo e o balão
+ * com o ícone da categoria no topo. Ancorado no ponto do chão, então o lugar
+ * do problema é onde a haste encosta no mapa. Estilos em map-surface.web.css.
+ */
+function iconePino(
+  cor: string,
+  icone: string | undefined,
+  emAlcance: boolean,
+  selecionado: boolean,
+) {
+  const balao = selecionado ? 40 : 32;
+  const largura = 48;
+  const altura = balao + 26;
+  const classes = ['beacon', emAlcance && 'beacon-alcance', selecionado && 'beacon-selecionado']
+    .filter(Boolean)
+    .join(' ');
   return L.divIcon({
     className: '',
-    iconSize: [tamanho, tamanho],
-    iconAnchor: [tamanho / 2, tamanho / 2],
-    html: `<div style="width:${tamanho}px;height:${tamanho}px;border-radius:50%;background:${cor};border:${borda};box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:${tamanho * 0.5}px;box-shadow:0 2px 4px rgba(0,0,0,.35)">${icone ?? ''}</div>`,
+    iconSize: [largura, altura],
+    iconAnchor: [largura / 2, altura],
+    html: `<div class="${classes}" style="--cor:${cor};--balao:${balao}px;width:${largura}px;height:${altura}px">
+      <div class="beacon-halo"></div>
+      <div class="beacon-ponto"></div>
+      <div class="beacon-haste"></div>
+      <div class="beacon-balao">${icone ?? ''}</div>
+    </div>`,
   });
 }
 
@@ -88,13 +99,13 @@ function EventosDoMapa({
 export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function MapSurface(
   {
     regiaoInicial,
-    poligonoMunicipio,
     circulos,
     marcadores,
     usuario,
     onLongPressMapa,
     onPressMarcador,
     onArrastar,
+    onPronto,
     direcao,
     escuro,
   },
@@ -114,11 +125,6 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
     },
   }));
 
-  const anelMunicipio = useMemo(
-    () => (poligonoMunicipio ? paraLeaflet(poligonoMunicipio) : null),
-    [poligonoMunicipio],
-  );
-
   return (
     <MapContainer
       ref={mapRef}
@@ -127,34 +133,15 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
       minZoom={3}
       zoomControl={false}
       attributionControl={false}
+      whenReady={onPronto}
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-      <TileLayer url={escuro ? TILES_ESCURO : TILES_CLARO} noWrap />
+      <TileLayer
+        url={TILES}
+        attribution={ATRIBUICAO}
+        className={escuro ? 'tiles-escuro' : undefined}
+        noWrap
+      />
       <EventosDoMapa onLongPress={onLongPressMapa} onArrastar={onArrastar} />
-
-      {anelMunicipio ? (
-        <>
-          <Polygon
-            positions={anelMunicipio}
-            pathOptions={{
-              color: '#D4A017',
-              weight: 2,
-              fillColor: 'rgb(180,140,50)',
-              fillOpacity: 0.15,
-              interactive: false,
-            }}
-          />
-          {/* Segundo anel = mundo com o município recortado (buraco). */}
-          <Polygon
-            positions={[ANEL_MUNDO, [...anelMunicipio].reverse()]}
-            pathOptions={{
-              stroke: false,
-              fillColor: '#000',
-              fillOpacity: 0.45,
-              interactive: false,
-            }}
-          />
-        </>
-      ) : null}
 
       {circulos.map((circulo) => (
         <Circle

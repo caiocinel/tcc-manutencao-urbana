@@ -12,7 +12,6 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { DemoBanner } from '@/components/demo-banner';
 import { AuthProvider, useAuth } from '@/context/auth-context';
 import { ThemeProvider, useTheme } from '@/context/theme-context';
 import { ToastProvider } from '@/context/toast-context';
@@ -63,7 +62,6 @@ function RootNavigator() {
         },
       }}>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-      <DemoBanner />
       <Stack
         screenOptions={{
           headerShown: false,

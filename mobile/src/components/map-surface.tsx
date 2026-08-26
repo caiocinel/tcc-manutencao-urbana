@@ -9,20 +9,12 @@
 
 import { forwardRef, useImperativeHandle, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import MapView, { Circle, Marker, Polygon } from 'react-native-maps';
+import MapView, { Circle, Marker } from 'react-native-maps';
 
 import { MAPA_ESTILO_ESCURO } from '@/constants/map-style';
 import { Radius } from '@/constants/theme';
 
 import type { MapSurfaceHandle, MapSurfaceProps } from './map-surface.types';
-
-/** Anel que cobre o mundo; com o município como buraco, escurece o entorno. */
-const ANEL_MUNDO = [
-  { latitude: 85, longitude: -180 },
-  { latitude: 85, longitude: 180 },
-  { latitude: -85, longitude: 180 },
-  { latitude: -85, longitude: -180 },
-];
 
 /** Zoom de rua ao seguir o usuário (18 ≈ quarteirão inteiro na tela). */
 const ZOOM_NAVEGACAO = 18;
@@ -31,13 +23,13 @@ const OURO = '#D4AF37';
 export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function MapSurface(
   {
     regiaoInicial,
-    poligonoMunicipio,
     circulos,
     marcadores,
     usuario,
     onLongPressMapa,
     onPressMarcador,
     onArrastar,
+    onPronto,
     direcao,
     escuro,
   },
@@ -69,29 +61,13 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
       initialRegion={regiaoInicial}
       onLongPress={(e) => onLongPressMapa(e.nativeEvent.coordinate)}
       onPanDrag={onArrastar}
+      onMapReady={onPronto}
       showsUserLocation={false}
       showsMyLocationButton={false}
       showsCompass={false}
       toolbarEnabled={false}
       userInterfaceStyle={escuro ? 'dark' : 'light'}
       customMapStyle={escuro ? MAPA_ESTILO_ESCURO : []}>
-      {poligonoMunicipio ? (
-        <>
-          <Polygon
-            coordinates={poligonoMunicipio}
-            strokeColor="#D4A017"
-            strokeWidth={2}
-            fillColor="rgba(180,140,50,0.15)"
-          />
-          <Polygon
-            coordinates={ANEL_MUNDO}
-            holes={[poligonoMunicipio]}
-            strokeColor="transparent"
-            fillColor="rgba(0,0,0,0.45)"
-          />
-        </>
-      ) : null}
-
       {circulos.map((circulo) => (
         <Circle
           key={circulo.key}
@@ -108,7 +84,7 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
           key={marcador.key}
           coordinate={marcador.coordenada}
           onPress={() => onPressMarcador(marcador.key)}
-          anchor={{ x: 0.5, y: 0.5 }}
+          anchor={{ x: 0.5, y: 1 }}
           tracksViewChanges={false}
           zIndex={marcador.selecionado ? 2 : marcador.emAlcance ? 1 : 0}>
           <Pino
@@ -151,6 +127,12 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
   );
 });
 
+/**
+ * "Beacon": ponto exato no chão (com halo), haste subindo e o balão com o
+ * ícone da categoria no topo. O Marker é ancorado no pé (y = 1), então o lugar
+ * do problema é onde a haste encosta no mapa. O halo aqui é estático:
+ * animar dentro de um Marker exigiria `tracksViewChanges`, que pesa no mapa.
+ */
 function Pino({
   cor,
   icone,
@@ -162,34 +144,71 @@ function Pino({
   emAlcance: boolean;
   selecionado: boolean;
 }) {
-  const tamanho = selecionado ? 40 : 30;
+  const balao = selecionado ? 40 : 32;
+  const destaque = emAlcance ? OURO : '#fff';
   return (
-    <View
-      style={[
-        styles.pino,
-        {
-          width: tamanho,
-          height: tamanho,
-          backgroundColor: cor,
-          borderColor: emAlcance ? OURO : '#fff',
-          borderWidth: emAlcance ? 3 : 2,
-        },
-      ]}>
-      {icone ? <Text style={{ fontSize: tamanho * 0.5 }}>{icone}</Text> : null}
+    <View style={[styles.beacon, { height: balao + 26 }]}>
+      <View
+        style={[
+          styles.beaconBalao,
+          {
+            width: balao,
+            height: balao,
+            backgroundColor: cor,
+            borderColor: destaque,
+            borderWidth: emAlcance || selecionado ? 3 : 2,
+          },
+        ]}>
+        {icone ? <Text style={{ fontSize: balao * 0.5 }}>{icone}</Text> : null}
+      </View>
+      <View style={[styles.beaconHaste, { backgroundColor: cor }]} />
+      <View style={[styles.beaconHalo, { backgroundColor: emAlcance ? OURO : cor }]} />
+      <View style={[styles.beaconPonto, { backgroundColor: cor }]} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  pino: {
+  beacon: {
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  beaconBalao: {
+    position: 'absolute',
+    bottom: 22,
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    shadowOpacity: 0.45,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
+  },
+  beaconHaste: {
+    position: 'absolute',
+    bottom: 2,
+    width: 2,
+    height: 22,
+    opacity: 0.9,
+  },
+  beaconHalo: {
+    position: 'absolute',
+    bottom: -2,
+    width: 22,
+    height: 10,
+    borderRadius: Radius.full,
+    opacity: 0.35,
+  },
+  beaconPonto: {
+    position: 'absolute',
+    bottom: -1,
+    width: 8,
+    height: 8,
+    borderRadius: Radius.full,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   usuarioCaixa: {
     width: 72,

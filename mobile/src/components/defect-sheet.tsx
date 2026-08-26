@@ -78,7 +78,8 @@ export function DefectSheet({
   const isAdmin = !!user?.admin;
   const fechado = STATUS_FECHADOS.includes(defeito.status);
   const podeAtender = isAdmin && !defeito.atendente_id && !fechado;
-  const podeFinalizar = isAdmin && !!defeito.atendente_id && STATUS_VINCULADOS.includes(defeito.status);
+  const podeFinalizar =
+    isAdmin && !!defeito.atendente_id && STATUS_VINCULADOS.includes(defeito.status);
   const imagensExtra = parseImagensExtra(defeito.imagens_extra);
 
   // Modo "confirmar no local": só quando a tela informa a distância.
@@ -249,7 +250,16 @@ export function DefectSheet({
 
             {defeito.categoria || defeito.bairro ? (
               <Text style={[styles.meta, { color: colors.textMuted }]}>
-                {[defeito.categoria, defeito.rua, defeito.bairro].filter(Boolean).join(' · ')}
+                {[
+                  defeito.categoria,
+                  defeito.rua,
+                  defeito.bairro,
+                  defeito.municipio
+                    ? `${defeito.municipio.nome}/${defeito.municipio.uf_sigla}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </Text>
             ) : null}
 
@@ -266,7 +276,12 @@ export function DefectSheet({
 
             {imagensExtra.map((url) => (
               <Pressable key={url} onPress={() => setImagemAberta(url)}>
-                <Image source={{ uri: url }} style={styles.imagem} contentFit="cover" transition={150} />
+                <Image
+                  source={{ uri: url }}
+                  style={styles.imagem}
+                  contentFit="cover"
+                  transition={150}
+                />
               </Pressable>
             ))}
 
@@ -318,7 +333,9 @@ export function DefectSheet({
                         size="sm"
                         onPress={handleResponder}
                         loading={acaoEmCurso === 'responder'}
-                        icon={<Ionicons name="chatbox-ellipses" size={14} color={colors.textPrimary} />}>
+                        icon={
+                          <Ionicons name="chatbox-ellipses" size={14} color={colors.textPrimary} />
+                        }>
                         Responder
                       </Button>
                     ) : null}

@@ -16,7 +16,6 @@ import type { User } from '@/types';
 const TOKEN_KEY = 'ciu_token';
 const REFRESH_KEY = 'ciu_refresh';
 const USER_KEY = 'ciu_user_data';
-const DEMO_KEY = 'ciu_demo_mode';
 const THEME_KEY = 'ciu_theme';
 
 /** SecureStore não existe no web; lá caímos para o AsyncStorage. */
@@ -38,10 +37,9 @@ const secure = {
 type SessionCache = {
   token: string | null;
   refresh: string | null;
-  demoMode: boolean;
 };
 
-const cache: SessionCache = { token: null, refresh: null, demoMode: false };
+const cache: SessionCache = { token: null, refresh: null };
 
 /** Lê o token sem await — usado no interceptor do `api`. */
 export function getTokenSync() {
@@ -52,20 +50,11 @@ export function getRefreshSync() {
   return cache.refresh;
 }
 
-export function isDemoModeSync() {
-  return cache.demoMode;
-}
-
 export async function hydrateSession() {
-  const [token, refresh, demo] = await Promise.all([
-    secure.get(TOKEN_KEY),
-    secure.get(REFRESH_KEY),
-    AsyncStorage.getItem(DEMO_KEY),
-  ]);
+  const [token, refresh] = await Promise.all([secure.get(TOKEN_KEY), secure.get(REFRESH_KEY)]);
   cache.token = token;
   cache.refresh = refresh;
-  cache.demoMode = demo === 'true';
-  return { token, refresh, demoMode: cache.demoMode };
+  return { token, refresh };
 }
 
 export async function setToken(token: string | null) {
@@ -78,12 +67,6 @@ export async function setRefresh(refresh: string | null) {
   cache.refresh = refresh;
   if (refresh) await secure.set(REFRESH_KEY, refresh);
   else await secure.remove(REFRESH_KEY);
-}
-
-export async function setDemoMode(active: boolean) {
-  cache.demoMode = active;
-  if (active) await AsyncStorage.setItem(DEMO_KEY, 'true');
-  else await AsyncStorage.removeItem(DEMO_KEY);
 }
 
 export async function getStoredUser(): Promise<Partial<User> | null> {
@@ -111,12 +94,10 @@ export async function mergeStoredUser(updates: Partial<User>) {
 export async function clearSession() {
   cache.token = null;
   cache.refresh = null;
-  cache.demoMode = false;
   await Promise.all([
     secure.remove(TOKEN_KEY),
     secure.remove(REFRESH_KEY),
     AsyncStorage.removeItem(USER_KEY),
-    AsyncStorage.removeItem(DEMO_KEY),
   ]);
 }
 

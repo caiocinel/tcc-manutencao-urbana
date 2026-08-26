@@ -3,7 +3,8 @@
  *
  * - Joystick: arraste o botão; a direção vira a bússola e a deflexão a
  *   velocidade (até ~6 m/s, uma corrida). Soltar para.
- * - Lat/Lng: teleporta para a coordenada digitada.
+ * - Lat/Lng/Rumo: teleporta para a coordenada digitada apontando para o rumo.
+ *   Os campos já vêm com `POSICAO_DEV_PADRAO`; "Ligar" parte dela.
  * - "GPS real": desliga a simulação e volta a ouvir o aparelho.
  *
  * Alimenta o store `gpsSimulado`; o `useLocalizacao` lê de lá enquanto ativo.
@@ -16,8 +17,6 @@ import { Pressable, StyleSheet, Text, TextInput, View, type GestureResponderEven
 import { FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { useColors } from '@/context/theme-context';
 import type { Posicao } from '@/hooks/use-localizacao';
-import { REGIAO_PADRAO } from '@/utils/geo';
-
 import { gpsSimulado, type EstadoSimulado } from './gps-simulado';
 
 const RAIO_JOYSTICK = 44;
@@ -26,17 +25,21 @@ const RAIO_BOTAO = 18;
 const VELOCIDADE_MAX = 6;
 const INTERVALO_MS = 100;
 
+/** Ponto de partida da simulação (lat, lng e rumo em graus). */
+const POSICAO_DEV_PADRAO = { latitude: -23.00039, longitude: -49.31988, bussola: 214 };
+
 type Props = {
-  /** Posição real, usada como ponto de partida ao ligar a simulação. */
+  /** Posição real (só informativa; a simulação parte de `POSICAO_DEV_PADRAO`). */
   posicaoReal: Posicao | null;
 };
 
-export function GpsJoystick({ posicaoReal }: Props) {
+export function GpsJoystick({ posicaoReal: _posicaoReal }: Props) {
   const colors = useColors();
   const [estado, setEstado] = useState<EstadoSimulado>(gpsSimulado.get());
   const [aberto, setAberto] = useState(true);
-  const [lat, setLat] = useState('');
-  const [lng, setLng] = useState('');
+  const [lat, setLat] = useState(String(POSICAO_DEV_PADRAO.latitude));
+  const [lng, setLng] = useState(String(POSICAO_DEV_PADRAO.longitude));
+  const [rumo, setRumo] = useState(String(POSICAO_DEV_PADRAO.bussola));
   const [deslocamento, setDeslocamento] = useState({ x: 0, y: 0 });
 
   const inicio = useRef({ x: 0, y: 0 });
@@ -58,19 +61,27 @@ export function GpsJoystick({ posicaoReal }: Props) {
     return () => clearInterval(id);
   }, [estado.ativo]);
 
+  function lerCampos() {
+    const la = Number(lat.replace(',', '.'));
+    const lo = Number(lng.replace(',', '.'));
+    const ru = Number(rumo.replace(',', '.'));
+    if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+    return { latitude: la, longitude: lo, bussola: Number.isFinite(ru) ? ru : undefined };
+  }
+
   function ligar() {
-    const partida = estado.posicao ?? posicaoReal ?? REGIAO_PADRAO;
-    gpsSimulado.ativar(partida);
-    setLat(partida.latitude.toFixed(6));
-    setLng(partida.longitude.toFixed(6));
+    gpsSimulado.ativar(lerCampos() ?? POSICAO_DEV_PADRAO);
   }
 
   function teleportar() {
-    const la = Number(lat.replace(',', '.'));
-    const lo = Number(lng.replace(',', '.'));
-    if (!Number.isFinite(la) || !Number.isFinite(lo)) return;
-    if (!estado.ativo) gpsSimulado.ativar({ latitude: la, longitude: lo });
-    else gpsSimulado.irPara(la, lo);
+    const alvo = lerCampos();
+    if (!alvo) return;
+    if (!estado.ativo) {
+      gpsSimulado.ativar(alvo);
+      return;
+    }
+    gpsSimulado.irPara(alvo.latitude, alvo.longitude);
+    if (alvo.bussola !== undefined) gpsSimulado.virar(alvo.bussola);
   }
 
   function aoComecar(e: GestureResponderEvent) {
@@ -194,6 +205,21 @@ export function GpsJoystick({ posicaoReal }: Props) {
                 value={lng}
                 onChangeText={setLng}
                 placeholder="lng"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numbers-and-punctuation"
+                style={[
+                  styles.campo,
+                  {
+                    color: colors.textPrimary,
+                    borderColor: colors.borderDefault,
+                    backgroundColor: colors.bgInput,
+                  },
+                ]}
+              />
+              <TextInput
+                value={rumo}
+                onChangeText={setRumo}
+                placeholder="rumo °"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="numbers-and-punctuation"
                 onSubmitEditing={teleportar}

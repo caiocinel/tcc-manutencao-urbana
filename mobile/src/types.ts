@@ -48,6 +48,10 @@ export type Defeito = {
   longitude: number;
   rua?: string;
   bairro?: string;
+  /** Código IBGE do município onde o ponto caiu (resolvido pelo backend). */
+  municipio_id?: string | null;
+  /** Só no detalhe: nome/UF do município. */
+  municipio?: { codigo: string; nome: string; uf_sigla: string } | null;
   criado_em: string;
   atualizado_em?: string;
   atendido_em?: string | null;

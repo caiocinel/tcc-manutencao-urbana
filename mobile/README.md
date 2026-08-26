@@ -165,7 +165,7 @@ mobile/
 | `pages/AdminDashboardMetrics.jsx` | `app/(tabs)/painel.tsx`         | Recharts → `components/charts.tsx` (react-native-svg) |
 | `pages/SuperAdmin.jsx`       | `app/admin/usuarios.tsx`             | —                                                     |
 | `pages/ProfileSettings.jsx`  | `app/(tabs)/conta.tsx`               | Somada ao menu do `UserDropdown`                      |
-| `pages/Login/Register.jsx`   | `app/login.tsx` / `app/registro.tsx` | Inclui o modo demonstração                            |
+| `pages/Login/Register.jsx`   | `app/login.tsx` / `app/registro.tsx` | Senha ou Google; sem CPF/município                    |
 | `context/AuthContext.jsx`    | `context/auth-context.tsx`           | SecureStore no lugar do localStorage                  |
 | `context/ThemeContext.jsx`   | `context/theme-context.tsx`          | —                                                     |
 | `components/Toast.jsx`       | `context/toast-context.tsx`          | —                                                     |
@@ -175,13 +175,18 @@ mobile/
 | `pages/Landing.jsx`          | —                                    | Página de marketing; não faz sentido no app           |
 | `pages/Settings/GeneralSettings.jsx` | —                            | Eram stubs "em desenvolvimento" no web                |
 
-Funcionalidades portadas: mapa com perímetro municipal e máscara, mapa de
+Funcionalidades portadas: mapa de navegação por GPS (qualquer cidade), mapa de
 calor, filtros (todos/pendentes/atendidos/meus), "Perto de Mim" com raio
-ajustável, criação de chamado com foto e GPS, detalhe com histórico e imagens,
+ajustável, criação de chamado com foto obrigatória (só câmera) e GPS, detalhe com histórico e imagens,
 apoio (upvote), anexos, atender/responder/finalizar, alteração de status em
 lote, geração de Ordem de Serviço em PDF, painel de métricas completo, gestão
-de usuários, verificação de e-mail, troca de senha e município, tema
-claro/escuro, modo demonstração e fila offline.
+de usuários, verificação de e-mail, troca de senha, tema claro/escuro e fila
+offline.
+
+O app não prende o usuário a um município: qualquer cidade do país vale. Em
+qual cidade cada chamado caiu é o **backend** que resolve (PostGIS, tabela
+`municipios`) e grava em `defeitos.municipio_id` — assim, no futuro, dá para
+restringir admins ao próprio município sem mudar o app.
 
 ## Mapa em modo de navegação
 
@@ -194,19 +199,19 @@ ligado enquanto a aba está aberta (`src/hooks/use-localizacao.ts`).
 | Para onde estou virado     | Cone azul no marcador, girado pela bússola do aparelho (`watchHeadingAsync` no nativo, `deviceorientation` no web); sem magnetômetro (desktop) fica só o ponto |
 | Reportar chamado           | Botão **Reportar aqui** usa a posição atual. Toque longo posiciona em outro ponto |
 | Pendências próximas        | Bandeja inferior lista os chamados no raio (200 m–2 km, no menu de filtros), mais perto primeiro |
-| Confirmar que a demanda existe | No detalhe, **Confirmar no local** — liberado só a até `RAIO_CONFIRMACAO_M` (150 m) do ponto; pinos ao alcance ganham anel dourado |
+| Confirmar que a demanda existe | No detalhe, **Confirmar no local** — liberado só a até `RAIO_CONFIRMACAO_M` (20 m) do ponto; pinos ao alcance ganham anel dourado |
 
 ### Simular GPS no desktop (dev)
 
 Em desenvolvimento, no web, aparece o painel **GPS simulado (dev)** no canto
 superior esquerdo do mapa (`src/dev/gps-joystick.tsx`):
 
-- **GPS real / Simulando** — liga a simulação a partir da posição atual (ou
-  de Criciúma, sem GPS) e desliga de volta para o aparelho;
+- **GPS real / Simulando** — liga a simulação a partir dos campos (por padrão
+  `-23.00039, -49.31988`, rumo 214°, em Manduri/SP) e desliga de volta para o
+  aparelho;
 - **joystick** — arraste para andar: a direção vira a bússola, a deflexão a
   velocidade (até ~6 m/s);
-- **lat / lng + Ir** — teleporta. Os dados demo ficam em Ribeirão Preto:
-  `-21.1714, -47.8046` cai a 45 m do "Defeito demo #34".
+- **lat / lng / rumo + Ir** — teleporta e gira a bússola.
 
 Nada disso entra no build de produção (`__DEV__`) nem aparece no celular.
 

@@ -15,7 +15,6 @@ import {
   getStoredUser,
   hydrateSession,
   mergeStoredUser,
-  setDemoMode,
   setRefresh,
   setStoredUser,
   setToken,
@@ -27,12 +26,9 @@ type AuthContextValue = {
   user: User | null;
   isAuthenticated: boolean;
   loading: boolean;
-  isDemoMode: boolean;
   login: (response: AuthResponse) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<void>;
-  enterDemoMode: () => Promise<void>;
-  exitDemoMode: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -57,12 +53,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setTokenState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isDemoMode, setIsDemoMode] = useState(false);
 
   const logout = useCallback(async () => {
     setTokenState(null);
     setUser(null);
-    setIsDemoMode(false);
     await clearSession();
   }, []);
 
@@ -118,7 +112,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       const session = await hydrateSession();
       if (cancelado) return;
-      setIsDemoMode(session.demoMode);
       if (session.token) {
         setTokenState(session.token);
         await aplicarSessao(session.token);
@@ -158,30 +151,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await mergeStoredUser(updates);
   }, []);
 
-  const enterDemoMode = useCallback(async () => {
-    const res = await api.loginDemo();
-    await setDemoMode(true);
-    setIsDemoMode(true);
-    await login(res);
-  }, [login]);
-
-  const exitDemoMode = useCallback(async () => {
-    await logout();
-  }, [logout]);
-
   const value = useMemo(
     () => ({
       user,
       isAuthenticated: !!token,
       loading,
-      isDemoMode,
       login,
       logout,
       updateUser,
-      enterDemoMode,
-      exitDemoMode,
     }),
-    [user, token, loading, isDemoMode, login, logout, updateUser, enterDemoMode, exitDemoMode],
+    [user, token, loading, login, logout, updateUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

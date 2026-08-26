@@ -2,7 +2,8 @@
  * Novo chamado — reporte rápido, estilo Waze.
  *
  * Nada de formulário: a pessoa escolhe o tipo de problema numa grade de
- * opções, anexa uma foto se quiser e envia. A posição vem da tela do mapa
+ * opções, tira uma foto (obrigatória, só pela câmera — galeria não entra, a
+ * foto tem que ser do local, na hora) e envia. A posição vem da tela do mapa
  * (GPS ou toque longo). O título é o nome da categoria; rua e bairro são
  * preenchidos em segundo plano por geocodificação reversa, sem campo na tela.
  */
@@ -24,7 +25,7 @@ import { useToast } from '@/context/toast-context';
 import { api, DefeitoDuplicadoError } from '@/services/api';
 import type { Categoria, Defeito, PickedImage } from '@/types';
 import { distanciaAte, formatarDistancia } from '@/utils/geo';
-import { escolherDaGaleria, ImagemMuitoGrandeError, tirarFoto } from '@/utils/image';
+import { ImagemMuitoGrandeError, tirarFoto } from '@/utils/image';
 
 /** Fallback quando a API de categorias não responde (mesmos nomes do backend). */
 const CATEGORIAS_PADRAO: Categoria[] = [
@@ -103,13 +104,13 @@ export default function NovoChamadoScreen() {
     };
   }, [coordenadaValida, latitude, longitude]);
 
-  async function selecionarImagem(origem: 'camera' | 'galeria') {
+  async function fotografar() {
     try {
-      const escolhida = origem === 'camera' ? await tirarFoto() : await escolherDaGaleria();
-      if (escolhida) setImagem(escolhida);
+      const foto = await tirarFoto();
+      if (foto) setImagem(foto);
     } catch (err) {
       if (err instanceof ImagemMuitoGrandeError) addToast(err.message, 'error');
-      else addToast('Não foi possível selecionar a imagem.', 'error');
+      else addToast('Não foi possível usar a câmera.', 'error');
     }
   }
 
@@ -152,6 +153,10 @@ export default function NovoChamadoScreen() {
     }
     if (!coordenadaValida) {
       addToast('Sem posição para o chamado.', 'error');
+      return;
+    }
+    if (!imagem) {
+      addToast('Tire uma foto do problema para abrir o chamado.', 'error');
       return;
     }
     setEnviando(true);
@@ -279,34 +284,29 @@ export default function NovoChamadoScreen() {
           })}
         </View>
 
-        <Text style={[styles.secao, { color: colors.textMuted }]}>Foto (opcional)</Text>
+        <Text style={[styles.secao, { color: colors.textMuted }]}>Foto do problema</Text>
         {imagem ? (
           <View style={styles.fotoLinha}>
             <Image source={{ uri: imagem.uri }} style={styles.miniatura} contentFit="cover" />
             <Pressable
               onPress={() => setImagem(null)}
               accessibilityRole="button"
-              accessibilityLabel="Remover foto"
+              accessibilityLabel="Tirar outra foto"
               style={[styles.remover, { borderColor: colors.borderDefault }]}>
-              <Ionicons name="trash-outline" size={16} color={colors.textSecondary} />
-              <Text style={[styles.removerTexto, { color: colors.textSecondary }]}>Remover</Text>
+              <Ionicons name="camera-reverse-outline" size={16} color={colors.textSecondary} />
+              <Text style={[styles.removerTexto, { color: colors.textSecondary }]}>
+                Tirar outra
+              </Text>
             </Pressable>
           </View>
         ) : (
-          <View style={styles.fotoLinha}>
-            <Button
-              variant="secondary"
-              onPress={() => selecionarImagem('camera')}
-              icon={<Ionicons name="camera" size={16} color={colors.textPrimary} />}>
-              Tirar foto
-            </Button>
-            <Button
-              variant="secondary"
-              onPress={() => selecionarImagem('galeria')}
-              icon={<Ionicons name="images" size={16} color={colors.textPrimary} />}>
-              Galeria
-            </Button>
-          </View>
+          <Button
+            block
+            variant="secondary"
+            onPress={fotografar}
+            icon={<Ionicons name="camera" size={16} color={colors.textPrimary} />}>
+            Tirar foto (obrigatória)
+          </Button>
         )}
       </ScrollView>
 
@@ -319,12 +319,18 @@ export default function NovoChamadoScreen() {
             paddingBottom: insets.bottom + Spacing[3],
           },
         ]}>
-        <Button block onPress={handleSubmit} loading={enviando} disabled={!categoria}>
+        <Button
+          block
+          onPress={handleSubmit}
+          loading={enviando}
+          disabled={!categoria || (!existenteDaCategoria && !imagem)}>
           {!categoria
             ? 'Escolha uma opção'
             : existenteDaCategoria
               ? `Confirmar ${categoria} já reportado`
-              : `Reportar ${categoria}`}
+              : imagem
+                ? `Reportar ${categoria}`
+                : 'Tire a foto para reportar'}
         </Button>
         {enviando ? <ActivityIndicator size="small" color={colors.textMuted} /> : null}
       </View>

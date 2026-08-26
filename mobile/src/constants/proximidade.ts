@@ -3,10 +3,10 @@
  *
  * A confirmação de um chamado exige presença física (como capturar algo no
  * Pokémon Go): o usuário precisa estar dentro de `RAIO_CONFIRMACAO_M` do ponto
- * reportado. O GPS urbano erra na casa de 10–30 m, então 150 m dá folga sem
- * permitir confirmar do outro lado do bairro.
+ * reportado. 20 m: quem está aí está em cima do problema, com folga para o
+ * erro típico do GPS urbano (5–15 m). O detalhe mostra quantos metros faltam.
  */
-export const RAIO_CONFIRMACAO_M = 150;
+export const RAIO_CONFIRMACAO_M = 20;
 
 /** Opções de "pendências próximas" ao redor do usuário, em metros. */
 export const RAIOS_BUSCA_M = [200, 500, 1000, 2000] as const;

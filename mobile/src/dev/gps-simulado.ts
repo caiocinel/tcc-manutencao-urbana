@@ -3,7 +3,7 @@
  *
  * Um store minúsculo que o `useLocalizacao` consulta: enquanto `ativo`, a
  * posição e a bússola vêm daqui em vez do aparelho. Quem alimenta é o painel
- * `GpsJoystick` (joystick para andar, campos de lat/lng para teleportar).
+ * `GpsJoystick` (joystick para andar, campos de lat/lng/rumo para teleportar).
  *
  * Nada aqui roda em produção: o painel só é montado sob `__DEV__`, e sem ele
  * o store fica inerte (`ativo = false`).
@@ -38,10 +38,10 @@ export const gpsSimulado = {
     };
   },
 
-  ativar(inicial: { latitude: number; longitude: number }) {
+  ativar(inicial: { latitude: number; longitude: number; bussola?: number }) {
     estado = {
       ativo: true,
-      bussola: estado.bussola ?? 0,
+      bussola: inicial.bussola ?? estado.bussola ?? 0,
       posicao: {
         latitude: inicial.latitude,
         longitude: inicial.longitude,

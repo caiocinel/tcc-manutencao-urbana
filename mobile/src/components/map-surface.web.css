@@ -1,0 +1,82 @@
+/* Tiles OSM em tema escuro: inverte e gira o matiz (OSM não tem variante dark sem chave). */
+.tiles-escuro {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6);
+}
+
+/* Marcador "beacon": ponto no chão + halo pulsante + haste + balão com ícone. */
+.beacon {
+  position: relative;
+  --ouro: #d4af37;
+}
+.beacon-halo,
+.beacon-ponto,
+.beacon-haste,
+.beacon-balao {
+  position: absolute;
+  left: 50%;
+  box-sizing: border-box;
+}
+.beacon-halo {
+  bottom: -5px;
+  width: 24px;
+  height: 12px;
+  margin-left: -12px;
+  border-radius: 50%;
+  background: var(--cor);
+  opacity: 0.35;
+  animation: beacon-pulso 1.8s ease-out infinite;
+}
+.beacon-ponto {
+  bottom: -3px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: var(--cor);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.beacon-haste {
+  bottom: 2px;
+  width: 2px;
+  height: 22px;
+  margin-left: -1px;
+  background: linear-gradient(to top, #fff, var(--cor));
+  opacity: 0.9;
+}
+.beacon-balao {
+  bottom: 22px;
+  width: var(--balao);
+  height: var(--balao);
+  margin-left: calc(var(--balao) / -2);
+  border-radius: 50%;
+  background: var(--cor);
+  border: 2px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--balao) * 0.5);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+}
+.beacon-alcance .beacon-balao {
+  border: 3px solid var(--ouro);
+  box-shadow:
+    0 0 0 3px rgba(212, 175, 55, 0.35),
+    0 3px 8px rgba(0, 0, 0, 0.45);
+}
+.beacon-alcance .beacon-halo {
+  background: var(--ouro);
+}
+.beacon-selecionado .beacon-balao {
+  border-width: 3px;
+}
+@keyframes beacon-pulso {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}

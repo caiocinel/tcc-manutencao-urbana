@@ -5,8 +5,10 @@
  * Tudo parte do GPS, que fica ligado enquanto a aba está aberta
  * (`useLocalizacao`):
  * - a câmera segue o usuário com zoom de rua; arrastar o mapa sai do modo
- *   "seguir" e o botão de bússola volta;
- * - o FAB "Reportar aqui" abre o chamado na posição atual — sem tocar no mapa;
+ *   "seguir" e o FAB vira "Recentralizar" até a câmera voltar ao usuário;
+ * - o FAB redondo "Reportar" (centro inferior, só enquanto seguindo) abre o
+ *   chamado na posição atual —
+ *   sem tocar no mapa;
  *   toque longo ainda permite posicionar em outro ponto;
  * - as pendências são filtradas por um raio ao redor do usuário e listadas na
  *   bandeja inferior ordenadas por distância;
@@ -31,11 +33,7 @@ import type {
   MarcadorMapa,
   Regiao,
 } from '@/components/map-surface.types';
-import {
-  RAIO_BUSCA_PADRAO_M,
-  RAIO_CONFIRMACAO_M,
-  RAIOS_BUSCA_M,
-} from '@/constants/proximidade';
+import { RAIO_BUSCA_PADRAO_M, RAIO_CONFIRMACAO_M, RAIOS_BUSCA_M } from '@/constants/proximidade';
 import { getStatusColor, STATUS_ABERTOS, STATUS_FECHADOS } from '@/constants/status';
 import { FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
@@ -46,15 +44,7 @@ import { useLocalizacao } from '@/hooks/use-localizacao';
 import { api } from '@/services/api';
 import type { Categoria, Defeito } from '@/types';
 import { concluidoEm } from '@/utils/format';
-import {
-  distanciaAte,
-  extrairPoligono,
-  paraLatLng,
-  pointInPolygon,
-  REGIAO_PADRAO,
-  regiaoDoMunicipio,
-  temBoundingBox,
-} from '@/utils/geo';
+import { distanciaAte, REGIAO_PADRAO } from '@/utils/geo';
 import { agruparParaHeatmap, corDoPeso, raioDoPeso } from '@/utils/heatmap';
 
 type Filtro = 'pendentes' | 'todos' | 'atendidos' | 'meus';
@@ -98,19 +88,16 @@ export default function MapaScreen() {
   const [raio, setRaio] = useState<number>(RAIO_BUSCA_PADRAO_M);
   const [heatmap, setHeatmap] = useState(false);
   const [seguindo, setSeguindo] = useState(true);
+  // O mapa nativo ignora `seguir` antes de `onMapReady`; o efeito abaixo
+  // depende disto para centralizar assim que ele estiver pronto.
+  const [mapaPronto, setMapaPronto] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
   const [selecionado, setSelecionado] = useState<Defeito | null>(null);
   const [apoiei, setApoiei] = useState<Set<number>>(new Set());
 
-  const municipio = user?.municipio ?? null;
-
-  const poligono = useMemo(() => extrairPoligono(municipio?.poligono_json), [municipio]);
-  const poligonoLatLng = useMemo(() => (poligono ? paraLatLng(poligono) : null), [poligono]);
-
-  const regiaoInicial: Regiao = useMemo(
-    () => (temBoundingBox(municipio) ? regiaoDoMunicipio(municipio) : REGIAO_PADRAO),
-    [municipio],
-  );
+  // O mapa não é preso a município nenhum: qualquer cidade do país vale. Ele
+  // abre num enquadramento neutro e pula para o GPS assim que houver posição.
+  const regiaoInicial: Regiao = REGIAO_PADRAO;
 
   const iconePorCategoria = useMemo(() => {
     const mapa = new Map<string, string>();
@@ -134,7 +121,10 @@ export default function MapaScreen() {
   );
 
   useEffect(() => {
-    api.listCategorias().then(setCategorias).catch(() => {});
+    api
+      .listCategorias()
+      .then(setCategorias)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -167,17 +157,11 @@ export default function MapaScreen() {
   }, [abrir]);
 
   // Câmera de navegação: acompanha cada atualização do GPS enquanto "seguindo".
+  // A posição do usuário manda; o município é só o enquadramento de fallback.
   useEffect(() => {
-    if (!seguindo || !posicao) return;
+    if (!mapaPronto || !seguindo || !posicao) return;
     mapRef.current?.seguir(posicao);
-  }, [seguindo, posicao]);
-
-  // Sem GPS (negado ou ainda buscando), enquadra o município para não ficar no vazio.
-  useEffect(() => {
-    if (permitido === false && temBoundingBox(municipio)) {
-      mapRef.current?.animarPara(regiaoDoMunicipio(municipio));
-    }
-  }, [permitido, municipio]);
+  }, [mapaPronto, seguindo, posicao]);
 
   const filtrados = useMemo(() => {
     let lista = defeitos;
@@ -204,8 +188,7 @@ export default function MapaScreen() {
           defeito,
           distancia,
           icone: iconePorCategoria.get(defeito.categoria ?? defeito.categoria_nome ?? ''),
-          emAlcance:
-            distancia <= RAIO_CONFIRMACAO_M && STATUS_ABERTOS.includes(defeito.status),
+          emAlcance: distancia <= RAIO_CONFIRMACAO_M && STATUS_ABERTOS.includes(defeito.status),
         };
       })
       .filter((item) => item.distancia <= raio)
@@ -276,10 +259,8 @@ export default function MapaScreen() {
   );
 
   function abrirNovoChamado(coordinate: { latitude: number; longitude: number }) {
-    if (poligono && !pointInPolygon([coordinate.longitude, coordinate.latitude], poligono)) {
-      addToast('Localização fora do perímetro municipal.', 'error');
-      return;
-    }
+    // Em qual cidade o ponto caiu é o backend que resolve (PostGIS) e grava
+    // no chamado — o app não precisa saber de município.
     router.push({
       pathname: '/novo',
       params: { lat: String(coordinate.latitude), lng: String(coordinate.longitude) },
@@ -339,9 +320,7 @@ export default function MapaScreen() {
   }
 
   const distanciaSelecionado =
-    selecionado && posicao
-      ? distanciaAte(selecionado, posicao.latitude, posicao.longitude)
-      : null;
+    selecionado && posicao ? distanciaAte(selecionado, posicao.latitude, posicao.longitude) : null;
 
   const rodape = insets.bottom + Spacing[4];
 
@@ -351,7 +330,6 @@ export default function MapaScreen() {
         <MapSurface
           ref={mapRef}
           regiaoInicial={regiaoInicial}
-          poligonoMunicipio={poligonoLatLng}
           circulos={circulos}
           marcadores={marcadores}
           usuario={posicao}
@@ -367,6 +345,7 @@ export default function MapaScreen() {
             }
           }}
           onArrastar={() => setSeguindo(false)}
+          onPronto={() => setMapaPronto(true)}
           escuro={theme === 'dark'}
         />
 
@@ -376,7 +355,10 @@ export default function MapaScreen() {
             <Pressable
               onPress={tentarNovamente}
               accessibilityRole="button"
-              style={[styles.pill, { backgroundColor: colors.bgElevated, borderColor: colors.error }]}>
+              style={[
+                styles.pill,
+                { backgroundColor: colors.bgElevated, borderColor: colors.error },
+              ]}>
               <Ionicons name="warning" size={13} color={colors.error} />
               <Text style={[styles.pillTexto, { color: colors.error }]}>
                 {erroGps ?? 'Localização indisponível'} · tocar para tentar de novo
@@ -385,30 +367,8 @@ export default function MapaScreen() {
           </View>
         ) : null}
 
-        {/* Controles laterais: recentrar (bússola) e filtros. */}
-        <View
-          style={[
-            styles.lateral,
-            { bottom: rodape + 60 },
-          ]}>
-          <Pressable
-            onPress={recentrar}
-            accessibilityRole="button"
-            accessibilityLabel={seguindo ? 'Seguindo sua posição' : 'Centralizar na minha posição'}
-            style={[
-              styles.botaoRedondo,
-              {
-                backgroundColor: seguindo ? colors.gold500 : colors.bgSurface,
-                borderColor: seguindo ? colors.gold500 : colors.borderDefault,
-              },
-            ]}>
-            <Ionicons
-              name={seguindo ? 'navigate' : 'navigate-outline'}
-              size={18}
-              color={seguindo ? colors.textInverse : colors.textSecondary}
-            />
-          </Pressable>
-
+        {/* Controles laterais: filtros. */}
+        <View style={[styles.lateral, { bottom: rodape + 60 }]}>
           {isAuthenticated ? (
             <Pressable
               onPress={() => setMenuAberto(true)}
@@ -427,27 +387,46 @@ export default function MapaScreen() {
 
         <View style={[styles.rodape, { bottom: rodape }]} pointerEvents="box-none">
           <View style={styles.fabLinha} pointerEvents="box-none">
-            <Pressable
-              onPress={reportarAqui}
-              accessibilityRole="button"
-              accessibilityLabel="Reportar chamado na minha posição"
-              style={[
-                styles.fab,
-                { backgroundColor: posicao || !isAuthenticated ? colors.gold500 : colors.bgElevated },
-              ]}>
-              <Ionicons
-                name="alert-circle"
-                size={20}
-                color={posicao || !isAuthenticated ? colors.textInverse : colors.textMuted}
-              />
-              <Text
+            {seguindo ? (
+              <Pressable
+                onPress={reportarAqui}
+                accessibilityRole="button"
+                accessibilityLabel="Reportar chamado na minha posição"
                 style={[
-                  styles.fabTexto,
-                  { color: posicao || !isAuthenticated ? colors.textInverse : colors.textMuted },
+                  styles.fab,
+                  {
+                    backgroundColor:
+                      posicao || !isAuthenticated ? colors.gold500 : colors.bgElevated,
+                    borderColor:
+                      posicao || !isAuthenticated ? colors.gold500 : colors.borderDefault,
+                  },
                 ]}>
-                Reportar aqui
-              </Text>
-            </Pressable>
+                <Ionicons
+                  name="megaphone"
+                  size={20}
+                  color={posicao || !isAuthenticated ? colors.textInverse : colors.textMuted}
+                />
+                <Text
+                  style={[
+                    styles.fabTexto,
+                    { color: posicao || !isAuthenticated ? colors.textInverse : colors.textMuted },
+                  ]}>
+                  Reportar
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={recentrar}
+                accessibilityRole="button"
+                accessibilityLabel="Recentralizar na minha posição"
+                style={[
+                  styles.fab,
+                  { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault },
+                ]}>
+                <Ionicons name="locate" size={20} color={colors.gold500} />
+                <Text style={[styles.fabTexto, { color: colors.textPrimary }]}>Recentralizar</Text>
+              </Pressable>
+            )}
           </View>
         </View>
       </View>
@@ -620,14 +599,16 @@ const styles = StyleSheet.create({
     gap: Spacing[2],
   },
   fabLinha: {
-    alignItems: 'center',
+    paddingHorizontal: Spacing[4],
   },
   fab: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: Spacing[2],
-    height: 48,
+    height: 56,
     paddingHorizontal: Spacing[5],
+    borderWidth: 1,
     borderRadius: Radius.full,
     elevation: 6,
     shadowColor: '#000',
@@ -636,7 +617,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
   },
   fabTexto: {
-    fontSize: FontSize.sm,
+    fontSize: FontSize.md,
     fontWeight: FontWeight.bold,
   },
   menuBackdrop: {

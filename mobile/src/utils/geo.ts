@@ -3,7 +3,7 @@
  * `pointInPolygon` embutido no MapPage do web.
  */
 
-import type { Defeito, GeoJsonPolygon, Municipio } from '@/types';
+import type { Defeito } from '@/types';
 
 const EARTH_RADIUS_M = 6371000;
 
@@ -35,50 +35,7 @@ export function filterByRadius(defeitos: Defeito[], lat: number, lng: number, ra
   return defeitos.filter((d) => haversineDistance(lat, lng, d.latitude, d.longitude) <= raio);
 }
 
-/** Extrai o anel externo do polígono do município, em pares [lng, lat]. */
-export function extrairPoligono(raw: string | GeoJsonPolygon | null | undefined) {
-  if (!raw) return null;
-  try {
-    const poly: GeoJsonPolygon = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    const coords =
-      poly.type === 'Polygon' ? poly.coordinates?.[0] : poly.coordinates?.[0]?.[0];
-    return (coords as [number, number][] | undefined) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** Converte pares [lng, lat] do GeoJSON para o formato do react-native-maps. */
-export function paraLatLng(coords: [number, number][]): LatLng[] {
-  return coords.map(([longitude, latitude]) => ({ latitude, longitude }));
-}
-
-export function temBoundingBox(municipio?: Municipio | null): municipio is Municipio {
-  return (
-    !!municipio &&
-    typeof municipio.min_lat === 'number' &&
-    municipio.min_lat !== 0 &&
-    typeof municipio.max_lat === 'number' &&
-    typeof municipio.min_lng === 'number' &&
-    typeof municipio.max_lng === 'number'
-  );
-}
-
-/** Região do mapa que enquadra o município inteiro, com uma folga de 15%. */
-export function regiaoDoMunicipio(municipio: Municipio) {
-  const minLat = municipio.min_lat!;
-  const maxLat = municipio.max_lat!;
-  const minLng = municipio.min_lng!;
-  const maxLng = municipio.max_lng!;
-  return {
-    latitude: (minLat + maxLat) / 2,
-    longitude: (minLng + maxLng) / 2,
-    latitudeDelta: Math.max((maxLat - minLat) * 1.15, 0.02),
-    longitudeDelta: Math.max((maxLng - minLng) * 1.15, 0.02),
-  };
-}
-
-/** Região padrão quando não há município nem GPS (Criciúma/SC, como no web). */
+/** Enquadramento inicial antes do GPS responder (Criciúma/SC, como no web). */
 export const REGIAO_PADRAO = {
   latitude: -28.67,
   longitude: -49.38,

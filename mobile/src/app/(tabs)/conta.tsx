@@ -5,7 +5,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -19,14 +19,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
 import { Card, PageHeading, SectionHeading } from '@/components/ui/screen';
-import { SearchableSelect } from '@/components/ui/searchable-select';
 import { TextField } from '@/components/ui/text-field';
 import { FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useTheme } from '@/context/theme-context';
 import { useToast } from '@/context/toast-context';
 import { api } from '@/services/api';
-import type { Municipio } from '@/types';
 import { formatarCpf } from '@/utils/format';
 
 export default function ContaScreen() {
@@ -38,29 +36,17 @@ export default function ContaScreen() {
   // O formulário parte do usuário carregado; guardamos só o que foi editado,
   // para não precisar sincronizar estado dentro de um efeito.
   const [nomeEditado, setNomeEditado] = useState<string | null>(null);
-  const [municipioEditado, setMunicipioEditado] = useState<string | null>(null);
   const nome = nomeEditado ?? user?.nome ?? '';
-  const municipioId = municipioEditado ?? user?.municipio_id ?? '';
-  const [municipios, setMunicipios] = useState<Municipio[]>([]);
   const [senhaAtual, setSenhaAtual] = useState('');
   const [novaSenha, setNovaSenha] = useState('');
   const [codigo, setCodigo] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [verificando, setVerificando] = useState(false);
 
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    api.listMunicipios().then(setMunicipios).catch(() => {});
-  }, [isAuthenticated]);
-
-  const opcoes = useMemo(
-    () => municipios.map((m) => ({ value: m.codigo, label: m.nome, group: m.uf_sigla })),
-    [municipios],
-  );
-
   if (!isAuthenticated) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.bgPrimary, paddingTop: insets.top }]}>
+      <View
+        style={[styles.container, { backgroundColor: colors.bgPrimary, paddingTop: insets.top }]}>
         <PageHeading title="Conta" subtitle="Entre para gerenciar seus chamados" />
         <View style={styles.deslogado}>
           <Button block onPress={() => router.push('/login')}>
@@ -87,13 +73,8 @@ export default function ContaScreen() {
         setSenhaAtual('');
         setNovaSenha('');
       }
-      if (municipioId && municipioId !== user?.municipio_id) {
-        const res = await api.updateMunicipio(municipioId);
-        await updateUser({ municipio_id: municipioId, municipio: res.municipio });
-      }
       // Volta a espelhar o usuário salvo.
       setNomeEditado(null);
-      setMunicipioEditado(null);
       addToast('Alterações salvas com sucesso!');
     } catch (err) {
       addToast(
@@ -185,14 +166,6 @@ export default function ContaScreen() {
             {user?.cpf ? (
               <TextField label="CPF" value={formatarCpf(user.cpf)} editable={false} />
             ) : null}
-
-            <SearchableSelect
-              label="Município"
-              options={opcoes}
-              value={municipioId}
-              onChange={setMunicipioEditado}
-              placeholder="Selecione um município"
-            />
           </Card>
         </View>
 

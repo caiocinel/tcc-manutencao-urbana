@@ -48,8 +48,15 @@ export function useOfflineSync() {
     setState((prev) => ({ ...prev, sincronizando: true }));
     try {
       for (const item of queue) {
+        const pronto = withExistingImage(item);
+        if (!pronto.imagem) {
+          // A foto do cache sumiu e o backend não aceita chamado sem ela:
+          // descarta para não travar a fila num 400 eterno.
+          await removeFromQueue(item.id);
+          continue;
+        }
         try {
-          await postDefeitoDireto(withExistingImage(item));
+          await postDefeitoDireto(pronto);
           await removeFromQueue(item.id);
         } catch {
           // Falhou (rede ou validação): para aqui e tenta de novo na próxima vez.

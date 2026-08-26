@@ -27,12 +27,11 @@ const LOGO = require('@/assets/images/icon.png');
 export default function LoginScreen() {
   const colors = useColors();
   const addToast = useToast();
-  const { login, enterDemoMode } = useAuth();
+  const { login } = useAuth();
 
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [loading, setLoading] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(false);
   const [error, setError] = useState('');
 
   async function handleSubmit() {
@@ -54,26 +53,16 @@ export default function LoginScreen() {
     }
   }
 
-  async function handleDemo() {
-    setError('');
-    setDemoLoading(true);
-    try {
-      await enterDemoMode();
-      addToast('Modo demonstração ativado.');
-      router.replace('/(tabs)/mapa');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao entrar no modo demo.');
-    } finally {
-      setDemoLoading(false);
-    }
-  }
-
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.bgPrimary }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={[styles.cartao, { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault }]}>
+        <View
+          style={[
+            styles.cartao,
+            { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault },
+          ]}>
           <View style={styles.marca}>
             <View style={[styles.logoCaixa, { borderColor: colors.icon }]}>
               <Image source={LOGO} style={styles.logo} contentFit="cover" />
@@ -116,10 +105,6 @@ export default function LoginScreen() {
           </Button>
 
           <GoogleButton />
-
-          <Button block variant="secondary" onPress={handleDemo} loading={demoLoading}>
-            Entrar no modo demonstração
-          </Button>
 
           <View style={styles.rodape}>
             <Link href="/registro" asChild>

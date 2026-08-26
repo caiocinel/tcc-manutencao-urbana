@@ -40,8 +40,6 @@ export type MarcadorMapa = {
 
 export type MapSurfaceProps = {
   regiaoInicial: Regiao;
-  /** Anel externo do perímetro municipal; o entorno é escurecido. */
-  poligonoMunicipio: LatLng[] | null;
   circulos: CirculoMapa[];
   marcadores: MarcadorMapa[];
   /** Posição atual do GPS; desenhada como o "seu carro" do Waze. */
@@ -53,6 +51,12 @@ export type MapSurfaceProps = {
   onPressMarcador: (key: string) => void;
   /** O usuário arrastou o mapa — a tela sai do modo "seguir". */
   onArrastar: () => void;
+  /**
+   * O mapa nativo já aceita comandos de câmera. Chamadas a `seguir`/`animarPara`
+   * antes disso são ignoradas pelo react-native-maps, então a tela usa este
+   * sinal para (re)aplicar o "seguir" inicial.
+   */
+  onPronto?: () => void;
   escuro: boolean;
 };
 

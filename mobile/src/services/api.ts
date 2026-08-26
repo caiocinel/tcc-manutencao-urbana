@@ -25,12 +25,7 @@ import type {
 } from '@/types';
 
 import { enqueueDefeito } from './offline-queue';
-import {
-  getRefreshSync,
-  getTokenSync,
-  isDemoModeSync,
-  setToken,
-} from './storage';
+import { getRefreshSync, getTokenSync, setToken } from './storage';
 
 const API_URL_PRODUCAO = 'https://tcc.josemurilors.com.br';
 
@@ -77,6 +72,8 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
 }
 
 type RequestOptions = {
+  /** Endpoint público: não manda o token (um token velho no aparelho daria 401 à toa). */
+  publico?: boolean;
   method?: string;
   body?: unknown;
   headers?: Record<string, string>;
@@ -93,17 +90,16 @@ function extractError(err: any): string {
   return 'Erro na requisição';
 }
 
-function baseHeaders(extra?: Record<string, string>) {
-  const token = getTokenSync();
+function baseHeaders(extra?: Record<string, string>, publico = false) {
+  const token = publico ? null : getTokenSync();
   return {
     ...(token && { Authorization: `Bearer ${token}` }),
-    ...(isDemoModeSync() && { 'X-Demo-Mode': 'true' }),
     ...extra,
   } as Record<string, string>;
 }
 
 async function request<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const headers = baseHeaders(options.headers);
+  const headers = baseHeaders(options.headers, options.publico);
   const isFormData = options.body instanceof FormData;
 
   const fetchOptions: RequestInit = { method: options.method ?? 'GET', headers };
@@ -136,6 +132,11 @@ async function request<T = any>(endpoint: string, options: RequestOptions = {}):
           await setToken(access);
           headers.Authorization = `Bearer ${access}`;
           const retryRes = await fetch(`${API_URL}${endpoint}`, { ...fetchOptions, headers });
+          if (retryRes.status === 401) {
+            // Token novo e ainda 401: a conta não existe mais. Sai da sessão.
+            onUnauthorized?.();
+            throw new Error('Sessão expirada. Faça login novamente.');
+          }
           if (!retryRes.ok) {
             const retryErr = await retryRes.json().catch(() => ({}));
             throw new Error(extractError(retryErr));
@@ -228,7 +229,9 @@ function isNetworkError(err: unknown) {
  * Cria o chamado; se a rede falhar, guarda na fila offline e devolve
  * `{ offline: true }` para a tela avisar o usuário.
  */
-async function createDefeito(dados: NovoDefeito): Promise<Defeito | { offline: true; message: string }> {
+async function createDefeito(
+  dados: NovoDefeito,
+): Promise<Defeito | { offline: true; message: string }> {
   try {
     return await request<Defeito>('/api/v1/defeitos/', {
       method: 'POST',
@@ -261,34 +264,16 @@ export const api = {
       body: { email, password: senha },
     }),
 
-  googleConfig: () => request<GoogleConfig>('/api/v1/auth/google/'),
+  googleConfig: () => request<GoogleConfig>('/api/v1/auth/google/', { publico: true }),
 
   loginGoogle: (idToken: string) =>
     request<AuthResponse>('/api/v1/auth/google/', {
       method: 'POST',
       body: { id_token: idToken },
+      publico: true,
     }),
 
-  loginDemo: async (): Promise<AuthResponse> => {
-    const res = await fetch(`${API_URL}/api/v1/auth/login/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Demo-Mode': 'true' },
-      body: JSON.stringify({ email: 'demo@ciu.app', password: process.env.EXPO_PUBLIC_DEMO_PASSWORD }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Erro' }));
-      throw new Error(err.detail || 'Erro no login demo');
-    }
-    return res.json();
-  },
-
-  register: (
-    nome: string,
-    email: string,
-    senha: string,
-    municipioId?: string,
-    cpf?: string,
-  ) =>
+  register: (nome: string, email: string, senha: string, municipioId?: string, cpf?: string) =>
     request<AuthResponse>('/api/v1/auth/register/', {
       method: 'POST',
       body: {
@@ -303,7 +288,8 @@ export const api = {
 
   listDefeitos: (params: { ordenar?: string; status?: string } = {}) => {
     const q = new URLSearchParams();
-    if (params.ordenar) q.set('ordering', params.ordenar === 'recentes' ? '-criado_em' : '-curtidas');
+    if (params.ordenar)
+      q.set('ordering', params.ordenar === 'recentes' ? '-criado_em' : '-curtidas');
     if (params.status) q.set('status', params.status);
     const qs = q.toString();
     return paginated<Defeito>(`/api/v1/defeitos/${qs ? '?' + qs : ''}`);
