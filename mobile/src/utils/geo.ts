@@ -89,3 +89,23 @@ export const REGIAO_PADRAO = {
 export function regiaoEmTorno(lat: number, lng: number, delta = 0.08) {
   return { latitude: lat, longitude: lng, latitudeDelta: delta, longitudeDelta: delta };
 }
+
+/** Distância em metros de um chamado até um ponto. */
+export function distanciaAte(defeito: Defeito, lat: number, lng: number) {
+  return haversineDistance(lat, lng, defeito.latitude, defeito.longitude);
+}
+
+/** "85 m", "1,2 km". */
+export function formatarDistancia(metros: number) {
+  if (!Number.isFinite(metros)) return '';
+  if (metros < 1000) return `${Math.round(metros)} m`;
+  return `${(metros / 1000).toFixed(metros < 10000 ? 1 : 0).replace('.', ',')} km`;
+}
+
+/** Região que enquadra um círculo de `raio` metros em torno do ponto. */
+export function regiaoParaRaio(lat: number, lng: number, raio: number) {
+  // 1 grau de latitude ≈ 111 km; a longitude encolhe com o cosseno da latitude.
+  const latitudeDelta = (raio * 2 * 1.4) / 111000;
+  const longitudeDelta = latitudeDelta / Math.max(Math.cos((lat * Math.PI) / 180), 0.2);
+  return { latitude: lat, longitude: lng, latitudeDelta, longitudeDelta };
+}

@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { ImageViewer } from '@/components/ui/image-viewer';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Timeline } from '@/components/ui/timeline';
+import { RAIO_CONFIRMACAO_M } from '@/constants/proximidade';
 import { STATUS_FECHADOS } from '@/constants/status';
 import { FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
@@ -31,6 +32,7 @@ import {
   parseImagensExtra,
   totalApoios,
 } from '@/utils/format';
+import { formatarDistancia } from '@/utils/geo';
 import { escolherDaGaleria, ImagemMuitoGrandeError, tirarFoto } from '@/utils/image';
 import { getTimelineItems } from '@/utils/timeline';
 
@@ -43,6 +45,13 @@ type Props = {
   /** Substitui o chamado pelo objeto recarregado do backend. */
   onReplace: (defeito: Defeito) => void;
   onApoioToggle: (id: number, apoiado: boolean) => void;
+  /**
+   * Distância do usuário até o chamado, em metros. Quando informada (tela do
+   * mapa), o "Apoiar" vira "Confirmar no local", liberado só dentro de
+   * `RAIO_CONFIRMACAO_M` — o usuário atesta que a demanda existe estando lá.
+   * `null` = GPS indisponível; `undefined` = contexto sem GPS (lista).
+   */
+  distanciaM?: number | null;
 };
 
 const STATUS_VINCULADOS = ['vinculado_sem_resposta', 'vinculado_com_resposta'];
@@ -54,6 +63,7 @@ export function DefectSheet({
   onPatch,
   onReplace,
   onApoioToggle,
+  distanciaM,
 }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -70,6 +80,22 @@ export function DefectSheet({
   const podeAtender = isAdmin && !defeito.atendente_id && !fechado;
   const podeFinalizar = isAdmin && !!defeito.atendente_id && STATUS_VINCULADOS.includes(defeito.status);
   const imagensExtra = parseImagensExtra(defeito.imagens_extra);
+
+  // Modo "confirmar no local": só quando a tela informa a distância.
+  const modoConfirmacao = distanciaM !== undefined;
+  const aoAlcance = typeof distanciaM === 'number' && distanciaM <= RAIO_CONFIRMACAO_M;
+  const podeConfirmar = !modoConfirmacao || apoiado || aoAlcance;
+  const rotuloConfirmar = !modoConfirmacao
+    ? apoiado
+      ? 'Apoiado'
+      : 'Apoiar'
+    : apoiado
+      ? 'Confirmado'
+      : aoAlcance
+        ? 'Confirmar no local'
+        : distanciaM === null
+          ? 'Sem GPS'
+          : `Aproxime-se · ${formatarDistancia(distanciaM)}`;
 
   async function comAcao(chave: string, fn: () => Promise<void>) {
     setAcaoEmCurso(chave);
@@ -134,7 +160,15 @@ export function DefectSheet({
       onPatch(id, {
         total_apoios: res.apoiado ? atual + 1 : Math.max(0, atual - 1),
       });
-      addToast(res.apoiado ? 'Apoio registrado!' : 'Apoio removido.');
+      addToast(
+        modoConfirmacao
+          ? res.apoiado
+            ? 'Demanda confirmada no local!'
+            : 'Confirmação removida.'
+          : res.apoiado
+            ? 'Apoio registrado!'
+            : 'Apoio removido.',
+      );
     });
   }
 
@@ -245,9 +279,18 @@ export function DefectSheet({
               </Text>
               {totalApoios(defeito) > 0 ? (
                 <View style={styles.apoios}>
-                  <Ionicons name="thumbs-up" size={12} color={colors.textMuted} />
+                  <Ionicons
+                    name={modoConfirmacao ? 'checkmark-circle' : 'thumbs-up'}
+                    size={12}
+                    color={colors.textMuted}
+                  />
                   <Text style={[styles.meta, { color: colors.textMuted }]}>
                     {totalApoios(defeito)}
+                    {modoConfirmacao
+                      ? totalApoios(defeito) === 1
+                        ? ' confirmação'
+                        : ' confirmações'
+                      : ''}
                   </Text>
                 </View>
               ) : null}
@@ -291,19 +334,36 @@ export function DefectSheet({
                 ) : null}
 
                 <Button
-                  variant="secondary"
+                  variant={modoConfirmacao && aoAlcance && !apoiado ? 'primary' : 'secondary'}
                   size="sm"
                   onPress={handleApoiar}
+                  disabled={!podeConfirmar}
                   loading={acaoEmCurso === 'apoiar'}
                   icon={
                     <Ionicons
-                      name={apoiado ? 'thumbs-up' : 'thumbs-up-outline'}
+                      name={
+                        modoConfirmacao
+                          ? apoiado
+                            ? 'checkmark-circle'
+                            : aoAlcance
+                              ? 'checkmark-circle-outline'
+                              : 'walk'
+                          : apoiado
+                            ? 'thumbs-up'
+                            : 'thumbs-up-outline'
+                      }
                       size={14}
-                      color={colors.gold500}
+                      color={
+                        modoConfirmacao && aoAlcance && !apoiado
+                          ? colors.textInverse
+                          : podeConfirmar
+                            ? colors.gold500
+                            : colors.textMuted
+                      }
                     />
                   }
-                  style={{ borderColor: colors.gold500 }}>
-                  {apoiado ? 'Apoiado' : 'Apoiar'}
+                  style={{ borderColor: podeConfirmar ? colors.gold500 : colors.borderDefault }}>
+                  {rotuloConfirmar}
                 </Button>
 
                 <Button

@@ -13,6 +13,7 @@ app é um cliente adicional, não um substituto.
 - [Requisitos](#requisitos)
 - [Rodando](#rodando)
 - [Configuração](#configuração)
+- [Mapa em modo de navegação](#mapa-em-modo-de-navegação)
 - [Suporte a web](#suporte-a-web)
 - [Estrutura](#estrutura)
 - [Equivalência com o frontend web](#equivalência-com-o-frontend-web)
@@ -71,6 +72,21 @@ Variáveis opcionais (ver `.env.example`):
 
 `app.config.js` só adiciona o plugin do `react-native-maps` quando alguma
 chave está definida — por isso o app roda no Expo Go sem nenhuma chave.
+
+### Login com Google
+
+O botão **Continuar com Google** aparece em Login e Cadastro quando o backend
+tem `GOOGLE_CLIENT_ID_WEB` no `.env` da raiz (os IDs chegam ao app por
+`GET /api/v1/auth/google/`, nada de env no cliente). Na primeira entrada o
+usuário só escolhe o nome de exibição (`/escolher-nome`); e-mail já vem
+verificado pelo Google e a conta fica sem senha.
+
+| Plataforma | Como | Precisa de |
+| ---------- | ---- | ---------- |
+| Web (`npm run web`) | Google Identity Services (`google-button.web.tsx`) | só o client ID Web |
+| Android / iOS | `expo-auth-session` (`google-button.tsx`) | `GOOGLE_CLIENT_ID_ANDROID` (pacote `com.ciu.mobile` + SHA-1) / `GOOGLE_CLIENT_ID_IOS`, e um **development build** — não funciona no Expo Go |
+
+Sem o ID da plataforma o botão nativo fica desabilitado com o aviso.
 
 ### Backend: CORS e ALLOWED_HOSTS
 
@@ -166,6 +182,37 @@ apoio (upvote), anexos, atender/responder/finalizar, alteração de status em
 lote, geração de Ordem de Serviço em PDF, painel de métricas completo, gestão
 de usuários, verificação de e-mail, troca de senha e município, tema
 claro/escuro, modo demonstração e fila offline.
+
+## Mapa em modo de navegação
+
+A aba **Mapa** funciona como Waze + Pokémon Go: tudo parte do GPS, que fica
+ligado enquanto a aba está aberta (`src/hooks/use-localizacao.ts`).
+
+| Ação                       | Como                                                                    |
+| -------------------------- | ----------------------------------------------------------------------- |
+| Seguir a posição           | Padrão; a câmera acompanha o GPS com zoom de rua. Arrastar o mapa pausa; o botão de bússola retoma |
+| Para onde estou virado     | Cone azul no marcador, girado pela bússola do aparelho (`watchHeadingAsync` no nativo, `deviceorientation` no web); sem magnetômetro (desktop) fica só o ponto |
+| Reportar chamado           | Botão **Reportar aqui** usa a posição atual. Toque longo posiciona em outro ponto |
+| Pendências próximas        | Bandeja inferior lista os chamados no raio (200 m–2 km, no menu de filtros), mais perto primeiro |
+| Confirmar que a demanda existe | No detalhe, **Confirmar no local** — liberado só a até `RAIO_CONFIRMACAO_M` (150 m) do ponto; pinos ao alcance ganham anel dourado |
+
+### Simular GPS no desktop (dev)
+
+Em desenvolvimento, no web, aparece o painel **GPS simulado (dev)** no canto
+superior esquerdo do mapa (`src/dev/gps-joystick.tsx`):
+
+- **GPS real / Simulando** — liga a simulação a partir da posição atual (ou
+  de Criciúma, sem GPS) e desliga de volta para o aparelho;
+- **joystick** — arraste para andar: a direção vira a bússola, a deflexão a
+  velocidade (até ~6 m/s);
+- **lat / lng + Ir** — teleporta. Os dados demo ficam em Ribeirão Preto:
+  `-21.1714, -47.8046` cai a 45 m do "Defeito demo #34".
+
+Nada disso entra no build de produção (`__DEV__`) nem aparece no celular.
+
+A confirmação usa o mesmo registro de **apoio** do backend
+(`POST /api/v1/defeitos/{id}/apoiar/`); na aba Chamados o botão continua sendo
+"Apoiar", sem exigir proximidade. Os raios ficam em `src/constants/proximidade.ts`.
 
 ## Suporte a web
 

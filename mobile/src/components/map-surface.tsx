@@ -8,7 +8,7 @@
  */
 
 import { forwardRef, useImperativeHandle, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Circle, Marker, Polygon } from 'react-native-maps';
 
 import { MAPA_ESTILO_ESCURO } from '@/constants/map-style';
@@ -24,16 +24,22 @@ const ANEL_MUNDO = [
   { latitude: -85, longitude: -180 },
 ];
 
+/** Zoom de rua ao seguir o usuário (18 ≈ quarteirão inteiro na tela). */
+const ZOOM_NAVEGACAO = 18;
+const OURO = '#D4AF37';
+
 export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function MapSurface(
   {
     regiaoInicial,
     poligonoMunicipio,
     circulos,
     marcadores,
-    onPressMapa,
+    usuario,
+    onLongPressMapa,
     onPressMarcador,
+    onArrastar,
+    direcao,
     escuro,
-    mostrarUsuario,
   },
   ref,
 ) {
@@ -43,6 +49,17 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
     animarPara(regiao, duracaoMs = 600) {
       mapRef.current?.animateToRegion(regiao, duracaoMs);
     },
+    seguir(posicao) {
+      mapRef.current?.animateCamera(
+        {
+          center: { latitude: posicao.latitude, longitude: posicao.longitude },
+          zoom: ZOOM_NAVEGACAO,
+          heading: 0,
+          pitch: 0,
+        },
+        { duration: 700 },
+      );
+    },
   }));
 
   return (
@@ -50,9 +67,11 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
       ref={mapRef}
       style={StyleSheet.absoluteFill}
       initialRegion={regiaoInicial}
-      onPress={(e) => onPressMapa(e.nativeEvent.coordinate)}
-      showsUserLocation={mostrarUsuario}
+      onLongPress={(e) => onLongPressMapa(e.nativeEvent.coordinate)}
+      onPanDrag={onArrastar}
+      showsUserLocation={false}
       showsMyLocationButton={false}
+      showsCompass={false}
       toolbarEnabled={false}
       userInterfaceStyle={escuro ? 'dark' : 'light'}
       customMapStyle={escuro ? MAPA_ESTILO_ESCURO : []}>
@@ -89,20 +108,116 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
           key={marcador.key}
           coordinate={marcador.coordenada}
           onPress={() => onPressMarcador(marcador.key)}
-          tracksViewChanges={false}>
-          <View style={[styles.marcador, { backgroundColor: marcador.cor }]} />
+          anchor={{ x: 0.5, y: 0.5 }}
+          tracksViewChanges={false}
+          zIndex={marcador.selecionado ? 2 : marcador.emAlcance ? 1 : 0}>
+          <Pino
+            cor={marcador.cor}
+            icone={marcador.icone}
+            emAlcance={!!marcador.emAlcance}
+            selecionado={!!marcador.selecionado}
+          />
         </Marker>
       ))}
+
+      {usuario ? (
+        <>
+          {usuario.precisao && usuario.precisao > 15 ? (
+            <Circle
+              center={{ latitude: usuario.latitude, longitude: usuario.longitude }}
+              radius={usuario.precisao}
+              strokeColor="rgba(59,130,246,0.35)"
+              strokeWidth={1}
+              fillColor="rgba(59,130,246,0.12)"
+            />
+          ) : null}
+          {/* Ponto azul com o cone da bússola, como no Google Maps. O cone só
+              aparece quando há direção; a rotação gira o marcador inteiro. */}
+          <Marker
+            coordinate={{ latitude: usuario.latitude, longitude: usuario.longitude }}
+            anchor={{ x: 0.5, y: 0.5 }}
+            flat
+            rotation={direcao ?? 0}
+            zIndex={3}
+            tracksViewChanges={false}>
+            <View style={styles.usuarioCaixa}>
+              {direcao != null ? <View style={styles.usuarioCone} /> : null}
+              <View style={styles.usuarioPonto} />
+            </View>
+          </Marker>
+        </>
+      ) : null}
     </MapView>
   );
 });
 
+function Pino({
+  cor,
+  icone,
+  emAlcance,
+  selecionado,
+}: {
+  cor: string;
+  icone?: string;
+  emAlcance: boolean;
+  selecionado: boolean;
+}) {
+  const tamanho = selecionado ? 40 : 30;
+  return (
+    <View
+      style={[
+        styles.pino,
+        {
+          width: tamanho,
+          height: tamanho,
+          backgroundColor: cor,
+          borderColor: emAlcance ? OURO : '#fff',
+          borderWidth: emAlcance ? 3 : 2,
+        },
+      ]}>
+      {icone ? <Text style={{ fontSize: tamanho * 0.5 }}>{icone}</Text> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  marcador: {
-    width: 14,
-    height: 14,
+  pino: {
     borderRadius: Radius.full,
-    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  usuarioCaixa: {
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Triângulo translúcido saindo do ponto para cima (norte do marcador).
+  usuarioCone: {
+    position: 'absolute',
+    top: 0,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 20,
+    borderRightWidth: 20,
+    borderTopWidth: 0,
+    borderBottomWidth: 36,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'rgba(59,130,246,0.28)',
+    transform: [{ scaleY: -1 }],
+  },
+  usuarioPonto: {
+    width: 18,
+    height: 18,
+    borderRadius: Radius.full,
+    backgroundColor: '#3B82F6',
+    borderWidth: 3,
     borderColor: '#fff',
   },
 });

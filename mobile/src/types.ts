@@ -41,6 +41,8 @@ export type Defeito = {
   titulo: string;
   descricao: string;
   categoria?: string;
+  /** A listagem devolve o nome da categoria neste campo; o detalhe, em `categoria`. */
+  categoria_nome?: string;
   status: string;
   latitude: number;
   longitude: number;
@@ -61,6 +63,8 @@ export type AuthResponse = {
   access: string;
   refresh?: string;
   user?: User;
+  /** Login com Google: a conta acabou de ser criada (pedir o nome de exibição). */
+  novo?: boolean;
 };
 
 export type Estatisticas = {
