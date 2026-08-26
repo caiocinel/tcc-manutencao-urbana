@@ -13,35 +13,22 @@ import { CommandMenu } from '../components/ui/command-menu';
 import { useTheme } from '../context/ThemeContext';
 import { createPlacementPinIcon, createDefectIcon } from '../utils/map-markers';
 import { getTimelineItems } from '../utils/timeline';
-import { getInitialHeatmapState, filterByRadius } from '../utils/map-heatmap';
+import { filterByRadius } from '../utils/map-heatmap';
 import { Timeline } from '../components/ui/timeline';
 import HeatmapLayer from '../components/HeatmapLayer';
 import SyncIndicator from '../components/ui/sync-indicator';
 
-const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-const LIGHT_TILES = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+// OSM não exige chave (Carto passou a exigir); tema escuro = filtro CSS `.tiles-escuro`.
+const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILES_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 const BRAZIL_BOUNDS = [[-33.75, -73.99], [5.27, -28.85]];
 
-function pointInPolygon(point, vs) {
-  const [x, y] = point;
-  let inside = false;
-  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-    const [xi, yi] = vs[i], [xj, yj] = vs[j];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-
-function MapClickHandler({ creatingRef, polygonCoordsRef, setCoords, setShowForm, addToast }) {
+function MapClickHandler({ creatingRef, setCoords, setShowForm }) {
   useMapEvents({
     click(e) {
       if (!creatingRef.current) return;
-      const point = [e.latlng.lng, e.latlng.lat];
-      const dentro = !polygonCoordsRef.current || pointInPolygon(point, polygonCoordsRef.current);
-      if (!dentro) {
-        addToast('Localização fora do perímetro municipal.', 'error');
-        return;
-      }
+      // Qualquer cidade vale: em qual município o ponto caiu é o backend que
+      // resolve (PostGIS) e grava no chamado.
       setCoords({ lat: e.latlng.lat, lng: e.latlng.lng });
       setShowForm(true);
     },
@@ -50,13 +37,13 @@ function MapClickHandler({ creatingRef, polygonCoordsRef, setCoords, setShowForm
 }
 
 export default function MapPage() {
-  const { isAuthenticated, user, isDemoMode } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const addToast = useToast();
   const mapRef = useRef(null);
   const [defeitos, setDefeitos] = useState([]);
   const [filtro, setFiltro] = useState('todos');
-  const [heatmap, setHeatmap] = useState(() => getInitialHeatmapState(isDemoMode));
+  const [heatmap, setHeatmap] = useState(true);
   const [pertoDeMim, setPertoDeMim] = useState(null); // { ativo, lat, lng, raio }
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -72,8 +59,6 @@ export default function MapPage() {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [categorias, setCategorias] = useState([]);
   const [polygonCoords, setPolygonCoords] = useState(null);
-  const polygonCoordsRef = useRef(null);
-  useEffect(() => { polygonCoordsRef.current = polygonCoords; }, [polygonCoords]);
   const [atendendo, setAtendendo] = useState(null);
   const [apoiando, setApoiando] = useState(null);
   const [apoiei, setApoiei] = useState(new Set());
@@ -215,6 +200,10 @@ export default function MapPage() {
       addToast('Selecione uma categoria.', 'error');
       return;
     }
+    if (!file) {
+      addToast('Tire uma foto do problema para abrir o chamado.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       const fd = new FormData();
@@ -225,7 +214,7 @@ export default function MapPage() {
       fd.append('bairro', formData.bairro);
       fd.append('latitude', coords.lat);
       fd.append('longitude', coords.lng);
-      if (file) fd.append('imagem', file);
+      fd.append('imagem', file);
       await api.createDefeito(fd);
       addToast('Chamado criado com sucesso!');
       setShowForm(false);
@@ -387,14 +376,8 @@ export default function MapPage() {
           maxBoundsViscosity={1.0}
           zoomControl={true}
           whenReady={handleMapReady}>
-          <TileLayer url={theme === 'dark' ? DARK_TILES : LIGHT_TILES} noWrap />
-          <MapClickHandler
-            creatingRef={creatingRef}
-            polygonCoordsRef={polygonCoordsRef}
-            setCoords={setCoords}
-            setShowForm={setShowForm}
-            addToast={addToast}
-          />
+          <TileLayer url={TILES} attribution={TILES_ATTR} className={theme === 'dark' ? 'tiles-escuro' : undefined} noWrap />
+          <MapClickHandler creatingRef={creatingRef} setCoords={setCoords} setShowForm={setShowForm} />
           {coords && (
             <Marker position={[coords.lat, coords.lng]} icon={createPlacementPinIcon()} />
           )}
@@ -549,8 +532,9 @@ export default function MapPage() {
                   style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}
                   onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-gold-500)'}
                   onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--color-border-default)'}>
-                  <Camera size={16} /> {file ? file.name.slice(0, 20) : 'Foto'}
-                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                  <Camera size={16} /> {file ? file.name.slice(0, 20) : 'Foto (obrigatória)'}
+                  {/* `capture` abre a câmera direto no celular; no desktop o navegador ignora e abre o seletor. */}
+                  <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
                     onChange={e => setFile(e.target.files?.[0] || null)} />
                 </label>
                 <span className="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>{coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}</span>

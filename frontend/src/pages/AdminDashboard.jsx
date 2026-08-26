@@ -10,8 +10,9 @@ import { StatusBadge } from '../components/ui/status-badge';
 import { getStatusColor } from '../components/ui/status-utils';
 import { createDefectIcon } from '../utils/map-markers';
 
-const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-const LIGHT_TILES = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+// OSM não exige chave (Carto passou a exigir); tema escuro = filtro CSS `.tiles-escuro`.
+const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILES_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 const BRAZIL_BOUNDS = [[-33.75, -73.99], [5.27, -28.85]];
 
 function FitBounds({ pontos, filtroRegiao }) {
@@ -178,7 +179,7 @@ export default function AdminDashboard() {
           minZoom={3}
           maxBoundsViscosity={1.0}
           whenReady={(ev) => { mapRef.current = ev.target; }}>
-          <TileLayer url={theme === 'dark' ? DARK_TILES : LIGHT_TILES} noWrap />
+          <TileLayer url={TILES} attribution={TILES_ATTR} className={theme === 'dark' ? 'tiles-escuro' : undefined} noWrap />
           <PerimeterLayer poligono_json={user?.municipio?.poligono_json} />
           <FitBounds pontos={allPins} filtroRegiao={filtroRegiao} />
           {allPins.map(d => (

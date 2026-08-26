@@ -10,7 +10,6 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { useKeyboardNav } from './hooks/useKeyboardNav';
 import UserDropdown from './components/ui/user-dropdown';
 import { CommandMenu } from './components/ui/command-menu';
-import DemoBanner from './components/ui/DemoBanner';
 import SyncIndicator from './components/ui/sync-indicator';
 import './styles/tokens.css';
 import './styles/globals.css';
@@ -138,7 +137,6 @@ function AppLayout() {
 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--color-bg-primary)' }}>
-      <DemoBanner />
       {shouldRenderHeader && (
         <AppHeader
           theme={theme}

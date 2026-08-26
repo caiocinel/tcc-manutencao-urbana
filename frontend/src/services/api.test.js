@@ -48,23 +48,6 @@ describe('api request helper com FormData', () => {
     expect(res).toEqual({ status: 'atendido' });
   });
 
-  it('inclui X-Demo-Mode no header quando em modo demo', async () => {
-    localStorage.setItem('token', 'tok123');
-    localStorage.setItem('ciu-demo-mode', 'true');
-    const fd = new FormData();
-    fd.append('status', 'atendido');
-
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ status: 'atendido' }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-    );
-
-    await apiModule.api.updateDefeitoComArquivo('abc-123', fd);
-
-    const [, opts] = fetchMock.mock.calls[0];
-    expect(opts.headers['X-Demo-Mode']).toBe('true');
-    expect(opts.headers.Authorization).toBe('Bearer tok123');
-  });
-
   it('renova token no 401 e reenvia FormData com novo token', async () => {
     localStorage.setItem('token', 'token-expirado');
     localStorage.setItem('refresh', 'refresh-tok');

@@ -1,9 +1,5 @@
 const EARTH_RADIUS_M = 6371000;
 
-export function getInitialHeatmapState(isDemoMode) {
-  return !isDemoMode;
-}
-
 export function haversineDistance(lat1, lng1, lat2, lng2) {
   const toRad = (deg) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
