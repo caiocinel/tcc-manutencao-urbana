@@ -71,6 +71,33 @@ class DefeitoDetailSerializer(serializers.ModelSerializer):
         return _is_sla_vencido(obj)
 
 
+def _distancia_m(lat1, lng1, lat2, lng2):
+    """Distância aproximada em metros (equiretangular; suficiente para dezenas de metros)."""
+    dlat = (lat2 - lat1) * 111000
+    dlng = (lng2 - lng1) * 111000 * math.cos(math.radians(lat1))
+    return math.sqrt(dlat * dlat + dlng * dlng)
+
+
+def _mesma_categoria_perto(lat, lng, categoria, raio_m):
+    """Chamado aberto da mesma categoria a até `raio_m` do ponto, ou None."""
+    deg = raio_m / 111000 * 1.5  # caixa folgada; a distância real é conferida abaixo
+    candidatos = (
+        Defeito.objects.filter(
+            categoria__iexact=categoria,
+            latitude__range=(lat - deg, lat + deg),
+            longitude__range=(lng - deg, lng + deg),
+        )
+        .exclude(status__in=RESOLVIDOS | {'rejeitado'})
+        .values('id', 'latitude', 'longitude')[:20]
+    )
+    mais_perto = None
+    for c in candidatos:
+        d = _distancia_m(lat, lng, c['latitude'], c['longitude'])
+        if d <= raio_m and (mais_perto is None or d < mais_perto['distancia_m']):
+            mais_perto = {'id': c['id'], 'distancia_m': d}
+    return mais_perto
+
+
 class DefeitoCreateSerializer(serializers.ModelSerializer):
     imagem_thumbnail = ThumbnailField(read_only=True)
 
@@ -82,7 +109,30 @@ class DefeitoCreateSerializer(serializers.ModelSerializer):
         lat = validated_data.get('latitude')
         lng = validated_data.get('longitude')
         descricao = validated_data.get('descricao', '')
+        categoria = (validated_data.get('categoria') or '').strip()
 
+        # 1) Regra dura, independente de texto: outro chamado da MESMA categoria,
+        #    ainda aberto, a poucos metros -> é o mesmo problema. O cliente deve
+        #    confirmar o existente em vez de abrir outro (evita o mapa cheio de
+        #    pinos repetidos no mesmo buraco).
+        if lat and lng and categoria:
+            existente = _mesma_categoria_perto(lat, lng, categoria, settings.DUPLICATE_CATEGORY_RADIUS_M)
+            if existente:
+                raise serializers.ValidationError(
+                    {
+                        'duplicado': True,
+                        'defeito_existente_id': str(existente['id']),
+                        'distancia_m': round(existente['distancia_m'], 1),
+                        'detail': (
+                            f'Já existe um chamado de {categoria} a '
+                            f'{max(1, round(existente["distancia_m"]))} m daqui. '
+                            'Confirme ele no mapa em vez de abrir outro.'
+                        ),
+                    },
+                    code='duplicate_defect',
+                )
+
+        # 2) Similaridade de texto (IA) num raio maior, só quando há descrição.
         if lat and lng and descricao:
             from django.db.models import F
             from django.db.models.functions import ACos, Cos, Radians, Sin

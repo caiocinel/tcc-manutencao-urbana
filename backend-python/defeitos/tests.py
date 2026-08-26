@@ -626,3 +626,44 @@ class TestSlaVencido:
         resp = client.get(reverse('defeitos-detail', args=[created['id']]))
         assert resp.status_code == 200
         assert resp.data['sla_vencido'] is False
+
+
+class TestDuplicadoPorCategoria:
+    """Mesma categoria + chamado aberto + <= DUPLICATE_CATEGORY_RADIUS_M -> 409."""
+
+    BASE = {'latitude': -22.9, 'longitude': -43.2, 'categoria': 'Buraco', 'descricao': ''}
+
+    def _post(self, auth_client, **over):
+        i = next(_COORD_COUNTER)
+        data = {'titulo': f'Buraco {i}', 'rua': 'Rua X', 'bairro': 'Centro', **self.BASE, **over}
+        return auth_client.post(reverse('defeitos-list'), data, format='json')
+
+    def test_mesma_categoria_a_5m_e_rejeitada(self, auth_client):
+        primeiro = self._post(auth_client, longitude=-43.2000)
+        assert primeiro.status_code == 201
+        # ~5 m para leste (1e-5 grau de longitude ≈ 1 m nesta latitude)
+        resp = self._post(auth_client, longitude=-43.2000 + 0.00005)
+        assert resp.status_code == 409
+        assert resp.data['duplicado'] is True
+        assert resp.data['defeito_existente_id'] == str(primeiro.data['id'])
+        assert resp.data['distancia_m'] <= 10
+        assert 'Buraco' in resp.data['detail']
+
+    def test_categoria_diferente_no_mesmo_ponto_passa(self, auth_client):
+        assert self._post(auth_client, latitude=-22.91).status_code == 201
+        assert self._post(auth_client, latitude=-22.91, categoria='Iluminação').status_code == 201
+
+    def test_fora_do_raio_passa(self, auth_client):
+        assert self._post(auth_client, latitude=-22.92).status_code == 201
+        # ~30 m ao norte
+        assert self._post(auth_client, latitude=-22.92 + 0.00027).status_code == 201
+
+    def test_chamado_fechado_nao_bloqueia(self, auth_client):
+        primeiro = self._post(auth_client, latitude=-22.93)
+        assert primeiro.status_code == 201
+        Defeito.objects.filter(id=primeiro.data['id']).update(status='concluido')
+        assert self._post(auth_client, latitude=-22.93).status_code == 201
+
+    def test_categoria_ignora_caixa(self, auth_client):
+        assert self._post(auth_client, latitude=-22.94).status_code == 201
+        assert self._post(auth_client, latitude=-22.94, categoria='buraco').status_code == 409

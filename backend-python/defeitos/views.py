@@ -54,7 +54,13 @@ class DefeitoViewSet(viewsets.ModelViewSet):
         except ValidationError as e:
             detail = e.detail
             if isinstance(detail, dict) and detail.get('duplicado'):
-                return Response(detail, status=status.HTTP_409_CONFLICT)
+                # O DRF embrulha cada valor em ErrorDetail (string); devolve tipos limpos.
+                corpo = {k: str(v) for k, v in detail.items()}
+                corpo['duplicado'] = True
+                for campo in ('distancia_m', 'similaridade'):
+                    if campo in corpo:
+                        corpo[campo] = float(corpo[campo])
+                return Response(corpo, status=status.HTTP_409_CONFLICT)
             raise
 
     def perform_create(self, serializer):
