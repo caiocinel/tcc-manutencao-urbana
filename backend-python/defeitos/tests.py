@@ -723,3 +723,43 @@ class TestFotoObrigatoria:
         assert resp.status_code == 400
         assert 'imagem' in resp.data
 
+
+class TestVisaoMunicipio:
+    """GET /defeitos/municipio/?lat&lng: cidade do ponto, abertos e rankings."""
+
+    def _post(self, auth_client, categoria, lat, lng):
+        i = next(_COORD_COUNTER)
+        return auth_client.post(reverse('defeitos-list'), com_foto({
+            'titulo': f'{categoria} {i}', 'rua': 'Rua X', 'bairro': 'Centro', 'categoria': categoria,
+            'descricao': '', 'latitude': lat, 'longitude': lng,
+        }), format='multipart')
+
+    def test_rankings_da_cidade(self, auth_client, client):
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("""
+                INSERT INTO municipios (codigo, nome, uf, uf_sigla, min_lat, max_lat, min_lng, max_lng, polygon_geom)
+                VALUES ('9999902', 'Cidade Ranking', '35', 'SP', -24.1, -23.9, -50.4, -50.2,
+                        ST_Multi(ST_GeomFromText('POLYGON((-50.4 -24.1, -50.2 -24.1, -50.2 -23.9, -50.4 -23.9, -50.4 -24.1))', 4326)))
+                ON CONFLICT (codigo) DO NOTHING
+            """)
+        assert self._post(auth_client, 'Buraco', -24.00, -50.30).status_code == 201
+        assert self._post(auth_client, 'Buraco', -24.01, -50.31).status_code == 201
+        assert self._post(auth_client, 'Entulho', -24.02, -50.32).status_code == 201
+
+        resp = client.get(reverse('defeitos-municipio'), {'lat': -24.0, 'lng': -50.3})
+        assert resp.status_code == 200, resp.data
+        assert resp.data['municipio']['codigo'] == '9999902'
+        assert resp.data['municipio']['min_lat'] == -24.1
+        assert resp.data['total_abertos'] == 3
+        assert resp.data['tipos'][0] == {'categoria': 'Buraco', 'total': 2}
+        assert len(resp.data['mais_antigos']) == 3
+        assert resp.data['mais_apoiados'] == []
+        assert {d['municipio_id'] for d in resp.data['defeitos']} == {'9999902'}
+
+    def test_ponto_sem_municipio_404(self, client):
+        assert client.get(reverse('defeitos-municipio'), {'lat': 0, 'lng': -30}).status_code == 404
+
+    def test_sem_coordenadas_400(self, client):
+        assert client.get(reverse('defeitos-municipio')).status_code == 400
+

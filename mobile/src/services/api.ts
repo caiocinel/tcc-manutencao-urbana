@@ -17,6 +17,7 @@ import { Platform } from 'react-native';
 import type {
   AuthResponse,
   Categoria,
+  VisaoMunicipio,
   Defeito,
   Estatisticas,
   Municipio,
@@ -168,8 +169,19 @@ async function paginated<T>(endpoint: string, options?: RequestOptions): Promise
   return (data?.results ?? data) as T[];
 }
 
-/** Converte uma imagem escolhida no picker para o formato aceito pelo FormData do RN. */
-export function appendImage(fd: FormData, field: string, image: PickedImage) {
+/**
+ * Anexa uma imagem do picker ao FormData.
+ *
+ * No nativo o RN aceita `{uri, name, type}` e faz o upload do arquivo. No
+ * web isso vira "[object Object]" e o backend não recebe arquivo nenhum —
+ * lá a URI (blob:/data:) precisa virar um Blob de verdade.
+ */
+export async function appendImage(fd: FormData, field: string, image: PickedImage) {
+  if (Platform.OS === 'web') {
+    const blob = await fetch(image.uri).then((r) => r.blob());
+    fd.append(field, blob, image.name);
+    return;
+  }
   fd.append(field, {
     uri: image.uri,
     name: image.name,
@@ -191,7 +203,7 @@ export type NovoDefeito = {
   imagem?: PickedImage | null;
 };
 
-export function buildDefeitoFormData(dados: NovoDefeito) {
+export async function buildDefeitoFormData(dados: NovoDefeito) {
   const fd = new FormData();
   fd.append('titulo', dados.titulo);
   fd.append('descricao', dados.descricao);
@@ -200,7 +212,7 @@ export function buildDefeitoFormData(dados: NovoDefeito) {
   fd.append('bairro', dados.bairro);
   fd.append('latitude', String(dados.latitude));
   fd.append('longitude', String(dados.longitude));
-  if (dados.imagem) appendImage(fd, 'imagem', dados.imagem);
+  if (dados.imagem) await appendImage(fd, 'imagem', dados.imagem);
   return fd;
 }
 
@@ -235,7 +247,7 @@ async function createDefeito(
   try {
     return await request<Defeito>('/api/v1/defeitos/', {
       method: 'POST',
-      body: buildDefeitoFormData(dados),
+      body: await buildDefeitoFormData(dados),
     });
   } catch (err) {
     if (isNetworkError(err)) {
@@ -250,10 +262,10 @@ async function createDefeito(
 }
 
 /** Envia um chamado da fila offline (sem re-enfileirar em caso de falha). */
-export function postDefeitoDireto(dados: NovoDefeito) {
+export async function postDefeitoDireto(dados: NovoDefeito) {
   return request<Defeito>('/api/v1/defeitos/', {
     method: 'POST',
-    body: buildDefeitoFormData(dados),
+    body: await buildDefeitoFormData(dados),
   });
 }
 
@@ -297,14 +309,20 @@ export const api = {
 
   createDefeito,
 
+  /** Cidade onde o ponto caiu, chamados abertos dela e rankings (visão expandida). */
+  visaoMunicipio: (lat: number, lng: number) =>
+    request<VisaoMunicipio>(`/api/v1/defeitos/municipio/?lat=${lat}&lng=${lng}`, {
+      publico: true,
+    }),
+
   updateDefeito: (id: number, data: Record<string, unknown>) =>
     request<Defeito>(`/api/v1/defeitos/${id}/`, { method: 'PATCH', body: data }),
 
   /** Finaliza o chamado enviando a foto de resolução. */
-  finalizarDefeito: (id: number, fotoResolucao: PickedImage) => {
+  finalizarDefeito: async (id: number, fotoResolucao: PickedImage) => {
     const fd = new FormData();
     fd.append('status', 'atendido');
-    appendImage(fd, 'foto_resolucao', fotoResolucao);
+    await appendImage(fd, 'foto_resolucao', fotoResolucao);
     return request<Defeito>(`/api/v1/defeitos/${id}/status/`, { method: 'PATCH', body: fd });
   },
 
@@ -343,9 +361,9 @@ export const api = {
 
   detalharDefeito: (id: number) => request<Defeito>(`/api/v1/defeitos/${id}/`),
 
-  anexarImagem: (id: number, image: PickedImage) => {
+  anexarImagem: async (id: number, image: PickedImage) => {
     const fd = new FormData();
-    appendImage(fd, 'file', image);
+    await appendImage(fd, 'file', image);
     return request(`/api/v1/defeitos/${id}/anexar/`, { method: 'POST', body: fd });
   },
 

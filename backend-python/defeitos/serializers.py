@@ -84,7 +84,7 @@ class DefeitoDetailSerializer(serializers.ModelSerializer):
 
 def municipio_do_ponto(lat, lng):
     """
-    Município (código IBGE, nome, UF) que contém o ponto, ou None.
+    Município (código IBGE, nome, UF e bounding box) que contém o ponto, ou None.
 
     Usa o polígono PostGIS de `municipios`; se o ponto não cair em nenhum
     (fronteira, mar, dado ausente), tenta a bounding box mais próxima do centro.
@@ -94,7 +94,7 @@ def municipio_do_ponto(lat, lng):
     with connection.cursor() as cur:
         cur.execute(
             """
-            SELECT codigo, nome, uf_sigla FROM municipios
+            SELECT codigo, nome, uf_sigla, min_lat, max_lat, min_lng, max_lng FROM municipios
             WHERE polygon_geom IS NOT NULL
               AND ST_Contains(polygon_geom::geometry, ST_SetSRID(ST_MakePoint(%s, %s), 4326))
             LIMIT 1
@@ -105,7 +105,7 @@ def municipio_do_ponto(lat, lng):
         if not row:
             cur.execute(
                 """
-                SELECT codigo, nome, uf_sigla FROM municipios
+                SELECT codigo, nome, uf_sigla, min_lat, max_lat, min_lng, max_lng FROM municipios
                 WHERE %s BETWEEN min_lat AND max_lat AND %s BETWEEN min_lng AND max_lng
                 ORDER BY ABS((min_lat + max_lat) / 2 - %s) + ABS((min_lng + max_lng) / 2 - %s)
                 LIMIT 1
@@ -115,7 +115,10 @@ def municipio_do_ponto(lat, lng):
             row = cur.fetchone()
     if not row:
         return None
-    return {'codigo': str(row[0]), 'nome': row[1], 'uf_sigla': row[2]}
+    return {
+        'codigo': str(row[0]), 'nome': row[1], 'uf_sigla': row[2],
+        'min_lat': row[3], 'max_lat': row[4], 'min_lng': row[5], 'max_lng': row[6],
+    }
 
 
 def _distancia_m(lat1, lng1, lat2, lng2):

@@ -35,6 +35,21 @@ export function filterByRadius(defeitos: Defeito[], lat: number, lng: number, ra
   return defeitos.filter((d) => haversineDistance(lat, lng, d.latitude, d.longitude) <= raio);
 }
 
+/** Região que enquadra uma bounding box inteira, com folga de 15%. */
+export function regiaoDaCaixa(caixa: {
+  min_lat: number;
+  max_lat: number;
+  min_lng: number;
+  max_lng: number;
+}) {
+  return {
+    latitude: (caixa.min_lat + caixa.max_lat) / 2,
+    longitude: (caixa.min_lng + caixa.max_lng) / 2,
+    latitudeDelta: Math.max((caixa.max_lat - caixa.min_lat) * 1.15, 0.02),
+    longitudeDelta: Math.max((caixa.max_lng - caixa.min_lng) * 1.15, 0.02),
+  };
+}
+
 /** Enquadramento inicial antes do GPS responder (Criciúma/SC, como no web). */
 export const REGIAO_PADRAO = {
   latitude: -28.67,

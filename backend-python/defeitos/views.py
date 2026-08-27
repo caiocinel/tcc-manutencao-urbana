@@ -8,6 +8,7 @@ from rest_framework.exceptions import ValidationError
 from django.db.models import Count
 from .models import Defeito, Apoio
 from .serializers import (
+    municipio_do_ponto,
     DefeitoListSerializer, DefeitoDetailSerializer,
     DefeitoCreateSerializer, ApoioSerializer,
 )
@@ -194,6 +195,49 @@ class DefeitoViewSet(viewsets.ModelViewSet):
         defeito.imagens_extra = json.dumps(extras)
         defeito.save()
         return Response(DefeitoDetailSerializer(defeito).data)
+
+    @action(detail=False, methods=['get'], permission_classes=(permissions.AllowAny,))
+    def municipio(self, request):
+        """
+        Visão expandida do mapa: a cidade onde o ponto (?lat=&lng=) caiu, todos
+        os chamados abertos dela (sem paginação) e rankings prontos — tipos mais
+        frequentes, mais antigos e mais confirmados.
+        """
+        try:
+            lat = float(request.query_params.get('lat', ''))
+            lng = float(request.query_params.get('lng', ''))
+        except ValueError:
+            return Response({'detail': 'Informe lat e lng.'}, status=status.HTTP_400_BAD_REQUEST)
+        municipio = municipio_do_ponto(lat, lng)
+        if not municipio:
+            return Response({'detail': 'Nenhum município neste ponto.'}, status=status.HTTP_404_NOT_FOUND)
+
+        abertos = (
+            self.get_queryset()
+            .filter(municipio_id=municipio['codigo'])
+            .exclude(status__in=('atendido', 'encerrado', 'concluido', 'rejeitado'))[:2000]
+        )
+        dados = DefeitoListSerializer(abertos, many=True).data
+
+        por_categoria = {}
+        for d in dados:
+            nome = d.get('categoria_nome') or 'Sem categoria'
+            por_categoria[nome] = por_categoria.get(nome, 0) + 1
+        tipos = sorted(
+            ({'categoria': k, 'total': v} for k, v in por_categoria.items()),
+            key=lambda x: (-x['total'], x['categoria']),
+        )
+        mais_antigos = sorted(dados, key=lambda d: d['criado_em'])[:10]
+        mais_apoiados = sorted(dados, key=lambda d: (-(d.get('total_apoios') or 0), d['criado_em']))[:10]
+
+        return Response({
+            'municipio': municipio,
+            'total_abertos': len(dados),
+            'tipos': tipos,
+            'mais_antigos': [d['id'] for d in mais_antigos],
+            'mais_apoiados': [d['id'] for d in mais_apoiados if (d.get('total_apoios') or 0) > 0],
+            'defeitos': dados,
+        })
 
     @action(detail=False, methods=['get'])
     def apoiei(self, request):

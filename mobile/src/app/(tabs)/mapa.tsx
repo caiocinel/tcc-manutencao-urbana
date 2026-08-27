@@ -13,7 +13,10 @@
  * - as pendências são filtradas por um raio ao redor do usuário e listadas na
  *   bandeja inferior ordenadas por distância;
  * - dentro de `RAIO_CONFIRMACAO_M` o pino ganha anel dourado e o detalhe
- *   libera "Confirmar no local".
+ *   libera "Confirmar no local";
+ * - o botão do canto superior direito abre a **visão do município**: enquadra a
+ *   cidade onde a pessoa está, mostra todos os chamados abertos dela e um
+ *   painel com rankings (tipos, mais antigos, mais confirmados).
  *
  * Trocas em relação ao web: Leaflet -> react-native-maps; `leaflet.heat` ->
  * células de densidade (`utils/heatmap.ts`); máscara do município via `holes`.
@@ -26,6 +29,7 @@ import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DefectSheet } from '@/components/defect-sheet';
+import { MunicipioPanel } from '@/components/municipio-panel';
 import { MapSurface } from '@/components/map-surface';
 import type {
   CirculoMapa,
@@ -42,9 +46,9 @@ import { useToast } from '@/context/toast-context';
 import { GpsJoystick } from '@/dev/gps-joystick';
 import { useLocalizacao } from '@/hooks/use-localizacao';
 import { api } from '@/services/api';
-import type { Categoria, Defeito } from '@/types';
+import type { Categoria, Defeito, VisaoMunicipio } from '@/types';
 import { concluidoEm } from '@/utils/format';
-import { distanciaAte, REGIAO_PADRAO } from '@/utils/geo';
+import { distanciaAte, regiaoDaCaixa, REGIAO_PADRAO } from '@/utils/geo';
 import { agruparParaHeatmap, corDoPeso, raioDoPeso } from '@/utils/heatmap';
 
 type Filtro = 'pendentes' | 'todos' | 'atendidos' | 'meus';
@@ -93,6 +97,9 @@ export default function MapaScreen() {
   const [mapaPronto, setMapaPronto] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
   const [selecionado, setSelecionado] = useState<Defeito | null>(null);
+  // Visão do município: substitui a navegação por raio pela cidade inteira.
+  const [visao, setVisao] = useState<VisaoMunicipio | null>(null);
+  const [carregandoVisao, setCarregandoVisao] = useState(false);
   const [apoiei, setApoiei] = useState<Set<number>>(new Set());
 
   // O mapa não é preso a município nenhum: qualquer cidade do país vale. Ele
@@ -195,9 +202,22 @@ export default function MapaScreen() {
       .sort((a, b) => a.distancia - b.distancia);
   }, [filtrados, posicao, raio, iconePorCategoria]);
 
+  /** O que está no mapa: a cidade inteira (visão do município) ou o raio ao redor. */
+  const visiveis = useMemo<ItemProximo[]>(() => {
+    if (!visao) return proximos;
+    return visao.defeitos.map((defeito) => ({
+      defeito,
+      distancia: posicao
+        ? distanciaAte(defeito, posicao.latitude, posicao.longitude)
+        : Number.POSITIVE_INFINITY,
+      icone: iconePorCategoria.get(defeito.categoria ?? defeito.categoria_nome ?? ''),
+      emAlcance: false,
+    }));
+  }, [visao, proximos, posicao, iconePorCategoria]);
+
   const celulasCalor = useMemo(
-    () => agruparParaHeatmap(proximos.map((p) => p.defeito)),
-    [proximos],
+    () => agruparParaHeatmap(visiveis.map((p) => p.defeito)),
+    [visiveis],
   );
   const pesoMaximo = useMemo(
     () => celulasCalor.reduce((max, c) => Math.max(max, c.peso), 1),
@@ -209,7 +229,8 @@ export default function MapaScreen() {
 
   const circulos = useMemo<CirculoMapa[]>(() => {
     const lista: CirculoMapa[] = [];
-    if (posicao) {
+    // Na visão do município os raios ao redor da pessoa só poluem.
+    if (posicao && !visao) {
       const centro = { latitude: posicao.latitude, longitude: posicao.longitude };
       lista.push({
         key: 'raio-busca',
@@ -241,13 +262,13 @@ export default function MapaScreen() {
       }
     }
     return lista;
-  }, [posicao, raio, isAuthenticated, mostrarCalor, celulasCalor, pesoMaximo]);
+  }, [posicao, raio, isAuthenticated, mostrarCalor, celulasCalor, pesoMaximo, visao]);
 
   const marcadores = useMemo<MarcadorMapa[]>(
     () =>
       mostrarCalor
         ? []
-        : proximos.map(({ defeito, icone, emAlcance }) => ({
+        : visiveis.map(({ defeito, icone, emAlcance }) => ({
             key: String(defeito.id),
             coordenada: { latitude: defeito.latitude, longitude: defeito.longitude },
             cor: getStatusColor(defeito.status, concluidoEm(defeito)),
@@ -255,8 +276,34 @@ export default function MapaScreen() {
             emAlcance,
             selecionado: selecionado?.id === defeito.id,
           })),
-    [mostrarCalor, proximos, selecionado?.id],
+    [mostrarCalor, visiveis, selecionado?.id],
   );
+
+  /** Liga a visão do município: enquadra a cidade e carrega abertos + ranking. */
+  async function abrirVisaoMunicipio() {
+    if (!posicao) {
+      addToast(erroGps ?? 'Aguardando sinal do GPS...', 'info');
+      return;
+    }
+    setCarregandoVisao(true);
+    try {
+      const dados = await api.visaoMunicipio(posicao.latitude, posicao.longitude);
+      setVisao(dados);
+      setSeguindo(false);
+      setSelecionado(null);
+      mapRef.current?.animarPara(regiaoDaCaixa(dados.municipio));
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Não foi possível carregar a cidade.', 'error');
+    } finally {
+      setCarregandoVisao(false);
+    }
+  }
+
+  function fecharVisaoMunicipio() {
+    setVisao(null);
+    setSelecionado(null);
+    recentrar();
+  }
 
   function abrirNovoChamado(coordinate: { latitude: number; longitude: number }) {
     // Em qual cidade o ponto caiu é o backend que resolve (PostGIS) e grava
@@ -338,7 +385,7 @@ export default function MapaScreen() {
             if (isAuthenticated) abrirNovoChamado(c);
           }}
           onPressMarcador={(key) => {
-            const item = proximos.find((p) => String(p.defeito.id) === key);
+            const item = visiveis.find((p) => String(p.defeito.id) === key);
             if (item) {
               setSeguindo(false);
               abrirDetalhe(item.defeito);
@@ -367,6 +414,29 @@ export default function MapaScreen() {
           </View>
         ) : null}
 
+        {/* Canto superior direito: visão do município (cidade inteira + ranking). */}
+        <View style={styles.topoDireita}>
+          <Pressable
+            onPress={visao ? fecharVisaoMunicipio : abrirVisaoMunicipio}
+            disabled={carregandoVisao}
+            accessibilityRole="button"
+            accessibilityLabel={visao ? 'Voltar para a navegação' : 'Ver a cidade inteira'}
+            style={[
+              styles.botaoRedondo,
+              {
+                backgroundColor: visao ? colors.gold500 : colors.bgSurface,
+                borderColor: visao ? colors.gold500 : colors.borderDefault,
+                opacity: carregandoVisao ? 0.6 : 1,
+              },
+            ]}>
+            <Ionicons
+              name={visao ? 'contract' : 'expand'}
+              size={18}
+              color={visao ? colors.textInverse : colors.textSecondary}
+            />
+          </Pressable>
+        </View>
+
         {/* Controles laterais: filtros. */}
         <View style={[styles.lateral, { bottom: rodape + 60 }]}>
           {isAuthenticated ? (
@@ -386,48 +456,71 @@ export default function MapaScreen() {
         {MOSTRAR_JOYSTICK ? <GpsJoystick posicaoReal={posicao} /> : null}
 
         <View style={[styles.rodape, { bottom: rodape }]} pointerEvents="box-none">
-          <View style={styles.fabLinha} pointerEvents="box-none">
-            {seguindo ? (
-              <Pressable
-                onPress={reportarAqui}
-                accessibilityRole="button"
-                accessibilityLabel="Reportar chamado na minha posição"
-                style={[
-                  styles.fab,
-                  {
-                    backgroundColor:
-                      posicao || !isAuthenticated ? colors.gold500 : colors.bgElevated,
-                    borderColor:
-                      posicao || !isAuthenticated ? colors.gold500 : colors.borderDefault,
-                  },
-                ]}>
-                <Ionicons
-                  name="megaphone"
-                  size={20}
-                  color={posicao || !isAuthenticated ? colors.textInverse : colors.textMuted}
-                />
-                <Text
+          {visao ? (
+            <View style={styles.fabLinha} pointerEvents="box-none">
+              <MunicipioPanel
+                visao={visao}
+                icones={iconePorCategoria}
+                onSelecionar={(d) => {
+                  abrirDetalhe(d);
+                  mapRef.current?.animarPara({
+                    latitude: d.latitude,
+                    longitude: d.longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  });
+                }}
+                onFechar={fecharVisaoMunicipio}
+              />
+            </View>
+          ) : (
+            <View style={styles.fabLinha} pointerEvents="box-none">
+              {seguindo ? (
+                <Pressable
+                  onPress={reportarAqui}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reportar chamado na minha posição"
                   style={[
-                    styles.fabTexto,
-                    { color: posicao || !isAuthenticated ? colors.textInverse : colors.textMuted },
+                    styles.fab,
+                    {
+                      backgroundColor:
+                        posicao || !isAuthenticated ? colors.gold500 : colors.bgElevated,
+                      borderColor:
+                        posicao || !isAuthenticated ? colors.gold500 : colors.borderDefault,
+                    },
                   ]}>
-                  Reportar
-                </Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                onPress={recentrar}
-                accessibilityRole="button"
-                accessibilityLabel="Recentralizar na minha posição"
-                style={[
-                  styles.fab,
-                  { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault },
-                ]}>
-                <Ionicons name="locate" size={20} color={colors.gold500} />
-                <Text style={[styles.fabTexto, { color: colors.textPrimary }]}>Recentralizar</Text>
-              </Pressable>
-            )}
-          </View>
+                  <Ionicons
+                    name="megaphone"
+                    size={20}
+                    color={posicao || !isAuthenticated ? colors.textInverse : colors.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.fabTexto,
+                      {
+                        color: posicao || !isAuthenticated ? colors.textInverse : colors.textMuted,
+                      },
+                    ]}>
+                    Reportar
+                  </Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  onPress={recentrar}
+                  accessibilityRole="button"
+                  accessibilityLabel="Recentralizar na minha posição"
+                  style={[
+                    styles.fab,
+                    { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault },
+                  ]}>
+                  <Ionicons name="locate" size={20} color={colors.gold500} />
+                  <Text style={[styles.fabTexto, { color: colors.textPrimary }]}>
+                    Recentralizar
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          )}
         </View>
       </View>
 
@@ -556,6 +649,12 @@ const styles = StyleSheet.create({
     left: Spacing[4],
     right: Spacing[4],
     alignItems: 'center',
+  },
+  topoDireita: {
+    position: 'absolute',
+    zIndex: 1001,
+    top: Spacing[3],
+    right: Spacing[4],
   },
   pill: {
     flexDirection: 'row',

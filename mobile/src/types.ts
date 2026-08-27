@@ -63,6 +63,26 @@ export type Defeito = {
   usuario?: { id: number | string; nome?: string } | null;
 };
 
+/** Resposta de GET /defeitos/municipio/?lat&lng — visão expandida do mapa. */
+export type VisaoMunicipio = {
+  municipio: {
+    codigo: string;
+    nome: string;
+    uf_sigla: string;
+    min_lat: number;
+    max_lat: number;
+    min_lng: number;
+    max_lng: number;
+  };
+  total_abertos: number;
+  /** Categorias mais frequentes, da maior para a menor. */
+  tipos: { categoria: string; total: number }[];
+  /** IDs (em `defeitos`) dos mais antigos e dos mais confirmados. */
+  mais_antigos: (number | string)[];
+  mais_apoiados: (number | string)[];
+  defeitos: Defeito[];
+};
+
 export type AuthResponse = {
   access: string;
   refresh?: string;

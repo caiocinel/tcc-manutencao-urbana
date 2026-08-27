@@ -87,6 +87,16 @@ SCHEMA = [
     """
     CREATE INDEX IF NOT EXISTS idx_defeitos_municipio ON defeitos(municipio_id)
     """,
+    # Chamados anteriores à coluna (ou cujo município não resolveu na hora)
+    # ganham a cidade pelo polígono. Idempotente: só toca em quem está nulo.
+    """
+    UPDATE defeitos d SET municipio_id = m.codigo
+    FROM municipios m
+    WHERE d.municipio_id IS NULL
+      AND d.latitude IS NOT NULL AND d.longitude IS NOT NULL
+      AND m.polygon_geom IS NOT NULL
+      AND ST_Contains(m.polygon_geom::geometry, ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326))
+    """,
     """
     ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS secretaria_responsavel TEXT NOT NULL DEFAULT ''
     """,
