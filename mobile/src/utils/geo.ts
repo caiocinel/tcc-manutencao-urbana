@@ -50,6 +50,25 @@ export function regiaoDaCaixa(caixa: {
   };
 }
 
+/**
+ * Menor caixa que contem todos os pontos, ou null se a lista estiver vazia.
+ * Usada para enquadrar so a area onde ha chamados, em vez do municipio
+ * inteiro (em cidades enormes o zoom-out deixaria tudo invisivel).
+ */
+export function caixaDosPontos(pontos: { latitude: number; longitude: number }[]) {
+  const validos = pontos.filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+  if (validos.length === 0) return null;
+  return validos.reduce(
+    (c, p) => ({
+      min_lat: Math.min(c.min_lat, p.latitude),
+      max_lat: Math.max(c.max_lat, p.latitude),
+      min_lng: Math.min(c.min_lng, p.longitude),
+      max_lng: Math.max(c.max_lng, p.longitude),
+    }),
+    { min_lat: Infinity, max_lat: -Infinity, min_lng: Infinity, max_lng: -Infinity },
+  );
+}
+
 /** Enquadramento inicial antes do GPS responder (Criciúma/SC, como no web). */
 export const REGIAO_PADRAO = {
   latitude: -28.67,

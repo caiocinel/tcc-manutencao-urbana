@@ -318,11 +318,11 @@ export const api = {
   updateDefeito: (id: number, data: Record<string, unknown>) =>
     request<Defeito>(`/api/v1/defeitos/${id}/`, { method: 'PATCH', body: data }),
 
-  /** Finaliza o chamado enviando a foto de resolução. */
-  finalizarDefeito: async (id: number, fotoResolucao: PickedImage) => {
+  /** Finaliza o chamado; a foto de resolução é opcional. */
+  finalizarDefeito: async (id: number, fotoResolucao?: PickedImage) => {
     const fd = new FormData();
     fd.append('status', 'atendido');
-    await appendImage(fd, 'foto_resolucao', fotoResolucao);
+    if (fotoResolucao) await appendImage(fd, 'foto_resolucao', fotoResolucao);
     return request<Defeito>(`/api/v1/defeitos/${id}/status/`, { method: 'PATCH', body: fd });
   },
 

@@ -33,7 +33,7 @@ import {
   totalApoios,
 } from '@/utils/format';
 import { formatarDistancia } from '@/utils/geo';
-import { escolherDaGaleria, ImagemMuitoGrandeError, tirarFoto } from '@/utils/image';
+import { escolherDaGaleria, ImagemMuitoGrandeError } from '@/utils/image';
 import { getTimelineItems } from '@/utils/timeline';
 
 type Props = {
@@ -128,25 +128,11 @@ export function DefectSheet({
     });
   }
 
-  /** Finalizar exige a foto de resolução, então a câmera abre antes do PATCH. */
+  /** Finaliza o atendimento. Foto de resolução não é exigida. */
   function handleFinalizar() {
     const id = defeito!.id;
     return comAcao('finalizar', async () => {
-      let foto: PickedImage | null = null;
-      try {
-        foto = await tirarFoto();
-      } catch (err) {
-        if (err instanceof ImagemMuitoGrandeError) {
-          addToast(err.message, 'error');
-          return;
-        }
-        throw err;
-      }
-      if (!foto) {
-        addToast('Foto de resolução é obrigatória para finalizar.', 'error');
-        return;
-      }
-      await api.finalizarDefeito(id, foto);
+      await api.finalizarDefeito(id);
       addToast('Chamado finalizado!');
       onPatch(id, { status: 'atendido' });
     });

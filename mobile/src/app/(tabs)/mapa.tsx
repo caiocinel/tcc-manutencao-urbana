@@ -48,7 +48,7 @@ import { useLocalizacao } from '@/hooks/use-localizacao';
 import { api } from '@/services/api';
 import type { Categoria, Defeito, VisaoMunicipio } from '@/types';
 import { concluidoEm } from '@/utils/format';
-import { distanciaAte, regiaoDaCaixa, REGIAO_PADRAO } from '@/utils/geo';
+import { caixaDosPontos, distanciaAte, regiaoDaCaixa, REGIAO_PADRAO } from '@/utils/geo';
 import { agruparParaHeatmap, corDoPeso, raioDoPeso } from '@/utils/heatmap';
 
 type Filtro = 'pendentes' | 'todos' | 'atendidos' | 'meus';
@@ -291,7 +291,13 @@ export default function MapaScreen() {
       setVisao(dados);
       setSeguindo(false);
       setSelecionado(null);
-      mapRef.current?.animarPara(regiaoDaCaixa(dados.municipio));
+      // Enquadra só onde há chamados (mais a pessoa, para dar contexto);
+      // o município inteiro só quando não há nenhum aberto — em cidades
+      // gigantes o zoom-out total deixaria os pinos invisíveis.
+      const caixa = caixaDosPontos([...dados.defeitos, posicao]);
+      mapRef.current?.animarPara(
+        regiaoDaCaixa(dados.defeitos.length > 0 && caixa ? caixa : dados.municipio),
+      );
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Não foi possível carregar a cidade.', 'error');
     } finally {

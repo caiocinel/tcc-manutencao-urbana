@@ -65,8 +65,6 @@ export default function MapPage() {
   const [selectedImage, setSelectedImage] = useState(null);
   const anexarRef = useRef(null);
   const [anexando, setAnexando] = useState(null);
-  const [fotoResolucao, setFotoResolucao] = useState(null);
-  const fotoResolucaoRef = useRef(null);
   const [finalizando, setFinalizando] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const { theme, toggle: toggleTheme } = useTheme();
@@ -140,7 +138,6 @@ export default function MapPage() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    setFotoResolucao(null);
   }, [selected]);
 
   useEffect(() => {
@@ -267,24 +264,17 @@ export default function MapPage() {
 
   const handleFinalizarMap = useCallback(async (id, e) => {
     e?.stopPropagation();
-    const file = fotoResolucao;
-    if (!file) {
-      addToast('Selecione a foto de resolução antes de finalizar.', 'error');
-      return;
-    }
     setFinalizando(id);
     try {
       const fd = new FormData();
       fd.append('status', 'atendido');
-      fd.append('foto_resolucao', file);
       await api.updateDefeitoComArquivo(id, fd);
       addToast('Chamado finalizado!');
       setSelected(prev => prev?.id === id ? { ...prev, status: 'atendido' } : prev);
       setDefeitos(prev => prev.map(d => d.id === id ? { ...d, status: 'atendido' } : d));
-      setFotoResolucao(null);
     } catch (err) { addToast('Erro: ' + err.message, 'error'); }
     finally { setFinalizando(null); }
-  }, [addToast, fotoResolucao]);
+  }, [addToast]);
 
   const mapKey = `${theme}-${hasMunicipio ? `${user?.municipio_id}-${user?.municipio?.min_lat}-${user?.municipio?.min_lng}` : 'default'}`;
 
@@ -611,14 +601,11 @@ export default function MapPage() {
                   </button>
                 )}
                 {user?.admin && selected.atendente_id && ['vinculado_sem_resposta','vinculado_com_resposta'].includes(selected.status) && (
-                  <button onClick={e => fotoResolucao ? handleFinalizarMap(selected.id, e) : fotoResolucaoRef.current?.click()} disabled={finalizando === selected.id}
+                  <button onClick={e => handleFinalizarMap(selected.id, e)} disabled={finalizando === selected.id}
                     className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
                     style={{ background: 'var(--color-error)', color: '#fff' }}>
                     {finalizando === selected.id ? '...' : 'Finalizar'}
                   </button>
-                )}
-                {fotoResolucao && (
-                  <span className="text-xs truncate max-w-[120px]" style={{ color: 'var(--color-text-muted)' }}>{fotoResolucao?.name}</span>
                 )}
                 <button onClick={() => handleApoiar(selected.id)} disabled={apoiando === selected.id}
                   className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
@@ -653,8 +640,6 @@ export default function MapPage() {
                     } catch (err) { addToast('Erro: ' + err.message, 'error'); }
                     finally { setAnexando(null); e.target.value = ''; }
                   }} />
-                <input ref={fotoResolucaoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
-                  onChange={e => { setFotoResolucao(e.target.files?.[0] || null); e.target.value = ''; }} />
               </div>
             </motion.div>
           </div>

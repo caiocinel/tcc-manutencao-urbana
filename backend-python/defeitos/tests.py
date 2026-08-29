@@ -316,13 +316,17 @@ class TestStatusAction:
         )
         assert resp.status_code == 400
 
-    def test_resolvido_exige_foto_resolucao(self, admin_client):
+    def test_resolvido_sem_foto_resolucao(self, admin_client):
+        """A foto de resolução é opcional: finalizar sem ela é permitido."""
         created = _create_defeito(admin_client)
         resp = admin_client.patch(
             reverse(self.STATUS_URL, args=[created['id']]),
             {'status': 'atendido'}, format='json',
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        assert resp.data['status'] == 'atendido'
+        assert resp.data['atendido_em']
+        assert resp.data['foto_resolucao_url'] is None
 
     def test_resolvido_com_foto_resolucao(self, admin_client):
         import io
@@ -528,15 +532,18 @@ class TestBatchStatus:
         assert resp.data['updated'] == 1
         assert Defeito.objects.get(id=d1['id']).status == 'em_andamento'
 
-    def test_batch_status_rejects_resolved_status(self, admin_client):
-        """Status resolvidos exigem foto de resolução — inválido em lote."""
+    def test_batch_status_resolvido_marca_atendido_em(self, admin_client):
+        """Finalizar em lote é permitido (foto opcional) e registra atendido_em."""
         d1 = _create_defeito(admin_client)
         resp = admin_client.patch(
             reverse(self.URL),
             {'ids': [d1['id']], 'status': 'atendido'},
             format='json',
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        obj = Defeito.objects.get(id=d1['id'])
+        assert obj.status == 'atendido'
+        assert obj.atendido_em
 
 
 class TestOrdemServico:

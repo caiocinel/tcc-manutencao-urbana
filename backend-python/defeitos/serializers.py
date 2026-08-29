@@ -41,7 +41,7 @@ class DefeitoListSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'titulo', 'status', 'categoria_nome',
             'autor_nome', 'latitude', 'longitude', 'municipio_id',
-            'rua', 'bairro', 'prioridade',
+            'rua', 'bairro', 'prioridade', 'atendente_id',
             'total_apoios', 'criado_em', 'imagem_url',
             'sla_vencido',
         )
@@ -55,6 +55,9 @@ class DefeitoListSerializer(serializers.ModelSerializer):
 
 class DefeitoDetailSerializer(serializers.ModelSerializer):
     autor_nome = serializers.CharField(source='usuario.nome', read_only=True, default='')
+    # Os clientes leem `atendente_id` (mesmo nome da listagem); o ModelSerializer
+    # sozinho só emitiria `atendente`.
+    atendente_id = serializers.PrimaryKeyRelatedField(source='atendente', read_only=True)
     categoria_nome = serializers.CharField(source='categoria', read_only=True, default='')
     total_apoios = serializers.SerializerMethodField()
     imagem_thumbnail = ThumbnailField()

@@ -121,13 +121,10 @@ class DefeitoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         resolvidos = {'atendido', 'encerrado', 'concluido'}
-        if novo_status in resolvidos and defeito.status not in resolvidos:
-            arquivo = request.FILES.get('foto_resolucao')
-            if arquivo is None:
-                return Response(
-                    {'error': 'Foto de resolucao obrigatoria para concluir o chamado'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        # Foto de resolução é opcional: se vier, fica guardada como registro
+        # do serviço feito; sem ela o chamado é finalizado do mesmo jeito.
+        arquivo = request.FILES.get('foto_resolucao')
+        if arquivo is not None:
             from services.image_processor import process_image
             try:
                 result = process_image(arquivo.read())
@@ -283,13 +280,12 @@ class DefeitoViewSet(viewsets.ModelViewSet):
                 {'error': 'Invalid status'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if novo_status in {'atendido', 'encerrado', 'concluido'}:
-            return Response(
-                {'error': 'Status resolvido exige foto de resolucao - use a acao individual'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         qs = self.get_queryset().filter(id__in=ids)
-        updated = qs.update(status=novo_status, atualizado_em=timezone.now())
+        agora = timezone.now()
+        if novo_status in {'atendido', 'encerrado', 'concluido'}:
+            # Marca quando foi resolvido, sem sobrescrever quem já tinha data.
+            qs.filter(atendido_em='').update(atendido_em=agora.isoformat())
+        updated = qs.update(status=novo_status, atualizado_em=agora)
         return Response({'updated': updated})
 
     @action(detail=False, methods=['post'])
