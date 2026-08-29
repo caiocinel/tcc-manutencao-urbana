@@ -9,7 +9,7 @@
 
 import { forwardRef, useImperativeHandle, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import MapView, { Circle, Marker } from 'react-native-maps';
+import MapView, { Circle, Marker, Polyline } from 'react-native-maps';
 
 import { MAPA_ESTILO_ESCURO } from '@/constants/map-style';
 import { Radius } from '@/constants/theme';
@@ -25,6 +25,7 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
     regiaoInicial,
     circulos,
     marcadores,
+    linhas = [],
     usuario,
     onLongPressMapa,
     onPressMarcador,
@@ -79,6 +80,18 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
         />
       ))}
 
+      {linhas.map((linha) => (
+        <Polyline
+          key={linha.key}
+          coordinates={linha.coordenadas}
+          strokeColor={linha.cor}
+          strokeWidth={linha.largura ?? 4}
+          lineDashPattern={linha.tracejada ? [10, 8] : undefined}
+          lineCap="round"
+          lineJoin="round"
+        />
+      ))}
+
       {marcadores.map((marcador) => (
         <Marker
           key={marcador.key}
@@ -92,6 +105,7 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
             icone={marcador.icone}
             emAlcance={!!marcador.emAlcance}
             selecionado={!!marcador.selecionado}
+            rotulo={marcador.rotulo}
           />
         </Marker>
       ))}
@@ -138,11 +152,13 @@ function Pino({
   icone,
   emAlcance,
   selecionado,
+  rotulo,
 }: {
   cor: string;
   icone?: string;
   emAlcance: boolean;
   selecionado: boolean;
+  rotulo?: string;
 }) {
   const balao = selecionado ? 40 : 32;
   const destaque = emAlcance ? OURO : '#fff';
@@ -161,6 +177,11 @@ function Pino({
         ]}>
         {icone ? <Text style={{ fontSize: balao * 0.5 }}>{icone}</Text> : null}
       </View>
+      {rotulo ? (
+        <View style={[styles.beaconRotulo, { bottom: balao + 10 }]}>
+          <Text style={styles.beaconRotuloTexto}>{rotulo}</Text>
+        </View>
+      ) : null}
       <View style={[styles.beaconHaste, { backgroundColor: cor }]} />
       <View style={[styles.beaconHalo, { backgroundColor: emAlcance ? OURO : cor }]} />
       <View style={[styles.beaconPonto, { backgroundColor: cor }]} />
@@ -185,6 +206,26 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 3 },
     elevation: 5,
+  },
+  // Número da parada: etiqueta preta sobre o balão.
+  beaconRotulo: {
+    position: 'absolute',
+    right: 2,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: Radius.full,
+    backgroundColor: '#111',
+    borderWidth: 2,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  beaconRotuloTexto: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   beaconHaste: {
     position: 'absolute',

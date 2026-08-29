@@ -13,9 +13,15 @@
  * - O mapa mostra os pinos do recorte, coloridos por status; o painel inferior
  *   lista os mesmos chamados, mais perto primeiro (ou mais antigo, sem GPS),
  *   com alerta de SLA vencido.
- * - Enquadrar (canto superior direito) ajusta o zoom para caber todo o recorte;
- *   Recentralizar volta para a posição do operador.
+ * - Enquadrar ajusta o zoom para caber todo o recorte; Recentralizar volta
+ *   para a posição do operador.
  * - Tocar num pino ou num item abre o `OperacaoSheet`, com as ações de operador.
+ *
+ * **Rota inteligente**: toque longo (ou o botão de rota) entra em modo de
+ * seleção; "Criar rota" ordena as paradas partindo da posição atual — pelo
+ * OSRM (ruas) quando ele responde, senão em linha reta (`utils/rota.ts`) —,
+ * assume em lote as que ainda não têm atendente e abre o `RoteiroPanel`, que
+ * avança sozinho quando a parada atual é finalizada.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -25,8 +31,15 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MapSurface } from '@/components/map-surface';
-import type { MapSurfaceHandle, MarcadorMapa, Regiao } from '@/components/map-surface.types';
+import type {
+  LinhaMapa,
+  MapSurfaceHandle,
+  MarcadorMapa,
+  Regiao,
+} from '@/components/map-surface.types';
 import { OperacaoSheet } from '@/components/operacao-sheet';
+import { RoteiroPanel, type Roteiro } from '@/components/roteiro-panel';
+import { Button } from '@/components/ui/button';
 import { FilterChips } from '@/components/ui/chips';
 import { LoadingState } from '@/components/ui/screen';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -38,6 +51,7 @@ import { useToast } from '@/context/toast-context';
 import { GpsJoystick } from '@/dev/gps-joystick';
 import { useLocalizacao } from '@/hooks/use-localizacao';
 import { api } from '@/services/api';
+import { routeOsrm, tripOsrm } from '@/services/osrm';
 import type { Categoria, Defeito, Operacao } from '@/types';
 import { concluidoEm } from '@/utils/format';
 import {
@@ -47,6 +61,7 @@ import {
   regiaoDaCaixa,
   REGIAO_PADRAO,
 } from '@/utils/geo';
+import { maisProximos, ordenarParadas } from '@/utils/rota';
 
 type Recorte = 'fila' | 'meus' | 'abertos' | 'concluidos';
 
@@ -58,6 +73,11 @@ const RECORTES: { value: Recorte; label: string }[] = [
 ];
 
 const MOSTRAR_JOYSTICK = __DEV__ && Platform.OS === 'web';
+
+/** Tamanho da seleção rápida "mais próximos". */
+const ATALHO_MAIS_PROXIMOS = 5;
+/** Acima disso o 2-opt e o OSRM ficam lentos/recusam. */
+const MAX_PARADAS = 25;
 
 function diasDesde(iso: string) {
   const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -87,6 +107,13 @@ export default function OperacaoScreen() {
   const [mapaPronto, setMapaPronto] = useState(false);
   // Enquadra o recorte uma vez por carga; depois disso a câmera é do operador.
   const enquadrouRef = useRef(false);
+
+  // Rota inteligente: seleção de paradas e roteiro ativo.
+  const [modoSelecao, setModoSelecao] = useState(false);
+  const [selecao, setSelecao] = useState<Set<number>>(new Set());
+  const [roteiro, setRoteiro] = useState<Roteiro | null>(null);
+  const [tracado, setTracado] = useState<LinhaMapa | null>(null);
+  const [criandoRota, setCriandoRota] = useState(false);
 
   const regiaoInicial: Regiao = REGIAO_PADRAO;
 
@@ -169,27 +196,49 @@ export default function OperacaoScreen() {
     [totais],
   );
 
-  const marcadores = useMemo<MarcadorMapa[]>(
-    () =>
-      lista.map(({ defeito, icone }) => ({
+  /** Paradas do roteiro na versão mais recente de `defeitos` (status atualizado). */
+  const paradasAtuais = useMemo(() => {
+    if (!roteiro) return null;
+    const porId = new Map(defeitos.map((d) => [d.id, d]));
+    return roteiro.paradas.map((p) => porId.get(p.id) ?? p);
+  }, [roteiro, defeitos]);
+
+  const marcadores = useMemo<MarcadorMapa[]>(() => {
+    if (roteiro && paradasAtuais) {
+      // No roteiro só as paradas aparecem, numeradas; a atual em destaque.
+      return paradasAtuais.map((defeito, i) => ({
         key: String(defeito.id),
         coordenada: { latitude: defeito.latitude, longitude: defeito.longitude },
-        cor: getStatusColor(defeito.status, concluidoEm(defeito)),
-        icone,
-        selecionado: selecionado?.id === defeito.id,
-      })),
-    [lista, selecionado?.id],
-  );
+        cor: roteiro.concluidas.has(defeito.id)
+          ? '#6B7280'
+          : getStatusColor(defeito.status, concluidoEm(defeito)),
+        icone: iconePorCategoria.get(defeito.categoria ?? defeito.categoria_nome ?? ''),
+        rotulo: String(i + 1),
+        selecionado: i === roteiro.atual,
+      }));
+    }
+    return lista.map(({ defeito, icone }) => ({
+      key: String(defeito.id),
+      coordenada: { latitude: defeito.latitude, longitude: defeito.longitude },
+      cor: getStatusColor(defeito.status, concluidoEm(defeito)),
+      icone,
+      // Em modo de seleção o anel dourado marca quem entra na rota.
+      emAlcance: modoSelecao && selecao.has(defeito.id),
+      selecionado: selecionado?.id === defeito.id,
+    }));
+  }, [roteiro, paradasAtuais, lista, selecionado?.id, iconePorCategoria, modoSelecao, selecao]);
+
+  function enquadrarPontos(pontos: { latitude: number; longitude: number }[]) {
+    const todos = posicao ? [...pontos, posicao] : pontos;
+    const caixa = caixaDosPontos(todos);
+    if (!caixa) return false;
+    mapRef.current?.animarPara(regiaoDaCaixa(caixa));
+    return true;
+  }
 
   function enquadrar() {
-    const pontos: { latitude: number; longitude: number }[] = lista.map((i) => i.defeito);
-    if (posicao) pontos.push(posicao);
-    const caixa = caixaDosPontos(pontos);
-    if (!caixa) {
-      addToast('Nada para enquadrar neste recorte.', 'info');
-      return;
-    }
-    mapRef.current?.animarPara(regiaoDaCaixa(caixa));
+    const pontos = roteiro && paradasAtuais ? paradasAtuais : lista.map((i) => i.defeito);
+    if (!enquadrarPontos(pontos)) addToast('Nada para enquadrar neste recorte.', 'info');
   }
 
   // Primeiro enquadramento: assim que mapa e dados existem.
@@ -212,9 +261,27 @@ export default function OperacaoScreen() {
     mapRef.current?.seguir(posicao);
   }
 
+  function concluirParada(id: number) {
+    setRoteiro((prev) => {
+      if (!prev) return prev;
+      const idx = prev.paradas.findIndex((p) => p.id === id);
+      if (idx < 0) return prev;
+      const concluidas = new Set(prev.concluidas);
+      concluidas.add(id);
+      let atual = prev.atual;
+      if (idx === prev.atual) {
+        atual = prev.paradas.findIndex((p, i) => i > prev.atual && !concluidas.has(p.id));
+        if (atual < 0) atual = prev.paradas.length;
+      }
+      return { ...prev, concluidas, atual };
+    });
+  }
+
   function aplicarPatch(id: number, patch: Partial<Defeito>) {
     setDefeitos((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
     setSelecionado((prev) => (prev?.id === id ? { ...prev, ...patch } : prev));
+    // Finalizou uma parada do roteiro: o roteiro avança.
+    if (patch.status && STATUS_FECHADOS.includes(patch.status)) concluirParada(id);
   }
 
   function substituir(defeito: Defeito) {
@@ -239,6 +306,148 @@ export default function OperacaoScreen() {
     } catch {
       // Mantém o resumo da listagem.
     }
+  }
+
+  // ---------------------------------------------------------------- seleção
+
+  function alternarSelecao(id: number) {
+    setSelecao((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else if (next.size >= MAX_PARADAS) {
+        addToast(`No máximo ${MAX_PARADAS} paradas por rota.`, 'info');
+        return prev;
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+    setModoSelecao(true);
+  }
+
+  function selecionarMaisProximos() {
+    if (!posicao) {
+      addToast(erroGps ?? 'Aguardando sinal do GPS...', 'info');
+      return;
+    }
+    const abertos = lista.map((i) => i.defeito).filter((d) => STATUS_ABERTOS.includes(d.status));
+    const escolhidos = maisProximos(posicao, abertos, ATALHO_MAIS_PROXIMOS);
+    setSelecao(new Set(escolhidos.map((d) => d.id)));
+    setModoSelecao(true);
+  }
+
+  function sairDaSelecao() {
+    setModoSelecao(false);
+    setSelecao(new Set());
+  }
+
+  // ---------------------------------------------------------------- roteiro
+
+  async function criarRota() {
+    if (!posicao) {
+      addToast(erroGps ?? 'Aguardando sinal do GPS...', 'info');
+      return;
+    }
+    const escolhidas = defeitos.filter((d) => selecao.has(d.id));
+    if (escolhidas.length === 0) return;
+    setCriandoRota(true);
+    try {
+      const origem = { latitude: posicao.latitude, longitude: posicao.longitude };
+      const temPrioritarias = escolhidas.some((d) => d.sla_vencido);
+      const ordemLocal = () =>
+        ordenarParadas(
+          origem,
+          escolhidas.map((d) => ({ ...d, prioritario: !!d.sla_vencido })),
+        );
+
+      // Ordem: OSRM (ruas) quando não há prioridade a respeitar; senão,
+      // ordena localmente (prioritárias primeiro) e pede ao OSRM só o traçado.
+      let paradas: Defeito[];
+      let geometria: { latitude: number; longitude: number }[];
+      let distanciaM: number;
+      let duracaoS: number | null;
+      let fonte: Roteiro['fonte'];
+      try {
+        if (!temPrioritarias) {
+          const r = await tripOsrm(origem, escolhidas);
+          paradas = r.ordem.map((i) => escolhidas[i]);
+          geometria = r.geometria;
+          distanciaM = r.distanciaM;
+          duracaoS = r.duracaoS;
+        } else {
+          paradas = ordemLocal().paradas;
+          const r = await routeOsrm([origem, ...paradas]);
+          geometria = r.geometria;
+          distanciaM = r.distanciaM;
+          duracaoS = r.duracaoS;
+        }
+        fonte = 'ruas';
+      } catch {
+        // OSRM fora do ar / sem rede: linha reta, ordem local.
+        const local = ordemLocal();
+        paradas = local.paradas;
+        geometria = [
+          origem,
+          ...paradas.map((p) => ({ latitude: p.latitude, longitude: p.longitude })),
+        ];
+        distanciaM = local.distanciaM;
+        duracaoS = null;
+        fonte = 'reta';
+      }
+
+      // Assume em lote o que ainda está na fila, para ninguém mais pegar.
+      const semAtendente = paradas.filter(
+        (p) => !p.atendente_id && !STATUS_FECHADOS.includes(p.status),
+      );
+      if (semAtendente.length > 0) {
+        const resultados = await Promise.allSettled(
+          semAtendente.map((p) => api.atenderDefeito(p.id)),
+        );
+        const ok = new Set<number>();
+        resultados.forEach((r, i) => {
+          if (r.status === 'fulfilled') ok.add(semAtendente[i].id);
+        });
+        if (ok.size > 0) {
+          setDefeitos((prev) =>
+            prev.map((d) =>
+              ok.has(d.id)
+                ? { ...d, status: 'vinculado_sem_resposta', atendente_id: user?.id ?? null }
+                : d,
+            ),
+          );
+        }
+        const falhas = semAtendente.length - ok.size;
+        if (falhas > 0) addToast(`${falhas} chamado(s) já assumidos por outro operador.`, 'info');
+      }
+
+      setRoteiro({ paradas, atual: 0, concluidas: new Set(), distanciaM, duracaoS, fonte });
+      setTracado({
+        key: 'roteiro',
+        coordenadas: geometria,
+        cor: colors.gold500,
+        largura: 5,
+        tracejada: fonte === 'reta',
+      });
+      sairDaSelecao();
+      setSelecionado(null);
+      setPainelAberto(true);
+      enquadrarPontos(paradas);
+      if (fonte === 'reta') addToast('Sem rota por ruas agora; traçado em linha reta.', 'info');
+    } finally {
+      setCriandoRota(false);
+    }
+  }
+
+  function pularParada() {
+    if (!roteiro) return;
+    const atual = roteiro.paradas[roteiro.atual];
+    if (atual) concluirParada(atual.id);
+  }
+
+  function encerrarRoteiro() {
+    setRoteiro(null);
+    setTracado(null);
   }
 
   const rodape = insets.bottom + Spacing[4];
@@ -267,6 +476,8 @@ export default function OperacaoScreen() {
     );
   }
 
+  const alturaPainel = roteiro ? 300 : painelAberto ? 260 : 76;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.bgPrimary, paddingTop: insets.top }]}>
       <View style={styles.mapaWrapper}>
@@ -275,43 +486,68 @@ export default function OperacaoScreen() {
           regiaoInicial={regiaoInicial}
           circulos={[]}
           marcadores={marcadores}
+          linhas={tracado ? [tracado] : []}
           usuario={posicao}
           direcao={bussola ?? posicao?.heading ?? null}
           onLongPressMapa={() => {}}
           onPressMarcador={(key) => {
-            const item = lista.find((i) => String(i.defeito.id) === key);
-            if (item) abrir(item.defeito);
+            const d = defeitos.find((x) => String(x.id) === key);
+            if (!d) return;
+            if (modoSelecao) alternarSelecao(d.id);
+            else abrir(d);
           }}
           onArrastar={() => {}}
           onPronto={() => setMapaPronto(true)}
           escuro={theme === 'dark'}
         />
 
-        {/* Topo: recortes da fila. */}
-        <View style={styles.topo} pointerEvents="box-none">
-          <View
-            style={[
-              styles.topoBarra,
-              { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault },
-            ]}>
-            <FilterChips
-              options={chips}
-              value={recorte}
-              onChange={(v) => {
-                setRecorte(v);
-                setSelecionado(null);
-              }}
-              accessibilityLabel="Recorte da operação"
-            />
+        {/* Topo: recortes da fila (escondidos durante o roteiro). */}
+        {!roteiro ? (
+          <View style={styles.topo} pointerEvents="box-none">
+            <View
+              style={[
+                styles.topoBarra,
+                { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault },
+              ]}>
+              <FilterChips
+                options={chips}
+                value={recorte}
+                onChange={(v) => {
+                  setRecorte(v);
+                  setSelecionado(null);
+                  sairDaSelecao();
+                }}
+                accessibilityLabel="Recorte da operação"
+              />
+            </View>
           </View>
-        </View>
+        ) : null}
 
-        {/* Lateral direita: enquadrar o recorte e voltar para mim. */}
-        <View style={[styles.lateral, { bottom: rodape + (painelAberto ? 260 : 76) }]}>
+        {/* Lateral direita: rota, enquadrar e voltar para mim. */}
+        <View style={[styles.lateral, { bottom: rodape + alturaPainel }]}>
+          {!roteiro && recorte !== 'concluidos' ? (
+            <Pressable
+              onPress={() => (modoSelecao ? sairDaSelecao() : setModoSelecao(true))}
+              accessibilityRole="button"
+              accessibilityLabel={modoSelecao ? 'Cancelar seleção' : 'Montar rota'}
+              style={[
+                styles.botaoRedondo,
+                {
+                  backgroundColor: modoSelecao ? colors.gold500 : colors.bgSurface,
+                  borderColor: modoSelecao ? colors.gold500 : colors.borderDefault,
+                },
+              ]}>
+              <Ionicons
+                name={modoSelecao ? 'close' : 'git-branch'}
+                size={18}
+                color={modoSelecao ? colors.textInverse : colors.textSecondary}
+              />
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={enquadrar}
             accessibilityRole="button"
-            accessibilityLabel="Enquadrar todos os chamados do recorte"
+            accessibilityLabel="Enquadrar todos os chamados"
             style={[
               styles.botaoRedondo,
               { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault },
@@ -332,101 +568,167 @@ export default function OperacaoScreen() {
 
         {MOSTRAR_JOYSTICK ? <GpsJoystick posicaoReal={posicao} /> : null}
 
-        {/* Painel inferior: a fila em lista. */}
+        {/* Painel inferior: roteiro ativo ou a fila em lista. */}
         <View style={[styles.rodape, { bottom: rodape }]} pointerEvents="box-none">
-          <View
-            style={[
-              styles.painel,
-              { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault },
-            ]}>
-            <Pressable
-              onPress={() => setPainelAberto((v) => !v)}
-              accessibilityRole="button"
-              accessibilityLabel={painelAberto ? 'Recolher lista' : 'Expandir lista'}
-              style={styles.painelCabecalho}>
-              <Ionicons name="construct" size={16} color={colors.gold500} />
-              <View style={styles.painelTitulos}>
-                <Text
-                  style={[styles.painelTitulo, { color: colors.textPrimary }]}
-                  numberOfLines={1}>
-                  {RECORTES.find((r) => r.value === recorte)?.label}
-                  {municipioOp ? ` · ${municipioOp.nome}/${municipioOp.uf_sigla}` : ''}
-                </Text>
-                <Text style={[styles.painelSubtitulo, { color: colors.textMuted }]}>
-                  {lista.length === 1 ? '1 chamado' : `${lista.length} chamados`}
-                  {posicao ? ' · mais perto primeiro' : ' · mais antigo primeiro'}
-                </Text>
-              </View>
-              <Ionicons
-                name={painelAberto ? 'chevron-down' : 'chevron-up'}
-                size={20}
-                color={colors.textSecondary}
-              />
-            </Pressable>
-
-            {painelAberto ? (
-              <ScrollView style={styles.painelCorpo} contentContainerStyle={styles.painelConteudo}>
-                {lista.length === 0 ? (
-                  <Text style={[styles.vazio, { color: colors.textMuted }]}>
-                    {recorte === 'fila'
-                      ? 'Fila vazia — nenhum chamado aguardando.'
-                      : recorte === 'meus'
-                        ? 'Você não está atendendo nenhum chamado.'
-                        : 'Nenhum chamado neste recorte.'}
+          {roteiro && paradasAtuais ? (
+            <RoteiroPanel
+              roteiro={{ ...roteiro, paradas: paradasAtuais }}
+              icones={iconePorCategoria}
+              origem={posicao}
+              onAbrir={(d) => abrir(d, true)}
+              onPular={pularParada}
+              onFechar={encerrarRoteiro}
+            />
+          ) : (
+            <View
+              style={[
+                styles.painel,
+                {
+                  backgroundColor: colors.bgSurface,
+                  borderColor: modoSelecao ? colors.gold500 : colors.borderDefault,
+                },
+              ]}>
+              <Pressable
+                onPress={() => setPainelAberto((v) => !v)}
+                accessibilityRole="button"
+                accessibilityLabel={painelAberto ? 'Recolher lista' : 'Expandir lista'}
+                style={styles.painelCabecalho}>
+                <Ionicons
+                  name={modoSelecao ? 'git-branch' : 'construct'}
+                  size={16}
+                  color={colors.gold500}
+                />
+                <View style={styles.painelTitulos}>
+                  <Text
+                    style={[styles.painelTitulo, { color: colors.textPrimary }]}
+                    numberOfLines={1}>
+                    {modoSelecao
+                      ? `Rota · ${selecao.size} parada${selecao.size === 1 ? '' : 's'}`
+                      : `${RECORTES.find((r) => r.value === recorte)?.label}${
+                          municipioOp ? ` · ${municipioOp.nome}/${municipioOp.uf_sigla}` : ''
+                        }`}
                   </Text>
-                ) : (
-                  lista.map(({ defeito, distancia, icone }) => {
-                    const slaVencido =
-                      !!defeito.sla_vencido && !STATUS_FECHADOS.includes(defeito.status);
-                    return (
-                      <Pressable
-                        key={String(defeito.id)}
-                        onPress={() => abrir(defeito, true)}
-                        accessibilityRole="button"
-                        style={({ pressed }) => [
-                          styles.item,
-                          {
-                            borderColor:
-                              selecionado?.id === defeito.id ? colors.gold500 : 'transparent',
-                            opacity: pressed ? 0.6 : 1,
-                          },
-                        ]}>
-                        <Text style={styles.itemIcone}>{icone ?? '📋'}</Text>
-                        <View style={styles.itemTexto}>
-                          <Text
-                            style={[styles.itemTitulo, { color: colors.textPrimary }]}
-                            numberOfLines={1}>
-                            {defeito.categoria_nome ?? defeito.categoria ?? defeito.titulo}
-                            {defeito.rua ? ` · ${defeito.rua}` : ''}
-                          </Text>
-                          <View style={styles.itemLinha}>
-                            <StatusBadge
-                              status={defeito.status}
-                              concluidoEm={concluidoEm(defeito)}
-                              compact
+                  <Text style={[styles.painelSubtitulo, { color: colors.textMuted }]}>
+                    {modoSelecao
+                      ? 'Toque nos chamados que vai atender'
+                      : `${lista.length === 1 ? '1 chamado' : `${lista.length} chamados`}${
+                          posicao ? ' · mais perto primeiro' : ' · mais antigo primeiro'
+                        }`}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={painelAberto ? 'chevron-down' : 'chevron-up'}
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </Pressable>
+
+              {modoSelecao ? (
+                <View style={styles.selecaoAcoes}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onPress={selecionarMaisProximos}
+                    icon={<Ionicons name="locate" size={14} color={colors.textPrimary} />}>
+                    {ATALHO_MAIS_PROXIMOS} mais próximos
+                  </Button>
+                  <Button
+                    size="sm"
+                    onPress={criarRota}
+                    loading={criandoRota}
+                    disabled={selecao.size === 0}
+                    icon={<Ionicons name="navigate" size={14} color={colors.textInverse} />}>
+                    Criar rota
+                  </Button>
+                </View>
+              ) : null}
+
+              {painelAberto ? (
+                <ScrollView
+                  style={styles.painelCorpo}
+                  contentContainerStyle={styles.painelConteudo}>
+                  {lista.length === 0 ? (
+                    <Text style={[styles.vazio, { color: colors.textMuted }]}>
+                      {recorte === 'fila'
+                        ? 'Fila vazia — nenhum chamado aguardando.'
+                        : recorte === 'meus'
+                          ? 'Você não está atendendo nenhum chamado.'
+                          : 'Nenhum chamado neste recorte.'}
+                    </Text>
+                  ) : (
+                    lista.map(({ defeito, distancia, icone }) => {
+                      const slaVencido =
+                        !!defeito.sla_vencido && !STATUS_FECHADOS.includes(defeito.status);
+                      const marcado = selecao.has(defeito.id);
+                      return (
+                        <Pressable
+                          key={String(defeito.id)}
+                          onPress={() =>
+                            modoSelecao ? alternarSelecao(defeito.id) : abrir(defeito, true)
+                          }
+                          onLongPress={() =>
+                            recorte !== 'concluidos' && alternarSelecao(defeito.id)
+                          }
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: marcado }}
+                          style={({ pressed }) => [
+                            styles.item,
+                            {
+                              borderColor:
+                                (modoSelecao && marcado) || selecionado?.id === defeito.id
+                                  ? colors.gold500
+                                  : 'transparent',
+                              opacity: pressed ? 0.6 : 1,
+                            },
+                          ]}>
+                          {modoSelecao ? (
+                            <Ionicons
+                              name={marcado ? 'checkbox' : 'square-outline'}
+                              size={18}
+                              color={marcado ? colors.gold500 : colors.textMuted}
                             />
-                            <Text style={[styles.itemMeta, { color: colors.textMuted }]}>
-                              {diasDesde(defeito.criado_em)}
-                              {Number.isFinite(distancia)
-                                ? ` · ${formatarDistancia(distancia)}`
-                                : ''}
+                          ) : null}
+                          <Text style={styles.itemIcone}>{icone ?? '📋'}</Text>
+                          <View style={styles.itemTexto}>
+                            <Text
+                              style={[styles.itemTitulo, { color: colors.textPrimary }]}
+                              numberOfLines={1}>
+                              {defeito.categoria_nome ?? defeito.categoria ?? defeito.titulo}
+                              {defeito.rua ? ` · ${defeito.rua}` : ''}
                             </Text>
-                            {slaVencido ? (
-                              <View style={styles.sla}>
-                                <Ionicons name="alarm" size={11} color={colors.error} />
-                                <Text style={[styles.itemMeta, { color: colors.error }]}>SLA</Text>
-                              </View>
-                            ) : null}
+                            <View style={styles.itemLinha}>
+                              <StatusBadge
+                                status={defeito.status}
+                                concluidoEm={concluidoEm(defeito)}
+                                compact
+                              />
+                              <Text style={[styles.itemMeta, { color: colors.textMuted }]}>
+                                {diasDesde(defeito.criado_em)}
+                                {Number.isFinite(distancia)
+                                  ? ` · ${formatarDistancia(distancia)}`
+                                  : ''}
+                              </Text>
+                              {slaVencido ? (
+                                <View style={styles.sla}>
+                                  <Ionicons name="alarm" size={11} color={colors.error} />
+                                  <Text style={[styles.itemMeta, { color: colors.error }]}>
+                                    SLA
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </View>
                           </View>
-                        </View>
-                        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-                      </Pressable>
-                    );
-                  })
-                )}
-              </ScrollView>
-            ) : null}
-          </View>
+                          {!modoSelecao ? (
+                            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                          ) : null}
+                        </Pressable>
+                      );
+                    })
+                  )}
+                </ScrollView>
+              ) : null}
+            </View>
+          )}
         </View>
       </View>
 
@@ -513,6 +815,11 @@ const styles = StyleSheet.create({
   },
   painelSubtitulo: {
     fontSize: FontSize.xs,
+  },
+  selecaoAcoes: {
+    flexDirection: 'row',
+    gap: Spacing[2],
+    paddingHorizontal: Spacing[3],
   },
   painelCorpo: {
     maxHeight: 200,

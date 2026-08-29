@@ -13,7 +13,7 @@ import './map-surface.web.css';
 
 import L, { type Map as LeafletMap } from 'leaflet';
 import { forwardRef, useImperativeHandle, useRef } from 'react';
-import { Circle, MapContainer, Marker, TileLayer, useMapEvents } from 'react-leaflet';
+import { Circle, MapContainer, Marker, Polyline, TileLayer, useMapEvents } from 'react-leaflet';
 
 import type { LatLng } from '@/utils/geo';
 
@@ -45,6 +45,7 @@ function iconePino(
   icone: string | undefined,
   emAlcance: boolean,
   selecionado: boolean,
+  rotulo?: string,
 ) {
   const balao = selecionado ? 40 : 32;
   const largura = 48;
@@ -61,6 +62,7 @@ function iconePino(
       <div class="beacon-ponto"></div>
       <div class="beacon-haste"></div>
       <div class="beacon-balao">${icone ?? ''}</div>
+      ${rotulo ? `<div class="beacon-rotulo">${rotulo}</div>` : ''}
     </div>`,
   });
 }
@@ -101,6 +103,7 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
     regiaoInicial,
     circulos,
     marcadores,
+    linhas = [],
     usuario,
     onLongPressMapa,
     onPressMarcador,
@@ -160,6 +163,22 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
         />
       ))}
 
+      {linhas.map((linha) => (
+        <Polyline
+          key={linha.key}
+          positions={linha.coordenadas.map((c) => [c.latitude, c.longitude] as [number, number])}
+          pathOptions={{
+            color: linha.cor,
+            weight: linha.largura ?? 4,
+            opacity: 0.9,
+            dashArray: linha.tracejada ? '10 8' : undefined,
+            lineCap: 'round',
+            lineJoin: 'round',
+            interactive: false,
+          }}
+        />
+      ))}
+
       {marcadores.map((marcador) => (
         <Marker
           key={marcador.key}
@@ -169,6 +188,7 @@ export const MapSurface = forwardRef<MapSurfaceHandle, MapSurfaceProps>(function
             marcador.icone,
             !!marcador.emAlcance,
             !!marcador.selecionado,
+            marcador.rotulo,
           )}
           zIndexOffset={marcador.selecionado ? 200 : marcador.emAlcance ? 100 : 0}
           eventHandlers={{ click: () => onPressMarcador(marcador.key) }}

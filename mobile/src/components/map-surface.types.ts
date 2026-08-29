@@ -36,12 +36,25 @@ export type MarcadorMapa = {
   emAlcance?: boolean;
   /** Marcador selecionado no momento (maior). */
   selecionado?: boolean;
+  /** Etiqueta curta sobre o balão (número da parada no roteiro). */
+  rotulo?: string;
+};
+
+/** Linha desenhada no mapa (traçado do roteiro). */
+export type LinhaMapa = {
+  key: string;
+  coordenadas: LatLng[];
+  cor: string;
+  largura?: number;
+  /** Tracejada — usada para o traçado em linha reta (sem rota por ruas). */
+  tracejada?: boolean;
 };
 
 export type MapSurfaceProps = {
   regiaoInicial: Regiao;
   circulos: CirculoMapa[];
   marcadores: MarcadorMapa[];
+  linhas?: LinhaMapa[];
   /** Posição atual do GPS; desenhada como o "seu carro" do Waze. */
   usuario: Posicao | null;
   /** Para onde o aparelho aponta (bússola); gira o cone do marcador do usuário. */

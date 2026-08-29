@@ -58,6 +58,23 @@
   font-size: calc(var(--balao) * 0.5);
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
 }
+/* Número da parada do roteiro, sobre o balão. */
+.beacon-rotulo {
+  position: absolute;
+  right: 2px;
+  bottom: calc(var(--balao) + 10px);
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  border: 2px solid #fff;
+  font: 700 11px/16px system-ui, sans-serif;
+  text-align: center;
+  box-sizing: border-box;
+  z-index: 2;
+}
 .beacon-alcance .beacon-balao {
   border: 3px solid var(--ouro);
   box-shadow:
