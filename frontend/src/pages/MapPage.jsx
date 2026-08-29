@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { MapPin, Plus, X, Camera, ThumbsUp, Sun, Moon, MagnifyingGlass, Fire, Funnel, Handshake, Crosshair } from '@phosphor-icons/react';
-import { MapContainer, TileLayer, Marker, Polygon, Circle, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polygon, Circle, useMapEvents, useMap } from 'react-leaflet';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/toast-context';
 import { api } from '../services/api';
@@ -11,7 +11,7 @@ import { getStatusColor } from '../components/ui/status-utils';
 import UserDropdown from '../components/ui/user-dropdown';
 import { CommandMenu } from '../components/ui/command-menu';
 import { useTheme } from '../context/ThemeContext';
-import { createPlacementPinIcon, createDefectIcon } from '../utils/map-markers';
+import { createPlacementPinIcon, createDefectIcon, createOpenCallIcon } from '../utils/map-markers';
 import { getTimelineItems } from '../utils/timeline';
 import { filterByRadius } from '../utils/map-heatmap';
 import { Timeline } from '../components/ui/timeline';
@@ -23,17 +23,197 @@ const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const TILES_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 const BRAZIL_BOUNDS = [[-33.75, -73.99], [5.27, -28.85]];
 
-function MapClickHandler({ creatingRef, setCoords, setShowForm }) {
+function MapClickHandler({ creatingRef, promptRef, setCoords, setShowForm }) {
   useMapEvents({
     click(e) {
       if (!creatingRef.current) return;
       // Qualquer cidade vale: em qual município o ponto caiu é o backend que
       // resolve (PostGIS) e grava no chamado.
       setCoords({ lat: e.latlng.lat, lng: e.latlng.lng });
+      // com o balão "Abrir Chamado" na tela, o toque apenas reposiciona o alfinete
+      if (promptRef.current) return;
       setShowForm(true);
     },
   });
   return null;
+}
+
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_TOLERANCE = 12;
+
+function isInteractiveTarget(target) {
+  return !!(target && target.closest && target.closest('.leaflet-marker-icon, .leaflet-popup, .leaflet-control'));
+}
+
+// Pressionar e segurar (touch) ou botão direito (desktop) sobre o mapa abre o fluxo de novo chamado.
+function MapQuickAddHandler({ onQuickAdd }) {
+  const map = useMap();
+  const onQuickAddRef = useRef(onQuickAdd);
+  useEffect(() => { onQuickAddRef.current = onQuickAdd; }, [onQuickAdd]);
+
+  useEffect(() => {
+    const container = map.getContainer();
+    let timer = null;
+    let start = null;
+    let suppressContextMenuUntil = 0;
+
+    const cancel = () => {
+      if (timer) { clearTimeout(timer); timer = null; }
+      start = null;
+    };
+
+    const trigger = (clientX, clientY, viaTouch) => {
+      const latlng = map.mouseEventToLatLng({ clientX, clientY });
+      onQuickAddRef.current({ lat: latlng.lat, lng: latlng.lng, x: clientX, y: clientY, viaTouch });
+    };
+
+    const onTouchStart = (ev) => {
+      cancel();
+      if (ev.touches.length !== 1 || isInteractiveTarget(ev.target)) return;
+      const t = ev.touches[0];
+      start = { x: t.clientX, y: t.clientY };
+      timer = setTimeout(() => {
+        timer = null;
+        suppressContextMenuUntil = performance.now() + 800;
+        if (navigator.vibrate) navigator.vibrate(25);
+        trigger(start.x, start.y, true);
+        start = null;
+      }, LONG_PRESS_MS);
+    };
+
+    const onTouchMove = (ev) => {
+      if (!start || !timer) return;
+      const t = ev.touches[0];
+      if (Math.abs(t.clientX - start.x) > LONG_PRESS_TOLERANCE || Math.abs(t.clientY - start.y) > LONG_PRESS_TOLERANCE) cancel();
+    };
+
+    const onContextMenu = (ev) => {
+      ev.preventDefault();
+      if (isInteractiveTarget(ev.target)) return;
+      if (performance.now() < suppressContextMenuUntil) return; // long-press já disparou
+      trigger(ev.clientX, ev.clientY, false);
+    };
+
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: true });
+    container.addEventListener('touchend', cancel, { passive: true });
+    container.addEventListener('touchcancel', cancel, { passive: true });
+    container.addEventListener('contextmenu', onContextMenu);
+    return () => {
+      cancel();
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchmove', onTouchMove);
+      container.removeEventListener('touchend', cancel);
+      container.removeEventListener('touchcancel', cancel);
+      container.removeEventListener('contextmenu', onContextMenu);
+    };
+  }, [map]);
+
+  return null;
+}
+
+const QUICK_POPOVER_W = 320;
+const QUICK_POPOVER_H = 400;
+
+function QuickAddPopover({ position, coords, formData, setFormData, categorias, file, setFile, geocoding, submitting, onSubmit, onClose, onExpand }) {
+  const ref = useRef(null);
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onDown);
+    };
+  }, [onClose]);
+
+  const left = Math.max(8, Math.min(position.x + 8, window.innerWidth - QUICK_POPOVER_W - 8));
+  const top = Math.max(8, Math.min(position.y + 8, window.innerHeight - QUICK_POPOVER_H - 8));
+  const valido = formData.titulo.trim().length > 0 && formData.descricao.length >= 20;
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.12 }}
+      onContextMenu={e => e.preventDefault()}
+      className="fixed z-[2000] rounded-xl border shadow-2xl p-4"
+      style={{ left, top, width: QUICK_POPOVER_W, background: 'var(--color-bg-surface)', borderColor: 'var(--color-border-default)' }}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+          <MapPin size={15} weight="fill" style={{ color: 'var(--color-gold-500)' }} /> Novo chamado aqui
+        </div>
+        <button onClick={onClose} aria-label="Fechar" className="w-6 h-6 rounded-full flex items-center justify-center"
+          style={{ color: 'var(--color-text-secondary)' }}>
+          <X size={14} />
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        <input autoFocus placeholder="Título" value={formData.titulo} onChange={e => setFormData(p => ({ ...p, titulo: e.target.value }))}
+          className="w-full h-9 px-3 rounded-lg border text-sm outline-none bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
+          style={{ borderColor: 'var(--color-border-default)' }}
+          onFocus={e => e.target.style.borderColor = 'var(--color-gold-500)'}
+          onBlur={e => e.target.style.borderColor = 'var(--color-border-default)'} />
+
+        <textarea placeholder="Descrição (mín. 20 caracteres)" rows={3} value={formData.descricao}
+          onChange={e => setFormData(p => ({ ...p, descricao: e.target.value }))}
+          className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
+          style={{ borderColor: 'var(--color-border-default)' }}
+          onFocus={e => e.target.style.borderColor = 'var(--color-gold-500)'}
+          onBlur={e => e.target.style.borderColor = 'var(--color-border-default)'} />
+
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-hover)' }}>
+            <div className="h-full rounded-full transition-all duration-300"
+              style={{
+                width: `${Math.min(100, (formData.descricao.length / 20) * 100)}%`,
+                background: formData.descricao.length >= 20 ? 'var(--color-success)' : 'var(--color-error)',
+              }} />
+          </div>
+          <span className="text-[10px] font-mono shrink-0"
+            style={{ color: formData.descricao.length >= 20 ? 'var(--color-success)' : 'var(--color-error)' }}>
+            {formData.descricao.length}/20
+          </span>
+        </div>
+
+        <select value={formData.categoria} onChange={e => setFormData(p => ({ ...p, categoria: e.target.value }))}
+          className="w-full h-9 px-3 rounded-lg border text-sm outline-none bg-[var(--color-bg-input)] text-[var(--color-text-primary)]"
+          style={{ borderColor: 'var(--color-border-default)' }}>
+          {categorias.map(c => (
+            <option key={c.nome} value={c.nome}>{c.icone} {c.nome}</option>
+          ))}
+        </select>
+
+        <div className="flex items-center gap-2">
+          <button onClick={() => fileRef.current?.click()}
+            className="flex items-center gap-1.5 h-9 px-3 rounded-lg border text-xs transition-colors shrink-0"
+            style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}>
+            <Camera size={14} /> {file ? file.name.slice(0, 12) : 'Foto'}
+          </button>
+          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+            onChange={e => setFile(e.target.files?.[0] || null)} />
+          <span className="text-[10px] font-mono truncate" style={{ color: 'var(--color-text-secondary)' }}>
+            {geocoding ? 'Buscando endereço...' : (formData.rua || `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`)}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between pt-1">
+          <button onClick={onExpand} className="text-xs underline underline-offset-2"
+            style={{ color: 'var(--color-text-muted)' }}>Mais campos</button>
+          <button onClick={onSubmit} disabled={submitting || !valido}
+            className="h-9 px-5 rounded-md text-sm font-semibold transition-all disabled:opacity-50"
+            style={{ background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)' }}>
+            {submitting ? 'Enviando...' : 'Enviar'}
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
 }
 
 export default function MapPage() {
@@ -50,6 +230,10 @@ export default function MapPage() {
   const creatingRef = useRef(false);
   useEffect(() => { creatingRef.current = creating; }, [creating]);
   const [coords, setCoords] = useState(null);
+  const [quickAdd, setQuickAdd] = useState(null); // { x, y } — popover de criação rápida (desktop)
+  const [openCallPrompt, setOpenCallPrompt] = useState(false); // balão "Abrir Chamado" (long-press no mobile)
+  const openCallPromptRef = useRef(false);
+  useEffect(() => { openCallPromptRef.current = openCallPrompt; }, [openCallPrompt]);
   const [formData, setFormData] = useState({ titulo: '', descricao: '', categoria: 'Buraco', rua: '', bairro: '' });
   const [file, setFile] = useState(null);
   const fileRef = useRef(null);
@@ -181,8 +365,8 @@ export default function MapPage() {
   }
 
   useEffect(() => {
-    if (showForm && coords) reverseGeocode(coords.lat, coords.lng);
-  }, [showForm, coords]);
+    if ((showForm || quickAdd) && coords) reverseGeocode(coords.lat, coords.lng);
+  }, [showForm, quickAdd, coords]);
 
   const handleSubmit = useCallback(async () => {
     if (!formData.titulo || formData.descricao.length < 20) {
@@ -215,6 +399,8 @@ export default function MapPage() {
       await api.createDefeito(fd);
       addToast('Chamado criado com sucesso!');
       setShowForm(false);
+      setQuickAdd(null);
+      setOpenCallPrompt(false);
       setCreating(false);
       setCoords(null);
       setFile(null);
@@ -276,6 +462,47 @@ export default function MapPage() {
     finally { setFinalizando(null); }
   }, [addToast]);
 
+  const fecharCriacao = useCallback(() => {
+    setQuickAdd(null);
+    setOpenCallPrompt(false);
+    setShowForm(false);
+    setCreating(false);
+    setCoords(null);
+    setFile(null);
+  }, []);
+
+  useEffect(() => {
+    if (!creating) return;
+    const onKey = (e) => { if (e.key === 'Escape') fecharCriacao(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [creating, fecharCriacao]);
+
+  const abrirFormularioDoPonto = useCallback(() => {
+    setOpenCallPrompt(false);
+    setShowForm(true);
+  }, []);
+
+  const handleQuickAdd = useCallback(({ lat, lng, x, y, viaTouch }) => {
+    if (!isAuthenticated) {
+      addToast('Faça login para registrar um chamado.', 'error');
+      return;
+    }
+    // Qualquer cidade vale: o município do chamado é resolvido pelo backend (PostGIS).
+    setCreating(true);
+    setCoords({ lat, lng });
+    if (viaTouch) {
+      // no toque, confirma pelo balão "Abrir Chamado" acima do alfinete
+      setQuickAdd(null);
+      setShowForm(false);
+      setOpenCallPrompt(true);
+    } else {
+      setOpenCallPrompt(false);
+      setShowForm(false);
+      setQuickAdd({ x, y });
+    }
+  }, [isAuthenticated, addToast]);
+
   const mapKey = `${theme}-${hasMunicipio ? `${user?.municipio_id}-${user?.municipio?.min_lat}-${user?.municipio?.min_lng}` : 'default'}`;
 
   const ativarPertoDeMim = () => {
@@ -312,11 +539,7 @@ export default function MapPage() {
             <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Chamados para Serviços Públicos</p>
           </div>
         </div>
-        {creating ? (
-          <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-gold-500)' }}>
-            <MapPin size={14} /> Clique no mapa para posicionar o alfinete
-          </div>
-        ) : (
+        {(
           <div className="flex items-center gap-2">
             <SyncIndicator />
             {isAuthenticated && (
@@ -348,7 +571,18 @@ export default function MapPage() {
         )}
       </header>
 
-      <div className="flex-1 relative" style={{ minHeight: 0 }}>
+      <div className={`flex-1 relative${creating ? ' map-shell--creating' : ''}`} style={{ minHeight: 0 }}>
+        {creating && (
+          <div className="hidden sm:flex items-center absolute top-4 left-1/2 -translate-x-1/2 z-[1600] h-9 pl-3 pr-3.5 text-xs border shadow-lg pointer-events-none"
+            style={{
+              background: 'var(--color-bg-elevated)',
+              borderColor: 'var(--color-border-default)',
+              borderLeft: '2px solid var(--color-gold-500)',
+              color: 'var(--color-text-primary)',
+            }}>
+            {coords ? 'Ponto marcado — clique em outro lugar para mover' : 'Clique no mapa para marcar o ponto'}
+          </div>
+        )}
         {!isAuthenticated && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1500] px-4 py-2 rounded-lg text-xs border"
             style={{ background: 'var(--color-bg-elevated)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}>
@@ -360,16 +594,35 @@ export default function MapPage() {
           center={mapCenter}
           zoom={12}
           className=""
-          style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, background: '#1a1a14' }}
+          style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, background: '#1a1a14', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
           maxBounds={BRAZIL_BOUNDS}
           minZoom={3}
           maxBoundsViscosity={1.0}
           zoomControl={true}
           whenReady={handleMapReady}>
           <TileLayer url={TILES} attribution={TILES_ATTR} className={theme === 'dark' ? 'tiles-escuro' : undefined} noWrap />
-          <MapClickHandler creatingRef={creatingRef} setCoords={setCoords} setShowForm={setShowForm} />
-          {coords && (
+          <MapClickHandler
+            creatingRef={creatingRef}
+            promptRef={openCallPromptRef}
+            setCoords={setCoords}
+            setShowForm={setShowForm}
+          />
+          <MapQuickAddHandler onQuickAdd={handleQuickAdd} />
+          {coords && !openCallPrompt && (
             <Marker position={[coords.lat, coords.lng]} icon={createPlacementPinIcon()} />
+          )}
+          {coords && openCallPrompt && (
+            <Marker
+              position={[coords.lat, coords.lng]}
+              icon={createOpenCallIcon()}
+              zIndexOffset={1000}
+              title="Abrir chamado neste ponto"
+              alt="Abrir chamado neste ponto"
+              eventHandlers={{
+                click: abrirFormularioDoPonto,
+                keypress: (e) => { if (e.originalEvent?.key === 'Enter') abrirFormularioDoPonto(); },
+              }}
+            />
           )}
           {leafletPolyCoords.length > 0 && (
             <>
@@ -404,13 +657,13 @@ export default function MapPage() {
             ))
           )}
         </MapContainer>
-        {isAuthenticated && (
+        {isAuthenticated && !creating && (
           <div className="fixed right-5 z-[1500]" style={{ bottom: '5.5rem' }}>
             <MapControlsDropdown filtro={filtro} setFiltro={setFiltro} heatmap={heatmap} setHeatmap={setHeatmap} direction="up" />
           </div>
         )}
 
-        {isAuthenticated && (
+        {isAuthenticated && !creating && (
           <div className="fixed right-5 z-[1500] flex flex-col items-end gap-2" style={{ bottom: '8rem' }}>
             {pertoDeMim?.ativo ? (
               <>
@@ -452,6 +705,8 @@ export default function MapPage() {
 
         {!creating && isAuthenticated && (
           <button onClick={() => setCreating(true)}
+            title="Novo chamado — ou segure o dedo / clique com o botão direito no mapa"
+            aria-label="Novo chamado"
             className="fixed bottom-6 right-5 z-[1500] w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
             style={{ background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)' }}>
             <Plus size={22} weight="bold" />
@@ -459,11 +714,37 @@ export default function MapPage() {
         )}
 
         {creating && (
-          <button onClick={() => { setCreating(false); setShowForm(false); setCoords(null); }}
-            className="fixed bottom-6 right-5 z-[1500] w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
-            style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-secondary)' }}>
-            <X size={20} />
-          </button>
+          <div className="fixed bottom-6 left-5 right-5 z-[1500] flex items-center justify-end gap-2">
+            <button onClick={fecharCriacao}
+              className="h-12 px-5 rounded-full flex items-center gap-2 shadow-lg shrink-0 transition-colors"
+              style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-secondary)' }}>
+              <X size={16} weight="bold" />
+              <span className="text-xs font-bold uppercase tracking-[0.1em]">Cancelar</span>
+            </button>
+            <button onClick={abrirFormularioDoPonto} disabled={!coords}
+              className="h-12 px-5 rounded-full flex items-center justify-center gap-2 shadow-lg flex-1 sm:flex-none transition-opacity disabled:opacity-40"
+              style={{ background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)' }}>
+              <Plus size={16} weight="bold" />
+              <span className="text-xs font-bold uppercase tracking-[0.1em] whitespace-nowrap">Adicionar chamado</span>
+            </button>
+          </div>
+        )}
+
+        {quickAdd && coords && (
+          <QuickAddPopover
+            position={quickAdd}
+            coords={coords}
+            formData={formData}
+            setFormData={setFormData}
+            categorias={categorias}
+            file={file}
+            setFile={setFile}
+            geocoding={geocoding}
+            submitting={submitting}
+            onSubmit={handleSubmit}
+            onClose={fecharCriacao}
+            onExpand={() => { setQuickAdd(null); setShowForm(true); }}
+          />
         )}
 
         {showForm && coords && (
@@ -531,7 +812,7 @@ export default function MapPage() {
               </div>
               <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Ao enviar, você autoriza o uso da imagem para fins de serviço público.</p>
               <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => { setShowForm(false); setCoords(null); }}
+                <button onClick={fecharCriacao}
                   className="h-10 px-6 rounded-md text-sm font-medium transition-all"
                   style={{ background: 'transparent', color: 'var(--color-text-secondary)' }}>Cancelar</button>
                 <button onClick={handleSubmit} disabled={submitting || formData.descricao.length < 20}
