@@ -401,16 +401,16 @@ class AdminEstatisticasView(APIView):
                 {'error': 'Acesso negado'},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        super_admin_email = getattr(settings, 'SUPER_ADMIN_EMAIL', None)
+        # Operador vinculado a um municipio ve as estatisticas da cidade dele,
+        # pelo municipio em que o chamado caiu (d.municipio_id), nao pelo do
+        # autor. Admin sem vinculo (gestao) ve o agregado geral.
         user = request.user
-        is_mun_admin = bool(
-            super_admin_email and user.email != super_admin_email and user.municipio_id
-        )
-        mun_join = ' INNER JOIN users u ON u.id = d.usuario' if is_mun_admin else ''
-        mun_where = ' WHERE u.municipio_id = %s' if is_mun_admin else ''
-        mun_where_and = ' WHERE u.municipio_id = %s AND' if is_mun_admin else ' WHERE'
+        is_mun_admin = bool(user.municipio_id)
+        mun_join = ''
+        mun_where = ' WHERE d.municipio_id = %s' if is_mun_admin else ''
+        mun_where_and = ' WHERE d.municipio_id = %s AND' if is_mun_admin else ' WHERE'
         mun_params = [user.municipio_id] if is_mun_admin else []
-        from_clause = 'FROM defeitos d' + mun_join + (mun_where if is_mun_admin else ' WHERE 1=1')
+        from_clause = 'FROM defeitos d' + (mun_where if is_mun_admin else ' WHERE 1=1')
 
         with connection.cursor() as cursor:
             cursor.execute(f'SELECT COUNT(*) {from_clause}', mun_params)
@@ -431,7 +431,7 @@ class AdminEstatisticasView(APIView):
             resolvidos = sum(s['total'] for s in por_status if s['status'] in resolvidos_status)
             resolucao_rate = min(round((resolvidos / total) * 100), 100) if total > 0 else 0
 
-            sla_join = ' INNER JOIN users u ON u.id = d.usuario WHERE d.status IN (%s,%s)' + (' AND u.municipio_id = %s' if is_mun_admin else '')
+            sla_join = ' WHERE d.status IN (%s,%s)' + (' AND d.municipio_id = %s' if is_mun_admin else '')
             sla_params = ['atendido', 'encerrado'] + (mun_params if is_mun_admin else [])
             cursor.execute(f'''
                 SELECT AVG(
@@ -528,8 +528,7 @@ class AdminEstatisticasView(APIView):
                     AVG(EXTRACT(EPOCH FROM (COALESCE(d.atendido_em::timestamp, d.atualizado_em::timestamp) - d.criado_em::timestamp)) / 60),
                     COUNT(*)
                 FROM defeitos d
-                INNER JOIN users u ON u.id = d.usuario
-                WHERE d.status IN ('atendido', 'encerrado'){' AND u.municipio_id = %s' if is_mun_admin else ''}
+                WHERE d.status IN ('atendido', 'encerrado'){' AND d.municipio_id = %s' if is_mun_admin else ''}
                 GROUP BY d.categoria
                 ORDER BY 2 DESC
             ''', mun_params)

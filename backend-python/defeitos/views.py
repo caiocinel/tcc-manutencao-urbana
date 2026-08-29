@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status, filters
@@ -15,21 +14,15 @@ from .serializers import (
 from users.models import User
 
 
-def _super_admin(user):
-    email = getattr(settings, 'SUPER_ADMIN_EMAIL', '')
-    return bool(email) and user.email == email
-
-
 def _pode_operar(user, defeito):
     """
     Operar (assumir, mudar status, gerar OS) é restrito ao município a que o
-    operador está vinculado. O super admin opera em qualquer cidade. Como
-    cidadão, o mesmo usuário continua livre para reportar/apoiar onde quiser.
+    operador está vinculado — sem exceção: todo operador, inclusive o super
+    admin, opera numa única cidade. Como cidadão, o mesmo usuário continua
+    livre para reportar/apoiar onde quiser.
     """
     if not user.is_authenticated or not user.admin:
         return False
-    if _super_admin(user):
-        return True
     return bool(user.municipio_id) and defeito.municipio_id == user.municipio_id
 
 
@@ -230,20 +223,15 @@ class DefeitoViewSet(viewsets.ModelViewSet):
         """
         Fila do operador: todos os chamados do município a que ele está
         vinculado (sem paginação), mais o município em si para o cabeçalho.
-        O super admin recebe tudo, com `municipio: null`.
         """
         user = request.user
         if not user.admin:
             return Response({'error': 'Permissao negada'}, status=status.HTTP_403_FORBIDDEN)
-        qs = self.get_queryset()
-        municipio = None
-        if not _super_admin(user):
-            if not user.municipio_id:
-                return Response({'error': SEM_MUNICIPIO}, status=status.HTTP_403_FORBIDDEN)
-            qs = qs.filter(municipio_id=user.municipio_id)
-            municipio = _municipio_por_codigo(user.municipio_id)
+        if not user.municipio_id:
+            return Response({'error': SEM_MUNICIPIO}, status=status.HTTP_403_FORBIDDEN)
+        qs = self.get_queryset().filter(municipio_id=user.municipio_id)
         return Response({
-            'municipio': municipio,
+            'municipio': _municipio_por_codigo(user.municipio_id),
             'defeitos': DefeitoListSerializer(qs[:2000], many=True).data,
         })
 
@@ -334,11 +322,9 @@ class DefeitoViewSet(viewsets.ModelViewSet):
                 {'error': 'Invalid status'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        qs = self.get_queryset().filter(id__in=ids)
-        if not _super_admin(request.user):
-            if not request.user.municipio_id:
-                return Response({'error': SEM_MUNICIPIO}, status=status.HTTP_403_FORBIDDEN)
-            qs = qs.filter(municipio_id=request.user.municipio_id)
+        if not request.user.municipio_id:
+            return Response({'error': SEM_MUNICIPIO}, status=status.HTTP_403_FORBIDDEN)
+        qs = self.get_queryset().filter(id__in=ids, municipio_id=request.user.municipio_id)
         agora = timezone.now()
         if novo_status in {'atendido', 'encerrado', 'concluido'}:
             # Marca quando foi resolvido, sem sobrescrever quem já tinha data.

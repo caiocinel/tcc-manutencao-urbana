@@ -100,15 +100,26 @@ def auth_client(client, user_creds):
     return new_client
 
 
+# Cidade de teste que contém as coordenadas padrão de `_create_defeito`
+# (-23.55, -46.63 + i*0.01). Todo operador opera numa única cidade, então o
+# admin dos testes precisa estar vinculado a ela para assumir/finalizar.
+CIDADE_TESTES = '9999900'
+
+
 @pytest.fixture
-def admin_client(auth_client, user_creds, settings):
-    """
-    Admin *super*: opera em qualquer município. Operadores comuns são
-    restritos ao município vinculado — ver `TestOperacaoPorMunicipio`.
-    """
+def admin_client(auth_client, user_creds):
+    """Operador vinculado à cidade de teste (que cobre os chamados padrão)."""
+    from django.db import connection
     from users.models import User
+    with connection.cursor() as cur:
+        cur.execute("""
+            INSERT INTO municipios (codigo, nome, uf, uf_sigla, min_lat, max_lat, min_lng, max_lng, polygon_geom)
+            VALUES (%s, 'Cidade Testes', '35', 'SP', -24.0, -23.0, -47.0, -44.0,
+                    ST_Multi(ST_GeomFromText('POLYGON((-47 -24, -44 -24, -44 -23, -47 -23, -47 -24))', 4326)))
+            ON CONFLICT (codigo) DO NOTHING
+        """, [CIDADE_TESTES])
     user = User.objects.get(email=user_creds['email'])
     user.admin = 1
-    user.save(update_fields=['admin'])
-    settings.SUPER_ADMIN_EMAIL = user_creds['email']
+    user.municipio_id = CIDADE_TESTES
+    user.save(update_fields=['admin', 'municipio_id'])
     return auth_client

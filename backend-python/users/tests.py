@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from conftest import CIDADE_TESTES
 from django.urls import reverse
 
 from users.models import User
@@ -375,6 +376,7 @@ class TestAdminEstatisticas:
 
         now = timezone.now()
         Defeito.objects.create(
+            municipio_id=CIDADE_TESTES,
             titulo='SLA Vencido',
             criado_em=now - timedelta(days=10),
             atualizado_em=now - timedelta(days=10),
@@ -382,6 +384,7 @@ class TestAdminEstatisticas:
             status='pendente',
         )
         Defeito.objects.create(
+            municipio_id=CIDADE_TESTES,
             titulo='Dentro do SLA',
             criado_em=now,
             atualizado_em=now,
@@ -408,6 +411,7 @@ class TestAdminEstatisticas:
         now = timezone.now()
         for i in range(60):
             Defeito.objects.create(
+            municipio_id=CIDADE_TESTES,
                 titulo=f'SLA Vencido Mass {i}',
                 criado_em=now - timedelta(days=10),
                 atualizado_em=now - timedelta(days=10),

@@ -803,14 +803,20 @@ class TestOperacaoPorMunicipio:
         user.save(update_fields=['admin', 'municipio_id'])
         return op
 
+    @staticmethod
+    def _passo():
+        """Deslocamento unico na sessao: o banco de teste guarda chamados entre
+        testes e a deteccao de duplicado (mesma categoria, perto) daria 409."""
+        return next(_COORD_COUNTER) * 0.0005
+
     def _dentro(self, auth_client):
-        # Espalha os pontos para não cair na detecção de duplicado.
-        passo = (next(_COORD_COUNTER) % 40) * 0.002
-        return _create_defeito(auth_client, latitude=-25.0 + passo, longitude=-51.3 + passo)
+        passo = self._passo()
+        return _create_defeito(auth_client, latitude=-25.095 + passo, longitude=-51.395 + passo)
 
     def _fora(self, auth_client):
-        passo = (next(_COORD_COUNTER) % 40) * 0.002
-        return _create_defeito(auth_client, latitude=-23.5505 + passo, longitude=-46.6333 - passo)
+        passo = self._passo()
+        # Longe de qualquer outra cidade de teste.
+        return _create_defeito(auth_client, latitude=-27.0 + passo, longitude=-52.0 - passo)
 
     def test_fila_so_do_municipio(self, client, auth_client):
         self._cidade()
@@ -825,15 +831,6 @@ class TestOperacaoPorMunicipio:
     def test_sem_municipio_nao_opera(self, client):
         op = self._operador(client, None)
         assert op.get(reverse('defeitos-operacao')).status_code == 403
-
-    def test_super_admin_ve_tudo(self, admin_client, auth_client):
-        self._cidade()
-        self._dentro(auth_client)
-        self._fora(auth_client)
-        resp = admin_client.get(reverse('defeitos-operacao'))
-        assert resp.status_code == 200
-        assert resp.data['municipio'] is None
-        assert len(resp.data['defeitos']) >= 2
 
     def test_assumir_so_no_seu_municipio(self, client, auth_client):
         self._cidade()
@@ -869,8 +866,9 @@ class TestOperacaoPorMunicipio:
         self._cidade()
         fora = self._fora(auth_client)
         op = self._operador(client, self.CIDADE)
-        ids = {d['id'] for d in op.get(reverse('defeitos-list')).data['results']}
-        assert fora['id'] in ids
+        # Busca pelo titulo: a listagem e paginada.
+        lista = op.get(reverse('defeitos-list'), {'search': fora['titulo']}).data['results']
+        assert fora['id'] in {d['id'] for d in lista}
         assert op.get(reverse('defeitos-detail', args=[fora['id']])).status_code == 200
 
 

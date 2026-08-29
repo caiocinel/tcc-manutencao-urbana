@@ -350,9 +350,7 @@ export default function OperacaoScreen() {
                   style={[styles.painelTitulo, { color: colors.textPrimary }]}
                   numberOfLines={1}>
                   {RECORTES.find((r) => r.value === recorte)?.label}
-                  {municipioOp
-                    ? ` · ${municipioOp.nome}/${municipioOp.uf_sigla}`
-                    : ' · todas as cidades'}
+                  {municipioOp ? ` · ${municipioOp.nome}/${municipioOp.uf_sigla}` : ''}
                 </Text>
                 <Text style={[styles.painelSubtitulo, { color: colors.textMuted }]}>
                   {lista.length === 1 ? '1 chamado' : `${lista.length} chamados`}
