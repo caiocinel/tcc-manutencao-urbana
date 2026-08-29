@@ -8,17 +8,18 @@
  * a tela explica em vez de mostrar o mapa. Como cidadão, na aba Mapa, a mesma
  * pessoa continua livre para reportar em qualquer cidade.
  *
- * - Chips no topo trocam o recorte: Fila (sem atendente), Meus (assumidos por
- *   mim), Abertos (tudo que não foi concluído) e Concluídos.
- * - O mapa mostra os pinos do recorte, coloridos por status; o painel inferior
- *   lista os mesmos chamados, mais perto primeiro (ou mais antigo, sem GPS),
- *   com alerta de SLA vencido.
- * - Enquadrar ajusta o zoom para caber todo o recorte; Recentralizar volta
- *   para a posição do operador.
+ * - Sem filtros para aprender: se o operador já assumiu chamados, a tela
+ *   mostra **só os dele**; se não assumiu nenhum, mostra **todos os abertos**
+ *   da cidade. Um link no painel alterna entre as duas visões.
+ * - O mapa mostra os pinos coloridos por status; o painel inferior lista os
+ *   mesmos chamados, mais perto primeiro (ou mais antigo, sem GPS), com
+ *   alerta de SLA vencido.
+ * - Enquadrar ajusta o zoom para caber tudo; Recentralizar volta para a
+ *   posição do operador.
  * - Tocar num pino ou num item abre o `OperacaoSheet`, com as ações de operador.
  *
- * **Rota inteligente**: o botão de rota junta sozinho os chamados abertos do
- * recorte num raio ao redor do operador (raio ajustável, com contagem por
+ * **Rota inteligente**: o botão de rota junta sozinho os chamados abertos em
+ * tela num raio ao redor do operador (raio ajustável, com contagem por
  * opção); "Traçar rota" ordena as paradas partindo da posição atual — pelo
  * OSRM (ruas) quando ele responde, senão em linha reta (`utils/rota.ts`) —,
  * assume em lote as que ainda não têm atendente e abre o `RoteiroPanel`, que
@@ -43,7 +44,6 @@ import type {
 import { OperacaoSheet } from '@/components/operacao-sheet';
 import { RoteiroPanel, type Roteiro } from '@/components/roteiro-panel';
 import { Button } from '@/components/ui/button';
-import { FilterChips } from '@/components/ui/chips';
 import { LoadingState } from '@/components/ui/screen';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { getStatusColor, STATUS_ABERTOS, STATUS_FECHADOS } from '@/constants/status';
@@ -66,18 +66,9 @@ import {
 } from '@/utils/geo';
 import { ordenarParadas } from '@/utils/rota';
 
-type Recorte = 'fila' | 'meus' | 'abertos' | 'concluidos';
-
-const RECORTES: { value: Recorte; label: string }[] = [
-  { value: 'fila', label: 'Fila' },
-  { value: 'meus', label: 'Meus' },
-  { value: 'abertos', label: 'Abertos' },
-  { value: 'concluidos', label: 'Concluídos' },
-];
-
 const MOSTRAR_JOYSTICK = __DEV__ && Platform.OS === 'web';
 
-/** Raios da rota automática, em metros; 0 = o recorte inteiro. */
+/** Raios da rota automática, em metros; 0 = tudo que está em tela. */
 const RAIOS_ROTA_M = [500, 1000, 2000, 5000, 0] as const;
 const RAIO_ROTA_PADRAO_M = 1000;
 /** Acima disso o 2-opt e o OSRM ficam lentos/recusam. */
@@ -110,11 +101,12 @@ export default function OperacaoScreen() {
   // Mensagem do backend quando o operador não pode operar (sem município).
   const [bloqueio, setBloqueio] = useState<string | null>(null);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [recorte, setRecorte] = useState<Recorte>('fila');
+  // Quem já assumiu chamados vê só os seus; "ver todos" abre a cidade inteira.
+  const [verTodos, setVerTodos] = useState(false);
   const [selecionado, setSelecionado] = useState<Defeito | null>(null);
   const [painelAberto, setPainelAberto] = useState(true);
   const [mapaPronto, setMapaPronto] = useState(false);
-  // Enquadra o recorte uma vez por carga; depois disso a câmera é do operador.
+  // Enquadra tudo uma vez por carga; depois disso a câmera é do operador.
   const enquadrouRef = useRef(false);
 
   // Rota inteligente: seleção de paradas e roteiro ativo.
@@ -163,20 +155,17 @@ export default function OperacaoScreen() {
 
   const meuId = user ? String(user.id) : null;
 
-  /** Recorte atual, ordenado: mais perto primeiro; sem GPS, mais antigo primeiro. */
+  /** Chamados abertos que eu assumi. */
+  const meus = useMemo(
+    () =>
+      defeitos.filter((d) => STATUS_ABERTOS.includes(d.status) && String(d.atendente_id) === meuId),
+    [defeitos, meuId],
+  );
+  const soOsMeus = meus.length > 0 && !verTodos;
+
+  /** O que está em tela, ordenado: mais perto primeiro; sem GPS, mais antigo primeiro. */
   const lista = useMemo(() => {
-    const filtrados = defeitos.filter((d) => {
-      switch (recorte) {
-        case 'fila':
-          return STATUS_ABERTOS.includes(d.status) && !d.atendente_id;
-        case 'meus':
-          return STATUS_ABERTOS.includes(d.status) && String(d.atendente_id) === meuId;
-        case 'abertos':
-          return STATUS_ABERTOS.includes(d.status);
-        case 'concluidos':
-          return STATUS_FECHADOS.includes(d.status);
-      }
-    });
+    const filtrados = soOsMeus ? meus : defeitos.filter((d) => STATUS_ABERTOS.includes(d.status));
     const comDistancia = filtrados.map((defeito) => ({
       defeito,
       distancia: posicao
@@ -187,29 +176,19 @@ export default function OperacaoScreen() {
     return comDistancia.sort((a, b) =>
       posicao ? a.distancia - b.distancia : a.defeito.criado_em.localeCompare(b.defeito.criado_em),
     );
-  }, [defeitos, recorte, meuId, posicao, iconePorCategoria]);
+  }, [defeitos, meus, soOsMeus, posicao, iconePorCategoria]);
 
-  const totais = useMemo(() => {
-    const t = { fila: 0, meus: 0, abertos: 0, concluidos: 0 };
-    for (const d of defeitos) {
-      if (STATUS_FECHADOS.includes(d.status)) t.concluidos += 1;
-      if (!STATUS_ABERTOS.includes(d.status)) continue;
-      t.abertos += 1;
-      if (!d.atendente_id) t.fila += 1;
-      else if (String(d.atendente_id) === meuId) t.meus += 1;
-    }
-    return t;
-  }, [defeitos, meuId]);
-
-  const chips = useMemo(
-    () => RECORTES.map((r) => ({ value: r.value, label: `${r.label} · ${totais[r.value]}` })),
-    [totais],
-  );
-
-  /** Chamados abertos do recorte, mais perto primeiro (base da rota automática). */
+  /** Chamados abertos em tela, mais perto primeiro (base da rota automática). */
+  // Chamados que outro operador ja assumiu ficam de fora da rota automatica:
+  // o backend recusaria o "assumir" e a parada seria trabalho de outra pessoa.
   const abertosPorDistancia = useMemo(
-    () => lista.filter((i) => STATUS_ABERTOS.includes(i.defeito.status)),
-    [lista],
+    () =>
+      lista.filter(
+        (i) =>
+          STATUS_ABERTOS.includes(i.defeito.status) &&
+          (!i.defeito.atendente_id || String(i.defeito.atendente_id) === meuId),
+      ),
+    [lista, meuId],
   );
 
   /** Quantos chamados cada opção de raio pegaria. */
@@ -278,7 +257,7 @@ export default function OperacaoScreen() {
 
   function enquadrar() {
     const pontos = roteiro && paradasAtuais ? paradasAtuais : lista.map((i) => i.defeito);
-    if (!enquadrarPontos(pontos)) addToast('Nada para enquadrar neste recorte.', 'info');
+    if (!enquadrarPontos(pontos)) addToast('Nenhum chamado para enquadrar.', 'info');
   }
 
   // Primeiro enquadramento: assim que mapa e dados existem.
@@ -367,7 +346,7 @@ export default function OperacaoScreen() {
   }
 
   /**
-   * Rota automática: seleciona sozinho os chamados abertos do recorte dentro
+   * Rota automática: seleciona sozinho os chamados abertos em tela dentro
    * do raio (mais perto primeiro, até MAX_PARADAS) e abre o modo de rota.
    */
   function montarRotaNoRaio(raio: number) {
@@ -551,31 +530,9 @@ export default function OperacaoScreen() {
           escuro={theme === 'dark'}
         />
 
-        {/* Topo: recortes da fila (escondidos durante o roteiro). */}
-        {!roteiro ? (
-          <View style={styles.topo} pointerEvents="box-none">
-            <View
-              style={[
-                styles.topoBarra,
-                { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault },
-              ]}>
-              <FilterChips
-                options={chips}
-                value={recorte}
-                onChange={(v) => {
-                  setRecorte(v);
-                  setSelecionado(null);
-                  sairDaSelecao();
-                }}
-                accessibilityLabel="Recorte da operação"
-              />
-            </View>
-          </View>
-        ) : null}
-
         {/* Lateral direita: rota, enquadrar e voltar para mim. */}
         <View style={[styles.lateral, { bottom: rodape + alturaPainel }]}>
-          {!roteiro && recorte !== 'concluidos' ? (
+          {!roteiro ? (
             <Pressable
               onPress={() => (modoSelecao ? sairDaSelecao() : montarRotaNoRaio(raioRota))}
               accessibilityRole="button"
@@ -654,9 +611,11 @@ export default function OperacaoScreen() {
                     numberOfLines={1}>
                     {modoSelecao
                       ? `Rota · ${selecao.size} parada${selecao.size === 1 ? '' : 's'}`
-                      : `${RECORTES.find((r) => r.value === recorte)?.label}${
-                          municipioOp ? ` · ${municipioOp.nome}/${municipioOp.uf_sigla}` : ''
-                        }`}
+                      : soOsMeus
+                        ? 'Meus atendimentos'
+                        : `Chamados abertos${
+                            municipioOp ? ` · ${municipioOp.nome}/${municipioOp.uf_sigla}` : ''
+                          }`}
                   </Text>
                   <Text style={[styles.painelSubtitulo, { color: colors.textMuted }]}>
                     {modoSelecao
@@ -664,6 +623,17 @@ export default function OperacaoScreen() {
                       : `${lista.length === 1 ? '1 chamado' : `${lista.length} chamados`}${
                           posicao ? ' · mais perto primeiro' : ' · mais antigo primeiro'
                         }`}
+                    {!modoSelecao && meus.length > 0 ? (
+                      <Text
+                        style={{ color: colors.gold500, fontWeight: FontWeight.semibold }}
+                        onPress={() => {
+                          setVerTodos((v) => !v);
+                          setSelecionado(null);
+                          sairDaSelecao();
+                        }}>
+                        {soOsMeus ? '  ·  ver todos da cidade' : '  ·  só os meus'}
+                      </Text>
+                    ) : null}
                   </Text>
                 </View>
                 <Ionicons
@@ -725,26 +695,22 @@ export default function OperacaoScreen() {
                   contentContainerStyle={styles.painelConteudo}>
                   {lista.length === 0 ? (
                     <Text style={[styles.vazio, { color: colors.textMuted }]}>
-                      {recorte === 'fila'
-                        ? 'Fila vazia — nenhum chamado aguardando.'
-                        : recorte === 'meus'
-                          ? 'Você não está atendendo nenhum chamado.'
-                          : 'Nenhum chamado neste recorte.'}
+                      Nenhum chamado aberto na cidade.
                     </Text>
                   ) : (
                     lista.map(({ defeito, distancia, icone }) => {
                       const slaVencido =
                         !!defeito.sla_vencido && !STATUS_FECHADOS.includes(defeito.status);
                       const marcado = selecao.has(defeito.id);
+                      const deOutro =
+                        !!defeito.atendente_id && String(defeito.atendente_id) !== meuId;
                       return (
                         <Pressable
                           key={String(defeito.id)}
                           onPress={() =>
                             modoSelecao ? alternarSelecao(defeito.id) : abrir(defeito, true)
                           }
-                          onLongPress={() =>
-                            recorte !== 'concluidos' && alternarSelecao(defeito.id)
-                          }
+                          onLongPress={() => alternarSelecao(defeito.id)}
                           accessibilityRole="button"
                           accessibilityState={{ selected: marcado }}
                           style={({ pressed }) => [
@@ -784,6 +750,18 @@ export default function OperacaoScreen() {
                                   ? ` · ${formatarDistancia(distancia)}`
                                   : ''}
                               </Text>
+                              {deOutro ? (
+                                <View style={styles.sla}>
+                                  <Ionicons
+                                    name="person-circle-outline"
+                                    size={11}
+                                    color={colors.textMuted}
+                                  />
+                                  <Text style={[styles.itemMeta, { color: colors.textMuted }]}>
+                                    outro operador
+                                  </Text>
+                                </View>
+                              ) : null}
                               {slaVencido ? (
                                 <View style={styles.sla}>
                                   <Ionicons name="alarm" size={11} color={colors.error} />
@@ -827,18 +805,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   // Os panes do Leaflet (web) usam z-index 400; sem isso os overlays somem.
-  topo: {
-    position: 'absolute',
-    zIndex: 1000,
-    top: Spacing[3],
-    left: Spacing[4],
-    right: Spacing[4],
-  },
-  topoBarra: {
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingVertical: Spacing[2],
-  },
   lateral: {
     position: 'absolute',
     zIndex: 1000,
