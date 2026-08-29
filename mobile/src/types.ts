@@ -56,6 +56,8 @@ export type Defeito = {
   atualizado_em?: string;
   atendido_em?: string | null;
   atendente_id?: number | string | null;
+  /** Só na listagem: prazo da categoria estourado e chamado ainda aberto. */
+  sla_vencido?: boolean;
   total_apoios?: number;
   apoios_total?: number;
   imagem_thumbnail?: string | null;

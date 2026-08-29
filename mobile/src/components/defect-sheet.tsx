@@ -1,40 +1,28 @@
 /**
- * Detalhe do chamado em bottom sheet.
+ * Detalhe do chamado para o **cidadão** (mapa e lista).
  *
- * No web esse conteúdo aparecia duplicado no MapPage e no DefectList; aqui as
- * duas telas usam este mesmo componente. As ações (atender, finalizar, apoiar,
- * anexar, gerar OS) são executadas aqui e propagadas ao pai por callbacks, que
- * atualizam a lista local sem refazer a requisição inteira.
+ * Só o que uma pessoa comum faz: apoiar (ou "confirmar no local", quando a
+ * tela informa a distância) e anexar uma foto. Atender, responder e finalizar
+ * são trabalho de operador e vivem em `operacao-sheet.tsx` — mesmo um admin
+ * navegando por aqui não vê essas ações, para o mapa do cidadão não virar
+ * painel de operação.
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text } from 'react-native';
 
+import { DefectDetail, detailStyles } from '@/components/defect-detail';
 import { Button } from '@/components/ui/button';
-import { ImageViewer } from '@/components/ui/image-viewer';
-import { StatusBadge } from '@/components/ui/status-badge';
-import { Timeline } from '@/components/ui/timeline';
 import { RAIO_CONFIRMACAO_M } from '@/constants/proximidade';
-import { STATUS_FECHADOS } from '@/constants/status';
-import { FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useColors } from '@/context/theme-context';
 import { useToast } from '@/context/toast-context';
 import { api } from '@/services/api';
 import type { Defeito, PickedImage } from '@/types';
-import {
-  concluidoEm,
-  formatarData,
-  maskName,
-  parseImagensExtra,
-  totalApoios,
-} from '@/utils/format';
+import { totalApoios } from '@/utils/format';
 import { formatarDistancia } from '@/utils/geo';
 import { escolherDaGaleria, ImagemMuitoGrandeError } from '@/utils/image';
-import { getTimelineItems } from '@/utils/timeline';
 
 type Props = {
   defeito: Defeito | null;
@@ -54,8 +42,6 @@ type Props = {
   distanciaM?: number | null;
 };
 
-const STATUS_VINCULADOS = ['vinculado_sem_resposta', 'vinculado_com_resposta'];
-
 export function DefectSheet({
   defeito,
   apoiado,
@@ -66,21 +52,12 @@ export function DefectSheet({
   distanciaM,
 }: Props) {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const addToast = useToast();
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   const [acaoEmCurso, setAcaoEmCurso] = useState<string | null>(null);
-  const [imagemAberta, setImagemAberta] = useState<string | null>(null);
 
   if (!defeito) return null;
-
-  const isAdmin = !!user?.admin;
-  const fechado = STATUS_FECHADOS.includes(defeito.status);
-  const podeAtender = isAdmin && !defeito.atendente_id && !fechado;
-  const podeFinalizar =
-    isAdmin && !!defeito.atendente_id && STATUS_VINCULADOS.includes(defeito.status);
-  const imagensExtra = parseImagensExtra(defeito.imagens_extra);
 
   // Modo "confirmar no local": só quando a tela informa a distância.
   const modoConfirmacao = distanciaM !== undefined;
@@ -108,34 +85,6 @@ export function DefectSheet({
     } finally {
       setAcaoEmCurso(null);
     }
-  }
-
-  function handleAtender() {
-    const id = defeito!.id;
-    return comAcao('atender', async () => {
-      await api.atenderDefeito(id);
-      addToast('Chamado vinculado com sucesso!');
-      onPatch(id, { status: 'vinculado_sem_resposta', atendente_id: user?.id ?? null });
-    });
-  }
-
-  function handleResponder() {
-    const id = defeito!.id;
-    return comAcao('responder', async () => {
-      await api.updateDefeito(id, { status: 'vinculado_com_resposta' });
-      addToast('Resposta registrada!');
-      onPatch(id, { status: 'vinculado_com_resposta' });
-    });
-  }
-
-  /** Finaliza o atendimento. Foto de resolução não é exigida. */
-  function handleFinalizar() {
-    const id = defeito!.id;
-    return comAcao('finalizar', async () => {
-      await api.finalizarDefeito(id);
-      addToast('Chamado finalizado!');
-      onPatch(id, { status: 'atendido' });
-    });
   }
 
   function handleApoiar() {
@@ -179,312 +128,60 @@ export function DefectSheet({
     });
   }
 
-  function handleGerarOS() {
-    const id = defeito!.id;
-    return comAcao('os', async () => {
-      await api.gerarOS(id);
-      addToast('Ordem de Serviço gerada!');
-    });
-  }
-
   return (
-    <>
-      <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-        <Pressable
-          style={[styles.backdrop, { backgroundColor: colors.overlay }]}
-          onPress={onClose}
-          accessibilityLabel="Fechar detalhes"
-        />
-        <View
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: colors.bgSurface,
-              borderColor: colors.borderGold,
-              paddingBottom: insets.bottom + Spacing[4],
-            },
-          ]}>
-          <View style={styles.puxador}>
-            <View style={[styles.puxadorBarra, { backgroundColor: colors.borderHover }]} />
-          </View>
+    <DefectDetail
+      defeito={defeito}
+      onClose={onClose}
+      rotuloApoios={modoConfirmacao ? 'confirmacoes' : 'apoios'}>
+      {isAuthenticated ? (
+        <>
+          <Button
+            variant={modoConfirmacao && aoAlcance && !apoiado ? 'primary' : 'secondary'}
+            size="sm"
+            onPress={handleApoiar}
+            disabled={!podeConfirmar}
+            loading={acaoEmCurso === 'apoiar'}
+            icon={
+              <Ionicons
+                name={
+                  modoConfirmacao
+                    ? apoiado
+                      ? 'checkmark-circle'
+                      : aoAlcance
+                        ? 'checkmark-circle-outline'
+                        : 'walk'
+                    : apoiado
+                      ? 'thumbs-up'
+                      : 'thumbs-up-outline'
+                }
+                size={14}
+                color={
+                  modoConfirmacao && aoAlcance && !apoiado
+                    ? colors.textInverse
+                    : podeConfirmar
+                      ? colors.gold500
+                      : colors.textMuted
+                }
+              />
+            }
+            style={{ borderColor: podeConfirmar ? colors.gold500 : colors.borderDefault }}>
+            {rotuloConfirmar}
+          </Button>
 
-          <ScrollView contentContainerStyle={styles.conteudo} showsVerticalScrollIndicator={false}>
-            <View style={styles.cabecalho}>
-              <View style={styles.cabecalhoTexto}>
-                <Text style={[styles.titulo, { color: colors.textPrimary }]} numberOfLines={2}>
-                  {defeito.titulo}
-                </Text>
-                <View style={styles.linhaMeta}>
-                  <StatusBadge status={defeito.status} concluidoEm={concluidoEm(defeito)} />
-                  <Text style={[styles.meta, { color: colors.textMuted }]}>
-                    {maskName(defeito.usuario?.nome)}
-                  </Text>
-                </View>
-              </View>
-              <Pressable
-                onPress={onClose}
-                accessibilityRole="button"
-                accessibilityLabel="Fechar"
-                hitSlop={8}>
-                <Ionicons name="close" size={20} color={colors.textMuted} />
-              </Pressable>
-            </View>
-
-            <Text style={[styles.descricao, { color: colors.textSecondary }]}>
-              {defeito.descricao}
-            </Text>
-
-            {defeito.categoria || defeito.bairro ? (
-              <Text style={[styles.meta, { color: colors.textMuted }]}>
-                {[
-                  defeito.categoria,
-                  defeito.rua,
-                  defeito.bairro,
-                  defeito.municipio
-                    ? `${defeito.municipio.nome}/${defeito.municipio.uf_sigla}`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </Text>
-            ) : null}
-
-            {defeito.imagem_thumbnail ? (
-              <Pressable onPress={() => setImagemAberta(defeito.imagem_thumbnail!)}>
-                <Image
-                  source={{ uri: defeito.imagem_thumbnail }}
-                  style={styles.imagem}
-                  contentFit="cover"
-                  transition={150}
-                />
-              </Pressable>
-            ) : null}
-
-            {imagensExtra.map((url) => (
-              <Pressable key={url} onPress={() => setImagemAberta(url)}>
-                <Image
-                  source={{ uri: url }}
-                  style={styles.imagem}
-                  contentFit="cover"
-                  transition={150}
-                />
-              </Pressable>
-            ))}
-
-            <Text style={[styles.secao, { color: colors.textMuted }]}>Histórico</Text>
-            <Timeline items={getTimelineItems(defeito)} />
-
-            <View style={styles.rodapeMeta}>
-              <Text style={[styles.meta, { color: colors.textMuted }]}>
-                {formatarData(defeito.criado_em)}
-              </Text>
-              {totalApoios(defeito) > 0 ? (
-                <View style={styles.apoios}>
-                  <Ionicons
-                    name={modoConfirmacao ? 'checkmark-circle' : 'thumbs-up'}
-                    size={12}
-                    color={colors.textMuted}
-                  />
-                  <Text style={[styles.meta, { color: colors.textMuted }]}>
-                    {totalApoios(defeito)}
-                    {modoConfirmacao
-                      ? totalApoios(defeito) === 1
-                        ? ' confirmação'
-                        : ' confirmações'
-                      : ''}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            {isAuthenticated ? (
-              <View style={styles.acoes}>
-                {podeAtender ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onPress={handleAtender}
-                    loading={acaoEmCurso === 'atender'}
-                    icon={<Ionicons name="hand-left" size={14} color={colors.info} />}
-                    style={{ borderColor: colors.info }}>
-                    Atender
-                  </Button>
-                ) : null}
-
-                {podeFinalizar ? (
-                  <>
-                    {defeito.status === 'vinculado_sem_resposta' ? (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onPress={handleResponder}
-                        loading={acaoEmCurso === 'responder'}
-                        icon={
-                          <Ionicons name="chatbox-ellipses" size={14} color={colors.textPrimary} />
-                        }>
-                        Responder
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onPress={handleFinalizar}
-                      loading={acaoEmCurso === 'finalizar'}
-                      icon={<Ionicons name="camera" size={14} color={colors.error} />}>
-                      Finalizar
-                    </Button>
-                  </>
-                ) : null}
-
-                <Button
-                  variant={modoConfirmacao && aoAlcance && !apoiado ? 'primary' : 'secondary'}
-                  size="sm"
-                  onPress={handleApoiar}
-                  disabled={!podeConfirmar}
-                  loading={acaoEmCurso === 'apoiar'}
-                  icon={
-                    <Ionicons
-                      name={
-                        modoConfirmacao
-                          ? apoiado
-                            ? 'checkmark-circle'
-                            : aoAlcance
-                              ? 'checkmark-circle-outline'
-                              : 'walk'
-                          : apoiado
-                            ? 'thumbs-up'
-                            : 'thumbs-up-outline'
-                      }
-                      size={14}
-                      color={
-                        modoConfirmacao && aoAlcance && !apoiado
-                          ? colors.textInverse
-                          : podeConfirmar
-                            ? colors.gold500
-                            : colors.textMuted
-                      }
-                    />
-                  }
-                  style={{ borderColor: podeConfirmar ? colors.gold500 : colors.borderDefault }}>
-                  {rotuloConfirmar}
-                </Button>
-
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onPress={handleAnexar}
-                  loading={acaoEmCurso === 'anexar'}
-                  icon={<Ionicons name="image" size={14} color={colors.textSecondary} />}>
-                  Anexar
-                </Button>
-
-                {isAdmin ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onPress={handleGerarOS}
-                    loading={acaoEmCurso === 'os'}
-                    icon={<Ionicons name="document-text" size={14} color={colors.textSecondary} />}>
-                    Ordem de Serviço
-                  </Button>
-                ) : null}
-              </View>
-            ) : (
-              <Text style={[styles.meta, { color: colors.textMuted }]}>
-                Faça login para apoiar ou anexar imagens.
-              </Text>
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
-
-      <ImageViewer uri={imagemAberta} onClose={() => setImagemAberta(null)} />
-    </>
+          <Button
+            variant="secondary"
+            size="sm"
+            onPress={handleAnexar}
+            loading={acaoEmCurso === 'anexar'}
+            icon={<Ionicons name="image" size={14} color={colors.textSecondary} />}>
+            Anexar
+          </Button>
+        </>
+      ) : (
+        <Text style={[detailStyles.aviso, { color: colors.textMuted }]}>
+          Faça login para apoiar ou anexar imagens.
+        </Text>
+      )}
+    </DefectDetail>
   );
 }
-
-const styles = StyleSheet.create({
-  backdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    maxHeight: '85%',
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-  },
-  puxador: {
-    alignItems: 'center',
-    paddingTop: Spacing[2],
-  },
-  puxadorBarra: {
-    width: 36,
-    height: 4,
-    borderRadius: Radius.full,
-  },
-  conteudo: {
-    padding: Spacing[5],
-    gap: Spacing[3],
-  },
-  cabecalho: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing[3],
-  },
-  cabecalhoTexto: {
-    flex: 1,
-    gap: Spacing[2],
-  },
-  titulo: {
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.semibold,
-  },
-  linhaMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing[2],
-    flexWrap: 'wrap',
-  },
-  meta: {
-    fontSize: FontSize.xs,
-  },
-  descricao: {
-    fontSize: FontSize.sm,
-    lineHeight: 20,
-  },
-  imagem: {
-    width: '100%',
-    height: 160,
-    borderRadius: Radius.md,
-  },
-  secao: {
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginTop: Spacing[2],
-  },
-  rodapeMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing[3],
-  },
-  apoios: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing[1],
-  },
-  acoes: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing[2],
-  },
-});

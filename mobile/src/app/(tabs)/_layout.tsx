@@ -34,6 +34,16 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="operacao"
+        options={{
+          title: 'Operação',
+          tabBarIcon: ({ color, size }) => <Ionicons name="construct" size={size} color={color} />,
+          // Mapa de trabalho do operador: fila, meus atendimentos, finalizar.
+          // Separado do mapa do cidadão para nenhum dos dois virar uma mistura.
+          href: isAuthenticated && user?.admin ? undefined : null,
+        }}
+      />
+      <Tabs.Screen
         name="chamados"
         options={{
           title: 'Chamados',
@@ -46,7 +56,9 @@ export default function TabsLayout() {
         name="painel"
         options={{
           title: 'Painel',
-          tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart" size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="stats-chart" size={size} color={color} />
+          ),
           href: isAuthenticated && user?.admin ? undefined : null,
         }}
       />
