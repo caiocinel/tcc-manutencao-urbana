@@ -10,7 +10,9 @@
  *
  * - Sem filtros para aprender: se o operador já assumiu chamados, a tela
  *   mostra **só os dele**; se não assumiu nenhum, mostra **todos os abertos**
- *   da cidade. Um link no painel alterna entre as duas visões.
+ *   da cidade. Um botão lateral (pessoa/pessoas) alterna entre as duas
+ *   visões — separado do cabeçalho do painel para não ser acionado sem querer
+ *   ao recolher a lista.
  * - O mapa mostra os pinos coloridos por status; o painel inferior lista os
  *   mesmos chamados, mais perto primeiro (ou mais antigo, sem GPS), com
  *   alerta de SLA vencido.
@@ -530,8 +532,33 @@ export default function OperacaoScreen() {
           escuro={theme === 'dark'}
         />
 
-        {/* Lateral direita: rota, enquadrar e voltar para mim. */}
+        {/* Lateral direita: meus/todos, rota, enquadrar e voltar para mim. */}
         <View style={[styles.lateral, { bottom: rodape + alturaPainel }]}>
+          {!roteiro && !modoSelecao && meus.length > 0 ? (
+            <Pressable
+              onPress={() => {
+                setVerTodos((v) => !v);
+                setSelecionado(null);
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: soOsMeus }}
+              accessibilityLabel={
+                soOsMeus ? 'Ver todos os chamados da cidade' : 'Ver só os meus atendimentos'
+              }
+              style={[
+                styles.botaoRedondo,
+                {
+                  backgroundColor: soOsMeus ? colors.gold500 : colors.bgSurface,
+                  borderColor: soOsMeus ? colors.gold500 : colors.borderDefault,
+                },
+              ]}>
+              <Ionicons
+                name={soOsMeus ? 'person' : 'people'}
+                size={18}
+                color={soOsMeus ? colors.textInverse : colors.textSecondary}
+              />
+            </Pressable>
+          ) : null}
           {!roteiro ? (
             <Pressable
               onPress={() => (modoSelecao ? sairDaSelecao() : montarRotaNoRaio(raioRota))}
@@ -623,17 +650,6 @@ export default function OperacaoScreen() {
                       : `${lista.length === 1 ? '1 chamado' : `${lista.length} chamados`}${
                           posicao ? ' · mais perto primeiro' : ' · mais antigo primeiro'
                         }`}
-                    {!modoSelecao && meus.length > 0 ? (
-                      <Text
-                        style={{ color: colors.gold500, fontWeight: FontWeight.semibold }}
-                        onPress={() => {
-                          setVerTodos((v) => !v);
-                          setSelecionado(null);
-                          sairDaSelecao();
-                        }}>
-                        {soOsMeus ? '  ·  ver todos da cidade' : '  ·  só os meus'}
-                      </Text>
-                    ) : null}
                   </Text>
                 </View>
                 <Ionicons
