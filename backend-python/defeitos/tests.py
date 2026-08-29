@@ -272,16 +272,17 @@ class TestAtender:
 
     ATENDER_URL = 'defeitos-atender'
 
-    def test_atender(self, auth_client):
-        created = _create_defeito(auth_client)
-        resp = auth_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
+    def test_atender(self, admin_client):
+        """Assumir é ação de operador (admin); cidadão comum não assume."""
+        created = _create_defeito(admin_client)
+        resp = admin_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
         assert resp.status_code == 200
         assert 'message' in resp.data
 
-    def test_atender_duplicate(self, auth_client):
-        created = _create_defeito(auth_client)
-        auth_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
-        resp = auth_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
+    def test_atender_duplicate(self, admin_client):
+        created = _create_defeito(admin_client)
+        admin_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
+        resp = admin_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
         assert resp.status_code == 400
 
     def test_atender_unauthenticated(self, client, auth_client):
@@ -385,14 +386,14 @@ class TestStatusAction:
         )
         assert resp.status_code == 200
 
-    def test_update_status_allowed_for_atendente(self, auth_client):
+    def test_update_status_allowed_for_atendente(self, admin_client):
         """Atendente vinculado ao defeito pode alterar o status."""
-        created = _create_defeito(auth_client)
-        resp = auth_client.patch(
+        created = _create_defeito(admin_client)
+        resp = admin_client.patch(
             reverse('defeitos-atender', args=[created['id']]), format='json',
         )
         assert resp.status_code == 200
-        resp = auth_client.patch(
+        resp = admin_client.patch(
             reverse(self.STATUS_URL, args=[created['id']]),
             {'status': 'em_andamento'}, format='json',
         )
@@ -769,4 +770,113 @@ class TestVisaoMunicipio:
 
     def test_sem_coordenadas_400(self, client):
         assert client.get(reverse('defeitos-municipio')).status_code == 400
+
+
+class TestOperacaoPorMunicipio:
+    """
+    Operador vinculado a um município só opera (fila, assumir, status, OS,
+    lote) nos chamados que caíram nele. Como cidadão, vê e reporta em
+    qualquer lugar.
+    """
+
+    CIDADE = '9999903'
+
+    def _cidade(self):
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("""
+                INSERT INTO municipios (codigo, nome, uf, uf_sigla, min_lat, max_lat, min_lng, max_lng, polygon_geom)
+                VALUES (%s, 'Cidade Operacao', '35', 'SP', -25.1, -24.9, -51.4, -51.2,
+                        ST_Multi(ST_GeomFromText('POLYGON((-51.4 -25.1, -51.2 -25.1, -51.2 -24.9, -51.4 -24.9, -51.4 -25.1))', 4326)))
+                ON CONFLICT (codigo) DO NOTHING
+            """, [self.CIDADE])
+
+    def _operador(self, client, municipio_id=None):
+        """Admin comum (não super) vinculado — ou não — a um município."""
+        from users.models import User
+        op = _new_user_client(client)
+        # O cliente autentica por JWT; acha o usuário pelo perfil.
+        perfil = op.get(reverse('auth-profile'))
+        user = User.objects.get(id=perfil.data['id'])
+        user.admin = 1
+        user.municipio_id = municipio_id
+        user.save(update_fields=['admin', 'municipio_id'])
+        return op
+
+    def _dentro(self, auth_client):
+        # Espalha os pontos para não cair na detecção de duplicado.
+        passo = (next(_COORD_COUNTER) % 40) * 0.002
+        return _create_defeito(auth_client, latitude=-25.0 + passo, longitude=-51.3 + passo)
+
+    def _fora(self, auth_client):
+        passo = (next(_COORD_COUNTER) % 40) * 0.002
+        return _create_defeito(auth_client, latitude=-23.5505 + passo, longitude=-46.6333 - passo)
+
+    def test_fila_so_do_municipio(self, client, auth_client):
+        self._cidade()
+        dentro = self._dentro(auth_client)
+        self._fora(auth_client)
+        op = self._operador(client, self.CIDADE)
+        resp = op.get(reverse('defeitos-operacao'))
+        assert resp.status_code == 200, resp.data
+        assert resp.data['municipio'] == {'codigo': self.CIDADE, 'nome': 'Cidade Operacao', 'uf_sigla': 'SP'}
+        assert [d['id'] for d in resp.data['defeitos']] == [dentro['id']]
+
+    def test_sem_municipio_nao_opera(self, client):
+        op = self._operador(client, None)
+        assert op.get(reverse('defeitos-operacao')).status_code == 403
+
+    def test_super_admin_ve_tudo(self, admin_client, auth_client):
+        self._cidade()
+        self._dentro(auth_client)
+        self._fora(auth_client)
+        resp = admin_client.get(reverse('defeitos-operacao'))
+        assert resp.status_code == 200
+        assert resp.data['municipio'] is None
+        assert len(resp.data['defeitos']) >= 2
+
+    def test_assumir_so_no_seu_municipio(self, client, auth_client):
+        self._cidade()
+        dentro = self._dentro(auth_client)
+        fora = self._fora(auth_client)
+        op = self._operador(client, self.CIDADE)
+        assert op.patch(reverse('defeitos-atender', args=[fora['id']])).status_code == 403
+        assert op.patch(reverse('defeitos-atender', args=[dentro['id']])).status_code == 200
+
+    def test_status_e_os_so_no_seu_municipio(self, client, auth_client):
+        self._cidade()
+        fora = self._fora(auth_client)
+        op = self._operador(client, self.CIDADE)
+        resp = op.patch(reverse('defeitos-status', args=[fora['id']]), {'status': 'em_andamento'}, format='json')
+        assert resp.status_code == 403
+        assert op.get(reverse('defeitos-ordem-servico', args=[fora['id']])).status_code == 403
+
+    def test_lote_ignora_outros_municipios(self, client, auth_client):
+        self._cidade()
+        dentro = self._dentro(auth_client)
+        fora = self._fora(auth_client)
+        op = self._operador(client, self.CIDADE)
+        resp = op.patch(
+            reverse('defeitos-batch-status'),
+            {'ids': [dentro['id'], fora['id']], 'status': 'em_andamento'}, format='json',
+        )
+        assert resp.status_code == 200
+        assert resp.data['updated'] == 1
+        assert Defeito.objects.get(id=fora['id']).status == 'pendente'
+
+    def test_como_cidadao_continua_vendo_tudo(self, client, auth_client):
+        """O vínculo não recorta a listagem pública nem o detalhe."""
+        self._cidade()
+        fora = self._fora(auth_client)
+        op = self._operador(client, self.CIDADE)
+        ids = {d['id'] for d in op.get(reverse('defeitos-list')).data['results']}
+        assert fora['id'] in ids
+        assert op.get(reverse('defeitos-detail', args=[fora['id']])).status_code == 200
+
+
+class TestAtenderSoOperador:
+    def test_cidadao_nao_assume(self, auth_client):
+        created = _create_defeito(auth_client)
+        resp = auth_client.patch(reverse('defeitos-atender', args=[created['id']]), format='json')
+        assert resp.status_code == 403
 

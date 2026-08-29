@@ -3,6 +3,11 @@
  * do cidadão de propósito: aqui não se reporta nem se confirma nada; o que
  * existe é a **fila** de chamados e o fluxo assumir → responder → finalizar.
  *
+ * A fila é a do **município a que o operador está vinculado** (o backend
+ * recorta em `/defeitos/operacao/` e recusa assumir fora dele). Sem vínculo,
+ * a tela explica em vez de mostrar o mapa. Como cidadão, na aba Mapa, a mesma
+ * pessoa continua livre para reportar em qualquer cidade.
+ *
  * - Chips no topo trocam o recorte: Fila (sem atendente), Meus (assumidos por
  *   mim), Abertos (tudo que não foi concluído) e Concluídos.
  * - O mapa mostra os pinos do recorte, coloridos por status; o painel inferior
@@ -23,6 +28,7 @@ import { MapSurface } from '@/components/map-surface';
 import type { MapSurfaceHandle, MarcadorMapa, Regiao } from '@/components/map-surface.types';
 import { OperacaoSheet } from '@/components/operacao-sheet';
 import { FilterChips } from '@/components/ui/chips';
+import { LoadingState } from '@/components/ui/screen';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { getStatusColor, STATUS_ABERTOS, STATUS_FECHADOS } from '@/constants/status';
 import { FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
@@ -32,7 +38,7 @@ import { useToast } from '@/context/toast-context';
 import { GpsJoystick } from '@/dev/gps-joystick';
 import { useLocalizacao } from '@/hooks/use-localizacao';
 import { api } from '@/services/api';
-import type { Categoria, Defeito } from '@/types';
+import type { Categoria, Defeito, Operacao } from '@/types';
 import { concluidoEm } from '@/utils/format';
 import {
   caixaDosPontos,
@@ -70,6 +76,10 @@ export default function OperacaoScreen() {
 
   const mapRef = useRef<MapSurfaceHandle>(null);
   const [defeitos, setDefeitos] = useState<Defeito[]>([]);
+  const [municipioOp, setMunicipioOp] = useState<Operacao['municipio']>(null);
+  const [carregando, setCarregando] = useState(true);
+  // Mensagem do backend quando o operador não pode operar (sem município).
+  const [bloqueio, setBloqueio] = useState<string | null>(null);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [recorte, setRecorte] = useState<Recorte>('fila');
   const [selecionado, setSelecionado] = useState<Defeito | null>(null);
@@ -88,9 +98,16 @@ export default function OperacaoScreen() {
 
   const carregar = useCallback(async () => {
     try {
-      setDefeitos(await api.listDefeitos());
-    } catch {
-      // Sem rede, fica o que já estava em tela.
+      const fila = await api.operacao();
+      setDefeitos(fila.defeitos);
+      setMunicipioOp(fila.municipio);
+      setBloqueio(null);
+    } catch (err) {
+      // 403 = sem município vinculado; qualquer outro erro mantém a tela.
+      const msg = err instanceof Error ? err.message : '';
+      if (/munic[ií]pio|permiss/i.test(msg)) setBloqueio(msg);
+    } finally {
+      setCarregando(false);
     }
   }, []);
 
@@ -226,6 +243,30 @@ export default function OperacaoScreen() {
 
   const rodape = insets.bottom + Spacing[4];
 
+  if (bloqueio || (carregando && defeitos.length === 0)) {
+    return (
+      <View
+        style={[styles.container, { backgroundColor: colors.bgPrimary, paddingTop: insets.top }]}>
+        {bloqueio ? (
+          <View style={styles.bloqueio}>
+            <Ionicons name="business-outline" size={40} color={colors.textMuted} />
+            <Text style={[styles.bloqueioTitulo, { color: colors.textPrimary }]}>
+              Sem município de operação
+            </Text>
+            <Text style={[styles.bloqueioTexto, { color: colors.textSecondary }]}>
+              Você só opera chamados da cidade a que está vinculado. Peça a um administrador para
+              vincular seu usuário a um município. Como cidadão, você pode reportar em qualquer
+              lugar pela aba Mapa.
+            </Text>
+            <Text style={[styles.bloqueioTexto, { color: colors.textMuted }]}>{bloqueio}</Text>
+          </View>
+        ) : (
+          <LoadingState label="Carregando a fila..." />
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.bgPrimary, paddingTop: insets.top }]}>
       <View style={styles.mapaWrapper}>
@@ -305,8 +346,13 @@ export default function OperacaoScreen() {
               style={styles.painelCabecalho}>
               <Ionicons name="construct" size={16} color={colors.gold500} />
               <View style={styles.painelTitulos}>
-                <Text style={[styles.painelTitulo, { color: colors.textPrimary }]}>
+                <Text
+                  style={[styles.painelTitulo, { color: colors.textPrimary }]}
+                  numberOfLines={1}>
                   {RECORTES.find((r) => r.value === recorte)?.label}
+                  {municipioOp
+                    ? ` · ${municipioOp.nome}/${municipioOp.uf_sigla}`
+                    : ' · todas as cidades'}
                 </Text>
                 <Text style={[styles.painelSubtitulo, { color: colors.textMuted }]}>
                   {lista.length === 1 ? '1 chamado' : `${lista.length} chamados`}
@@ -514,5 +560,22 @@ const styles = StyleSheet.create({
   vazio: {
     fontSize: FontSize.sm,
     padding: Spacing[2],
+  },
+  bloqueio: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing[3],
+    padding: Spacing[6],
+  },
+  bloqueioTitulo: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.bold,
+    textAlign: 'center',
+  },
+  bloqueioTexto: {
+    fontSize: FontSize.sm,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

@@ -101,9 +101,14 @@ def auth_client(client, user_creds):
 
 
 @pytest.fixture
-def admin_client(auth_client, user_creds):
+def admin_client(auth_client, user_creds, settings):
+    """
+    Admin *super*: opera em qualquer município. Operadores comuns são
+    restritos ao município vinculado — ver `TestOperacaoPorMunicipio`.
+    """
     from users.models import User
     user = User.objects.get(email=user_creds['email'])
     user.admin = 1
     user.save(update_fields=['admin'])
+    settings.SUPER_ADMIN_EMAIL = user_creds['email']
     return auth_client

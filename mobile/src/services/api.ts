@@ -18,6 +18,7 @@ import type {
   AuthResponse,
   Categoria,
   VisaoMunicipio,
+  Operacao,
   Defeito,
   Estatisticas,
   Municipio,
@@ -314,6 +315,9 @@ export const api = {
     request<VisaoMunicipio>(`/api/v1/defeitos/municipio/?lat=${lat}&lng=${lng}`, {
       publico: true,
     }),
+
+  /** Fila de operação: chamados do município do operador (403 sem vínculo). */
+  operacao: () => request<Operacao>('/api/v1/defeitos/operacao/'),
 
   updateDefeito: (id: number, data: Record<string, unknown>) =>
     request<Defeito>(`/api/v1/defeitos/${id}/`, { method: 'PATCH', body: data }),

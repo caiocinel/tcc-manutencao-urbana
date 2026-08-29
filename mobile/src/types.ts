@@ -85,6 +85,13 @@ export type VisaoMunicipio = {
   defeitos: Defeito[];
 };
 
+/** Resposta de GET /defeitos/operacao/ — fila do operador no seu município. */
+export type Operacao = {
+  /** null para o super admin, que opera em qualquer cidade. */
+  municipio: { codigo: string; nome: string; uf_sigla: string } | null;
+  defeitos: Defeito[];
+};
+
 export type AuthResponse = {
   access: string;
   refresh?: string;
