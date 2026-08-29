@@ -27,7 +27,7 @@ import type {
 } from '@/types';
 
 import { enqueueDefeito } from './offline-queue';
-import { getRefreshSync, getTokenSync, setToken } from './storage';
+import { getRefreshSync, getTokenSync, setRefresh, setToken } from './storage';
 
 const API_URL_PRODUCAO = 'https://tcc.josemurilors.com.br';
 
@@ -130,8 +130,14 @@ async function request<T = any>(endpoint: string, options: RequestOptions = {}):
         });
 
         if (refreshRes.ok) {
-          const { access } = (await refreshRes.json()) as { access: string };
+          const { access, refresh } = (await refreshRes.json()) as {
+            access: string;
+            refresh?: string;
+          };
           await setToken(access);
+          // O backend rotaciona o refresh (ROTATE_REFRESH_TOKENS): guardar o
+          // novo é o que faz a sessão "deslizar" em vez de cair 7 dias após o login.
+          if (refresh) await setRefresh(refresh);
           headers.Authorization = `Bearer ${access}`;
           const retryRes = await fetch(`${API_URL}${endpoint}`, { ...fetchOptions, headers });
           if (retryRes.status === 401) {

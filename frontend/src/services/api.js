@@ -48,8 +48,11 @@ async function request(endpoint, options = {}) {
           body: JSON.stringify({ refresh: refreshToken }),
         });
         if (refreshRes.ok) {
-          const { access } = await refreshRes.json();
+          const { access, refresh } = await refreshRes.json();
           localStorage.setItem('token', access);
+          // O backend rotaciona o refresh (ROTATE_REFRESH_TOKENS): guardar o
+          // novo é o que faz a sessão "deslizar" em vez de cair 7 dias após o login.
+          if (refresh) localStorage.setItem('refresh', refresh);
           options.headers = { ...options.headers, Authorization: `Bearer ${access}` };
           headers.Authorization = `Bearer ${access}`;
           const retryRes = await fetch(`${API_URL}${endpoint}`, { ...fetchOptions, headers });

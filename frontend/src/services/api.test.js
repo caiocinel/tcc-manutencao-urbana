@@ -59,7 +59,7 @@ describe('api request helper com FormData', () => {
         new Response(JSON.stringify({ detail: 'Token expirado' }), { status: 401, headers: { 'Content-Type': 'application/json' } }),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ access: 'novo-token' }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        new Response(JSON.stringify({ access: 'novo-token', refresh: 'refresh-novo' }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
       )
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ status: 'atendido' }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
@@ -68,6 +68,8 @@ describe('api request helper com FormData', () => {
     const res = await apiModule.api.updateDefeitoComArquivo('abc-123', fd);
 
     expect(localStorage.getItem('token')).toBe('novo-token');
+    // Refresh rotacionado pelo backend precisa substituir o antigo.
+    expect(localStorage.getItem('refresh')).toBe('refresh-novo');
     const retryCall = fetchMock.mock.calls[2];
     expect(retryCall[1].headers.Authorization).toBe('Bearer novo-token');
     expect(retryCall[1].headers['Content-Type']).toBeUndefined();
