@@ -17,11 +17,13 @@
  *   para a posição do operador.
  * - Tocar num pino ou num item abre o `OperacaoSheet`, com as ações de operador.
  *
- * **Rota inteligente**: toque longo (ou o botão de rota) entra em modo de
- * seleção; "Criar rota" ordena as paradas partindo da posição atual — pelo
+ * **Rota inteligente**: o botão de rota junta sozinho os chamados abertos do
+ * recorte num raio ao redor do operador (raio ajustável, com contagem por
+ * opção); "Traçar rota" ordena as paradas partindo da posição atual — pelo
  * OSRM (ruas) quando ele responde, senão em linha reta (`utils/rota.ts`) —,
  * assume em lote as que ainda não têm atendente e abre o `RoteiroPanel`, que
- * avança sozinho quando a parada atual é finalizada.
+ * avança sozinho quando a parada atual é finalizada. Desmarcar um chamado (ou
+ * o toque longo, para montar a seleção na mão) continua possível.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -32,6 +34,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MapSurface } from '@/components/map-surface';
 import type {
+  CirculoMapa,
   LinhaMapa,
   MapSurfaceHandle,
   MarcadorMapa,
@@ -61,7 +64,7 @@ import {
   regiaoDaCaixa,
   REGIAO_PADRAO,
 } from '@/utils/geo';
-import { maisProximos, ordenarParadas } from '@/utils/rota';
+import { ordenarParadas } from '@/utils/rota';
 
 type Recorte = 'fila' | 'meus' | 'abertos' | 'concluidos';
 
@@ -74,10 +77,16 @@ const RECORTES: { value: Recorte; label: string }[] = [
 
 const MOSTRAR_JOYSTICK = __DEV__ && Platform.OS === 'web';
 
-/** Tamanho da seleção rápida "mais próximos". */
-const ATALHO_MAIS_PROXIMOS = 5;
+/** Raios da rota automática, em metros; 0 = o recorte inteiro. */
+const RAIOS_ROTA_M = [500, 1000, 2000, 5000, 0] as const;
+const RAIO_ROTA_PADRAO_M = 1000;
 /** Acima disso o 2-opt e o OSRM ficam lentos/recusam. */
 const MAX_PARADAS = 25;
+
+function rotuloRaio(raio: number) {
+  if (raio === 0) return 'Todos';
+  return raio >= 1000 ? `${raio / 1000} km` : `${raio} m`;
+}
 
 function diasDesde(iso: string) {
   const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -111,6 +120,7 @@ export default function OperacaoScreen() {
   // Rota inteligente: seleção de paradas e roteiro ativo.
   const [modoSelecao, setModoSelecao] = useState(false);
   const [selecao, setSelecao] = useState<Set<number>>(new Set());
+  const [raioRota, setRaioRota] = useState<number>(RAIO_ROTA_PADRAO_M);
   const [roteiro, setRoteiro] = useState<Roteiro | null>(null);
   const [tracado, setTracado] = useState<LinhaMapa | null>(null);
   const [criandoRota, setCriandoRota] = useState(false);
@@ -195,6 +205,36 @@ export default function OperacaoScreen() {
     () => RECORTES.map((r) => ({ value: r.value, label: `${r.label} · ${totais[r.value]}` })),
     [totais],
   );
+
+  /** Chamados abertos do recorte, mais perto primeiro (base da rota automática). */
+  const abertosPorDistancia = useMemo(
+    () => lista.filter((i) => STATUS_ABERTOS.includes(i.defeito.status)),
+    [lista],
+  );
+
+  /** Quantos chamados cada opção de raio pegaria. */
+  const contagemPorRaio = useMemo(
+    () =>
+      RAIOS_ROTA_M.map((raio) => ({
+        raio,
+        total: abertosPorDistancia.filter((i) => raio === 0 || i.distancia <= raio).length,
+      })),
+    [abertosPorDistancia],
+  );
+
+  const circulos = useMemo<CirculoMapa[]>(() => {
+    if (!modoSelecao || !posicao || raioRota === 0) return [];
+    return [
+      {
+        key: 'raio-rota',
+        centro: { latitude: posicao.latitude, longitude: posicao.longitude },
+        raio: raioRota,
+        corPreenchimento: 'rgba(212,175,55,0.08)',
+        corBorda: 'rgba(212,175,55,0.6)',
+        larguraBorda: 1,
+      },
+    ];
+  }, [modoSelecao, posicao, raioRota]);
 
   /** Paradas do roteiro na versão mais recente de `defeitos` (status atualizado). */
   const paradasAtuais = useMemo(() => {
@@ -326,15 +366,25 @@ export default function OperacaoScreen() {
     setModoSelecao(true);
   }
 
-  function selecionarMaisProximos() {
+  /**
+   * Rota automática: seleciona sozinho os chamados abertos do recorte dentro
+   * do raio (mais perto primeiro, até MAX_PARADAS) e abre o modo de rota.
+   */
+  function montarRotaNoRaio(raio: number) {
     if (!posicao) {
       addToast(erroGps ?? 'Aguardando sinal do GPS...', 'info');
       return;
     }
-    const abertos = lista.map((i) => i.defeito).filter((d) => STATUS_ABERTOS.includes(d.status));
-    const escolhidos = maisProximos(posicao, abertos, ATALHO_MAIS_PROXIMOS);
-    setSelecao(new Set(escolhidos.map((d) => d.id)));
+    const dentro = abertosPorDistancia.filter((i) => raio === 0 || i.distancia <= raio);
+    const escolhidos = dentro.slice(0, MAX_PARADAS);
+    if (dentro.length > MAX_PARADAS) {
+      addToast(`Muitos chamados: a rota fica com os ${MAX_PARADAS} mais próximos.`, 'info');
+    }
+    setRaioRota(raio);
+    setSelecao(new Set(escolhidos.map((i) => i.defeito.id)));
     setModoSelecao(true);
+    setPainelAberto(true);
+    if (escolhidos.length > 0) enquadrarPontos(escolhidos.map((i) => i.defeito));
   }
 
   function sairDaSelecao() {
@@ -484,7 +534,7 @@ export default function OperacaoScreen() {
         <MapSurface
           ref={mapRef}
           regiaoInicial={regiaoInicial}
-          circulos={[]}
+          circulos={circulos}
           marcadores={marcadores}
           linhas={tracado ? [tracado] : []}
           usuario={posicao}
@@ -527,9 +577,9 @@ export default function OperacaoScreen() {
         <View style={[styles.lateral, { bottom: rodape + alturaPainel }]}>
           {!roteiro && recorte !== 'concluidos' ? (
             <Pressable
-              onPress={() => (modoSelecao ? sairDaSelecao() : setModoSelecao(true))}
+              onPress={() => (modoSelecao ? sairDaSelecao() : montarRotaNoRaio(raioRota))}
               accessibilityRole="button"
-              accessibilityLabel={modoSelecao ? 'Cancelar seleção' : 'Montar rota'}
+              accessibilityLabel={modoSelecao ? 'Cancelar rota' : 'Montar rota automática'}
               style={[
                 styles.botaoRedondo,
                 {
@@ -610,7 +660,7 @@ export default function OperacaoScreen() {
                   </Text>
                   <Text style={[styles.painelSubtitulo, { color: colors.textMuted }]}>
                     {modoSelecao
-                      ? 'Toque nos chamados que vai atender'
+                      ? `Abertos num raio de ${rotuloRaio(raioRota).toLowerCase()} · desmarque o que não for atender`
                       : `${lista.length === 1 ? '1 chamado' : `${lista.length} chamados`}${
                           posicao ? ' · mais perto primeiro' : ' · mais antigo primeiro'
                         }`}
@@ -625,20 +675,46 @@ export default function OperacaoScreen() {
 
               {modoSelecao ? (
                 <View style={styles.selecaoAcoes}>
+                  <View style={styles.raios}>
+                    {contagemPorRaio.map(({ raio, total }) => {
+                      const ativo = raio === raioRota;
+                      return (
+                        <Pressable
+                          key={raio}
+                          onPress={() => montarRotaNoRaio(raio)}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: ativo }}
+                          style={[
+                            styles.raioChip,
+                            {
+                              borderColor: ativo ? colors.gold500 : colors.borderDefault,
+                              backgroundColor: ativo ? colors.goldMuted : 'transparent',
+                            },
+                          ]}>
+                          <Text
+                            style={[
+                              styles.raioTexto,
+                              {
+                                color: ativo ? colors.gold500 : colors.textSecondary,
+                                fontWeight: ativo ? FontWeight.bold : FontWeight.regular,
+                              },
+                            ]}>
+                            {rotuloRaio(raio)} · {total}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                   <Button
-                    size="sm"
-                    variant="secondary"
-                    onPress={selecionarMaisProximos}
-                    icon={<Ionicons name="locate" size={14} color={colors.textPrimary} />}>
-                    {ATALHO_MAIS_PROXIMOS} mais próximos
-                  </Button>
-                  <Button
+                    block
                     size="sm"
                     onPress={criarRota}
                     loading={criandoRota}
                     disabled={selecao.size === 0}
                     icon={<Ionicons name="navigate" size={14} color={colors.textInverse} />}>
-                    Criar rota
+                    {selecao.size === 0
+                      ? 'Nenhum chamado no raio'
+                      : `Traçar rota · ${selecao.size} parada${selecao.size === 1 ? '' : 's'}`}
                   </Button>
                 </View>
               ) : null}
@@ -817,9 +893,22 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
   },
   selecaoAcoes: {
-    flexDirection: 'row',
     gap: Spacing[2],
     paddingHorizontal: Spacing[3],
+  },
+  raios: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing[1] + 2,
+  },
+  raioChip: {
+    paddingHorizontal: Spacing[2] + 2,
+    paddingVertical: Spacing[1] + 1,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+  },
+  raioTexto: {
+    fontSize: FontSize.xs,
   },
   painelCorpo: {
     maxHeight: 200,
