@@ -37,6 +37,20 @@ def verificar_id_token_google(token):
     return claims
 
 
+class ExisteEmailView(APIView):
+    """
+    Passo 1 do fluxo único de entrada do app: o usuário digita o e-mail e o
+    cliente decide se mostra senha (conta existe) ou cadastro (não existe).
+    """
+    permission_classes = (permissions.AllowAny,)
+
+    def post(self, request):
+        email = (request.data.get('email') or '').strip().lower()
+        if not email or '@' not in email:
+            return Response({'error': 'Email invalido'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'existe': User.objects.filter(email__iexact=email).exists()})
+
+
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer

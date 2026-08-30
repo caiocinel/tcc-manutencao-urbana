@@ -278,6 +278,14 @@ export async function postDefeitoDireto(dados: NovoDefeito) {
 }
 
 export const api = {
+  /** Passo 1 do fluxo único de entrada: o e-mail já tem conta? */
+  emailExiste: (email: string) =>
+    request<{ existe: boolean }>('/api/v1/auth/existe/', {
+      method: 'POST',
+      body: { email },
+      publico: true,
+    }),
+
   login: (email: string, senha: string) =>
     request<AuthResponse>('/api/v1/auth/login/', {
       method: 'POST',

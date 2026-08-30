@@ -556,3 +556,23 @@ class TestRefreshExigeUsuario:
         resp = client.post(reverse('auth-refresh'), {'refresh': refresh}, format='json')
         assert resp.status_code == 200
         assert 'access' in resp.data
+
+
+class TestExisteEmail:
+    def test_existe(self, client, auth_client, user_creds):
+        resp = client.post(reverse('auth-existe'), {'email': user_creds['email']}, format='json')
+        assert resp.status_code == 200
+        assert resp.data['existe'] is True
+
+    def test_case_insensitive(self, client, auth_client, user_creds):
+        resp = client.post(reverse('auth-existe'), {'email': user_creds['email'].upper()}, format='json')
+        assert resp.data['existe'] is True
+
+    def test_nao_existe(self, client):
+        resp = client.post(reverse('auth-existe'), {'email': 'ninguem@nada.com'}, format='json')
+        assert resp.status_code == 200
+        assert resp.data['existe'] is False
+
+    def test_email_invalido(self, client):
+        resp = client.post(reverse('auth-existe'), {'email': 'sem-arroba'}, format='json')
+        assert resp.status_code == 400

@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    ExisteEmailView,
     RegisterView, LoginView, GoogleLoginView, RefreshView,
     ProfileView, ChangePasswordView, UpdateMunicipioView,
     VerifyEmailView, ResendCodeView,
@@ -9,6 +10,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path('existe/', ExisteEmailView.as_view(), name='auth-existe'),
     path('register/', RegisterView.as_view(), name='auth-register'),
     path('login/', LoginView.as_view(), name='auth-login'),
     path('google/', GoogleLoginView.as_view(), name='auth-google'),
