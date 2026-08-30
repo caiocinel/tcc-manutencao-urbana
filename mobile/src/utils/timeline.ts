@@ -54,8 +54,21 @@ export function getTimelineItems(d: Defeito): TimelineItem[] {
       id: 'concluido',
       title: 'Chamado Concluído',
       date: formatarDataHora(d.atendido_em),
+      meta: ultimaAtualizacao(d),
     });
   }
 
   return items;
+}
+
+/** Último registro automático do backend (ex.: "Concluído por confirmação de cidadãos"). */
+function ultimaAtualizacao(d: Defeito): string | undefined {
+  if (!d.atualizacoes) return undefined;
+  try {
+    const lista = JSON.parse(d.atualizacoes) as { texto?: string }[];
+    const texto = lista[lista.length - 1]?.texto;
+    return texto || undefined;
+  } catch {
+    return undefined;
+  }
 }

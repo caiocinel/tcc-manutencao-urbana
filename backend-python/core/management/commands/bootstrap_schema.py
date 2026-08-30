@@ -116,6 +116,32 @@ SCHEMA = [
     )
     """,
     """
+    -- 'publica' ou 'restrita' (autor em quarentena: só quem está perto vê).
+    ALTER TABLE defeitos ADD COLUMN IF NOT EXISTS visibilidade TEXT NOT NULL DEFAULT 'publica'
+    """,
+    """
+    -- Um strike por chamado apagado como "nunca existiu" pela comunidade. O
+    -- chamado em si é apagado de verdade; guardamos só quem reportou e quando.
+    CREATE TABLE IF NOT EXISTS strikes (
+        id SERIAL PRIMARY KEY,
+        usuario_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        titulo TEXT NOT NULL DEFAULT '',
+        criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    -- Sinalização do cidadão sobre um chamado aberto: "já foi resolvido" ou
+    -- "não existe". Uma por usuário por chamado (o tipo pode ser trocado).
+    CREATE TABLE IF NOT EXISTS sinalizacoes (
+        id SERIAL PRIMARY KEY,
+        usuario_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        defeito_id UUID NOT NULL REFERENCES defeitos(id) ON DELETE CASCADE,
+        tipo TEXT NOT NULL CHECK (tipo IN ('resolvido', 'nao_existe')),
+        criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (usuario_id, defeito_id)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS push_subscriptions (
         id SERIAL PRIMARY KEY,
         usuario_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

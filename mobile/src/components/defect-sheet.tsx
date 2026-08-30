@@ -2,7 +2,11 @@
  * Detalhe do chamado para o **cidadão** (mapa e lista).
  *
  * Só o que uma pessoa comum faz: apoiar (ou "confirmar no local", quando a
- * tela informa a distância) e anexar uma foto. Atender, responder e finalizar
+ * tela informa a distância), anexar uma foto e sinalizar que o problema "já
+ * foi resolvido" ou "não existe" — para quando o operador consertou e não
+ * baixou o chamado, ou quando ninguém acha o problema no local. O backend
+ * decide o efeito (`regras.py`): o autor fecha/apaga o próprio chamado na
+ * hora; terceiros precisam de quórum. Atender, responder e finalizar
  * são trabalho de operador e vivem em `operacao-sheet.tsx` — mesmo um admin
  * navegando por aqui não vê essas ações, para o mapa do cidadão não virar
  * painel de operação.
@@ -10,16 +14,18 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { DefectDetail, detailStyles } from '@/components/defect-detail';
 import { Button } from '@/components/ui/button';
 import { RAIO_CONFIRMACAO_M } from '@/constants/proximidade';
+import { STATUS_FECHADOS } from '@/constants/status';
+import { FontSize, FontWeight, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useColors } from '@/context/theme-context';
 import { useToast } from '@/context/toast-context';
 import { api } from '@/services/api';
-import type { Defeito, PickedImage } from '@/types';
+import type { Defeito, PickedImage, TipoSinalizacao } from '@/types';
 import { totalApoios } from '@/utils/format';
 import { formatarDistancia } from '@/utils/geo';
 import { escolherDaGaleria, ImagemMuitoGrandeError } from '@/utils/image';
@@ -33,6 +39,11 @@ type Props = {
   /** Substitui o chamado pelo objeto recarregado do backend. */
   onReplace: (defeito: Defeito) => void;
   onApoioToggle: (id: number, apoiado: boolean) => void;
+  /** Sinalização do usuário logado neste chamado (`null` = nenhuma). */
+  sinalizacao?: TipoSinalizacao | null;
+  onSinalizacaoChange?: (id: number, tipo: TipoSinalizacao | null) => void;
+  /** O chamado deixou de existir (apagado como "não existe"): tira da lista e fecha. */
+  onRemove?: (id: number) => void;
   /**
    * Distância do usuário até o chamado, em metros. Quando informada (tela do
    * mapa), o "Apoiar" vira "Confirmar no local", liberado só dentro de
@@ -49,6 +60,9 @@ export function DefectSheet({
   onPatch,
   onReplace,
   onApoioToggle,
+  sinalizacao = null,
+  onSinalizacaoChange,
+  onRemove,
   distanciaM,
 }: Props) {
   const colors = useColors();
@@ -58,6 +72,8 @@ export function DefectSheet({
   const [acaoEmCurso, setAcaoEmCurso] = useState<string | null>(null);
 
   if (!defeito) return null;
+
+  const aberto = !STATUS_FECHADOS.includes(defeito.status) && defeito.status !== 'rejeitado';
 
   // Modo "confirmar no local": só quando a tela informa a distância.
   const modoConfirmacao = distanciaM !== undefined;
@@ -104,6 +120,36 @@ export function DefectSheet({
           : res.apoiado
             ? 'Apoio registrado!'
             : 'Apoio removido.',
+      );
+    });
+  }
+
+  function handleSinalizar(tipo: TipoSinalizacao) {
+    const id = defeito!.id;
+    return comAcao('sinalizar:' + tipo, async () => {
+      const res = await api.sinalizarDefeito(id, tipo);
+      onSinalizacaoChange?.(id, res.tipo);
+
+      if (res.resultado === 'inexistente') {
+        addToast('Chamado removido. Obrigado por avisar!');
+        onRemove?.(id);
+        onClose();
+        return;
+      }
+      if (res.resultado === 'concluido' && res.defeito) {
+        onReplace(res.defeito);
+        addToast('Chamado marcado como resolvido. Obrigado!');
+        return;
+      }
+
+      if (res.defeito) onReplace(res.defeito);
+      else onPatch(id, { sinalizacoes: res.sinalizacoes });
+      addToast(
+        res.tipo === null
+          ? 'Sinalização removida.'
+          : res.tipo === 'resolvido'
+            ? 'Obrigado! Avisamos que já foi resolvido.'
+            : 'Obrigado! Avisamos que o problema não existe.',
       );
     });
   }
@@ -176,12 +222,68 @@ export function DefectSheet({
             icon={<Ionicons name="image" size={14} color={colors.textSecondary} />}>
             Anexar
           </Button>
+
+          {aberto ? (
+            <View style={styles.sinalizar}>
+              <Text style={[styles.sinalizarTitulo, { color: colors.textMuted }]}>
+                Esse problema ainda existe?
+              </Text>
+              <View style={detailStyles.acoes}>
+                <Button
+                  variant={sinalizacao === 'resolvido' ? 'primary' : 'secondary'}
+                  size="sm"
+                  onPress={() => handleSinalizar('resolvido')}
+                  loading={acaoEmCurso === 'sinalizar:resolvido'}
+                  accessibilityLabel="Sinalizar que já foi resolvido"
+                  icon={
+                    <Ionicons
+                      name={
+                        sinalizacao === 'resolvido'
+                          ? 'checkmark-done-circle'
+                          : 'checkmark-done-circle-outline'
+                      }
+                      size={14}
+                      color={sinalizacao === 'resolvido' ? colors.textInverse : colors.textSecondary}
+                    />
+                  }>
+                  Já foi resolvido
+                </Button>
+                <Button
+                  variant={sinalizacao === 'nao_existe' ? 'primary' : 'secondary'}
+                  size="sm"
+                  onPress={() => handleSinalizar('nao_existe')}
+                  loading={acaoEmCurso === 'sinalizar:nao_existe'}
+                  accessibilityLabel="Sinalizar que o problema não existe"
+                  icon={
+                    <Ionicons
+                      name={sinalizacao === 'nao_existe' ? 'close-circle' : 'close-circle-outline'}
+                      size={14}
+                      color={sinalizacao === 'nao_existe' ? colors.textInverse : colors.textSecondary}
+                    />
+                  }>
+                  Não existe
+                </Button>
+              </View>
+            </View>
+          ) : null}
         </>
       ) : (
         <Text style={[detailStyles.aviso, { color: colors.textMuted }]}>
-          Faça login para apoiar ou anexar imagens.
+          Faça login para apoiar, anexar imagens ou sinalizar que já foi resolvido.
         </Text>
       )}
     </DefectDetail>
   );
 }
+
+const styles = StyleSheet.create({
+  sinalizar: {
+    width: '100%',
+    gap: Spacing[2],
+    marginTop: Spacing[2],
+  },
+  sinalizarTitulo: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.semibold,
+  },
+});

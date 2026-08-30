@@ -4,6 +4,7 @@ from datetime import timedelta
 from rest_framework import serializers
 from django.conf import settings
 from django.db import connection
+from django.db.models import Count
 from .models import Defeito, Apoio
 
 RESOLVIDOS = {'atendido', 'encerrado', 'concluido'}
@@ -17,6 +18,23 @@ def _is_sla_vencido(obj):
     from django.utils import timezone
     prazo = obj.criado_em + timedelta(days=obj.prazo_sla_dias)
     return timezone.now() > prazo
+
+
+def _sinalizacoes(obj):
+    """
+    Contagem de sinalizações do cidadão ("já foi resolvido" / "não existe").
+    Vem das anotações do queryset da viewset; um objeto avulso (ex.: recém
+    salvo numa action) conta direto no banco.
+    """
+    if hasattr(obj, 'total_resolvido'):
+        return {
+            'resolvido': obj.total_resolvido,
+            'nao_existe': obj.total_nao_existe,
+        }
+    contagem = {'resolvido': 0, 'nao_existe': 0}
+    for linha in obj.sinalizacoes.values('tipo').annotate(total=Count('id')):
+        contagem[linha['tipo']] = linha['total']
+    return contagem
 
 
 class ThumbnailField(serializers.Field):
@@ -34,6 +52,7 @@ class DefeitoListSerializer(serializers.ModelSerializer):
     autor_nome = serializers.CharField(source='usuario.nome', read_only=True, default='')
     categoria_nome = serializers.CharField(source='categoria', read_only=True, default='')
     total_apoios = serializers.SerializerMethodField()
+    sinalizacoes = serializers.SerializerMethodField()
     sla_vencido = serializers.SerializerMethodField()
 
     class Meta:
@@ -42,12 +61,15 @@ class DefeitoListSerializer(serializers.ModelSerializer):
             'id', 'titulo', 'status', 'categoria_nome',
             'autor_nome', 'latitude', 'longitude', 'municipio_id',
             'rua', 'bairro', 'prioridade', 'atendente_id',
-            'total_apoios', 'criado_em', 'imagem_url',
-            'sla_vencido',
+            'total_apoios', 'sinalizacoes', 'criado_em', 'imagem_url',
+            'sla_vencido', 'visibilidade',
         )
 
     def get_total_apoios(self, obj):
         return getattr(obj, 'total_apoios', 0)
+
+    def get_sinalizacoes(self, obj):
+        return _sinalizacoes(obj)
 
     def get_sla_vencido(self, obj):
         return _is_sla_vencido(obj)
@@ -60,6 +82,7 @@ class DefeitoDetailSerializer(serializers.ModelSerializer):
     atendente_id = serializers.PrimaryKeyRelatedField(source='atendente', read_only=True)
     categoria_nome = serializers.CharField(source='categoria', read_only=True, default='')
     total_apoios = serializers.SerializerMethodField()
+    sinalizacoes = serializers.SerializerMethodField()
     imagem_thumbnail = ThumbnailField()
     foto_resolucao_url = ThumbnailField(source='foto_resolucao', read_only=True)
     sla_vencido = serializers.SerializerMethodField()
@@ -71,6 +94,9 @@ class DefeitoDetailSerializer(serializers.ModelSerializer):
 
     def get_total_apoios(self, obj):
         return getattr(obj, 'total_apoios', 0)
+
+    def get_sinalizacoes(self, obj):
+        return _sinalizacoes(obj)
 
     def get_municipio(self, obj):
         """{codigo, nome, uf_sigla} do município do chamado, ou None."""
@@ -153,6 +179,8 @@ def _mesma_categoria_perto(lat, lng, categoria, raio_m):
 
 class DefeitoCreateSerializer(serializers.ModelSerializer):
     imagem_thumbnail = ThumbnailField(read_only=True)
+    # Quem decide é `regras.visibilidade_inicial`, nunca o cliente.
+    visibilidade = serializers.CharField(read_only=True)
 
     class Meta:
         model = Defeito

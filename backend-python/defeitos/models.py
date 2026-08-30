@@ -44,6 +44,11 @@ class Defeito(models.Model):
     imagem_url = models.CharField(max_length=512, blank=True, default='')
     categoria = models.CharField(max_length=255, blank=True, default='')
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='pendente')
+    # 'restrita' = autor em quarentena (ver `regras.py`): só quem está perto do
+    # ponto, o autor e operadores enxergam; vira 'publica' na 1ª confirmação.
+    VISIBILIDADE_PUBLICA = 'publica'
+    VISIBILIDADE_RESTRITA = 'restrita'
+    visibilidade = models.CharField(max_length=20, default='publica')
     prioridade = models.CharField(max_length=50, blank=True, default='')
     previsao_conclusao = models.TextField(blank=True, default='')
     atendido_em = models.TextField(blank=True, default='')
@@ -97,3 +102,64 @@ class Apoio(models.Model):
 
     def __str__(self):
         return f'{self.usuario_id} -> {self.defeito_id}'
+
+
+class Sinalizacao(models.Model):
+    """
+    Sinal do cidadão sobre um chamado ainda aberto: "já foi resolvido" (alguém
+    passou lá e o problema sumiu, mas o operador não fechou) ou "não existe"
+    (nunca houve / foi reportado errado). Uma por usuário por chamado; o tipo
+    pode ser trocado. Não muda o status sozinho — é insumo para o operador.
+    """
+    RESOLVIDO = 'resolvido'
+    NAO_EXISTE = 'nao_existe'
+    TIPO_CHOICES = [
+        (RESOLVIDO, 'Já foi resolvido'),
+        (NAO_EXISTE, 'Não existe'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    usuario = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='sinalizacoes',
+        db_column='usuario_id',
+    )
+    defeito = models.ForeignKey(
+        Defeito, on_delete=models.CASCADE, related_name='sinalizacoes',
+        db_column='defeito_id',
+    )
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    criado_em = models.DateTimeField(db_column='criado_em')
+
+    class Meta:
+        db_table = 'sinalizacoes'
+        managed = False
+        verbose_name = 'Sinalização'
+        verbose_name_plural = 'Sinalizações'
+        unique_together = ('usuario', 'defeito')
+
+    def __str__(self):
+        return f'{self.usuario_id} -> {self.defeito_id}: {self.tipo}'
+
+
+class Strike(models.Model):
+    """
+    Marca contra quem reportou algo que a comunidade apagou como "nunca
+    existiu". O chamado some do banco; fica só o autor, o título (para auditoria)
+    e a data — strikes expiram (ver `regras.STRIKE_VALIDADE_DIAS`).
+    """
+    id = models.AutoField(primary_key=True)
+    usuario = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='strikes',
+        db_column='usuario_id',
+    )
+    titulo = models.TextField(blank=True, default='')
+    criado_em = models.DateTimeField(db_column='criado_em')
+
+    class Meta:
+        db_table = 'strikes'
+        managed = False
+        verbose_name = 'Strike'
+        verbose_name_plural = 'Strikes'
+
+    def __str__(self):
+        return f'{self.usuario_id} @ {self.criado_em:%Y-%m-%d}'

@@ -268,6 +268,320 @@ class TestApoiar:
         assert resp.status_code == 404
 
 
+class TestSinalizar:
+    """Mecânica da sinalização em si; o que ela dispara está em TestRegra*."""
+
+    URL = 'defeitos-sinalizar'
+
+    def _sinalizar(self, client, defeito_id, tipo):
+        return client.post(reverse(self.URL, args=[defeito_id]), {'tipo': tipo}, format='json')
+
+    def test_sinalizar_resolvido(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        outro = _new_user_client(client)
+        resp = self._sinalizar(outro, created['id'], 'resolvido')
+        assert resp.status_code == 200
+        assert resp.data['tipo'] == 'resolvido'
+        assert resp.data['sinalizacoes'] == {'resolvido': 1, 'nao_existe': 0}
+        assert resp.data['resultado'] is None
+        assert resp.data['defeito']['sinalizacoes'] == {'resolvido': 1, 'nao_existe': 0}
+
+    def test_repetir_remove(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        outro = _new_user_client(client)
+        self._sinalizar(outro, created['id'], 'nao_existe')
+        resp = self._sinalizar(outro, created['id'], 'nao_existe')
+        assert resp.status_code == 200
+        assert resp.data['tipo'] is None
+        assert resp.data['sinalizacoes'] == {'resolvido': 0, 'nao_existe': 0}
+
+    def test_outro_tipo_troca(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        outro = _new_user_client(client)
+        self._sinalizar(outro, created['id'], 'resolvido')
+        resp = self._sinalizar(outro, created['id'], 'nao_existe')
+        assert resp.data['tipo'] == 'nao_existe'
+        assert resp.data['sinalizacoes'] == {'resolvido': 0, 'nao_existe': 1}
+
+    def test_tipo_invalido(self, auth_client):
+        created = _create_defeito(auth_client)
+        resp = self._sinalizar(auth_client, created['id'], 'qualquer')
+        assert resp.status_code == 400
+
+    def test_nao_autenticado(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        resp = self._sinalizar(client, created['id'], 'resolvido')
+        assert resp.status_code == 401
+
+    def test_chamado_fechado_recusa(self, auth_client):
+        created = _create_defeito(auth_client)
+        Defeito.objects.filter(id=created['id']).update(status='concluido')
+        resp = self._sinalizar(auth_client, created['id'], 'resolvido')
+        assert resp.status_code == 400
+
+    def test_contagem_no_detalhe_e_na_lista(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        a, b = _new_user_client(client), _new_user_client(client)
+        self._sinalizar(a, created['id'], 'resolvido')
+        self._sinalizar(b, created['id'], 'nao_existe')
+        # Apoio junto, para garantir que um join não infla a contagem do outro.
+        a.post(reverse('defeitos-apoiar', args=[created['id']]), format='json')
+        b.post(reverse('defeitos-apoiar', args=[created['id']]), format='json')
+
+        detalhe = auth_client.get(reverse('defeitos-detail', args=[created['id']]))
+        assert detalhe.data['sinalizacoes'] == {'resolvido': 1, 'nao_existe': 1}
+        assert detalhe.data['total_apoios'] == 2
+
+        lista = auth_client.get(reverse('defeitos-list'))
+        item = next(d for d in lista.data['results'] if d['id'] == created['id'])
+        assert item['sinalizacoes'] == {'resolvido': 1, 'nao_existe': 1}
+        assert item['total_apoios'] == 2
+
+    def test_sinalizei(self, client, auth_client):
+        a = _create_defeito(auth_client)
+        b = _create_defeito(auth_client)
+        outro = _new_user_client(client)
+        self._sinalizar(outro, a['id'], 'resolvido')
+        self._sinalizar(outro, b['id'], 'nao_existe')
+        resp = outro.get(reverse('defeitos-sinalizei'))
+        assert resp.status_code == 200
+        assert resp.data['sinalizacoes'] == {a['id']: 'resolvido', b['id']: 'nao_existe'}
+
+
+def _sinalizar(client, defeito_id, tipo):
+    return client.post(reverse('defeitos-sinalizar', args=[defeito_id]), {'tipo': tipo}, format='json')
+
+
+def _apoiar(client, defeito_id):
+    return client.post(reverse('defeitos-apoiar', args=[defeito_id]), format='json')
+
+
+def _existe(defeito_id):
+    return Defeito.objects.filter(id=defeito_id).exists()
+
+
+def _dar_strikes(client, auth_client, n, dias_atras=0):
+    """Cria `n` strikes para o dono de `auth_client` (via /auth/me)."""
+    from defeitos.models import Strike
+    me = auth_client.get(reverse('auth-profile'))
+    quando = timezone.now() - timedelta(days=dias_atras)
+    for i in range(n):
+        Strike.objects.create(usuario_id=me.data['id'], titulo=f'strike {i}', criado_em=quando)
+
+
+@pytest.mark.deslocamento_real
+class TestDeslocamentoPlausivel:
+    """Não dá para reportar aqui e, segundos depois, 1 km adiante."""
+
+    def _reportar(self, client, lat, lng, titulo):
+        return client.post(reverse('defeitos-list'), com_foto({
+            'titulo': titulo, 'descricao': 'deslocamento teste', 'categoria': 'Entulho',
+            'latitude': lat, 'longitude': lng, 'rua': 'Rua Y', 'bairro': 'Centro',
+        }), format='multipart')
+
+    def test_longe_demais_rapido_demais(self, auth_client):
+        created = _create_defeito(auth_client)
+        resp = self._reportar(
+            auth_client, created['latitude'], created['longitude'] + 0.012,
+            f"Longe demais {created['longitude']}",
+        )
+        assert resp.status_code == 429
+        assert 'Aguarde' in resp.data['error']
+
+    def test_perto_pode_na_hora(self, auth_client):
+        created = _create_defeito(auth_client)
+        resp = self._reportar(
+            auth_client, created['latitude'] + 0.0008, created['longitude'] + 0.0008,
+            f"Mesma esquina {created['longitude']}",
+        )
+        assert resp.status_code == 201, resp.data
+
+    def test_com_tempo_passa(self, auth_client):
+        created = _create_defeito(auth_client)
+        # 1 km em 10 minutos: caminhada tranquila.
+        Defeito.objects.filter(id=created['id']).update(
+            criado_em=timezone.now() - timedelta(minutes=10),
+        )
+        resp = self._reportar(
+            auth_client, created['latitude'], created['longitude'] + 0.012,
+            f"Depois da caminhada {created['longitude']}",
+        )
+        assert resp.status_code == 201, resp.data
+
+    def test_outro_usuario_nao_e_afetado(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        outro = _new_user_client(client)
+        resp = self._reportar(
+            outro, created['latitude'], created['longitude'] + 0.012,
+            f"Outra pessoa {created['longitude']}",
+        )
+        assert resp.status_code == 201, resp.data
+
+
+class TestRegraResolvido:
+    """"Já foi resolvido": fecha pelo autor ou por RESOLVIDO_MIN pessoas; fica nos relatórios."""
+
+    def test_autor_fecha_sozinho(self, auth_client):
+        created = _create_defeito(auth_client)
+        resp = _sinalizar(auth_client, created['id'], 'resolvido')
+        assert resp.status_code == 200
+        assert resp.data['resultado'] == 'concluido'
+        assert resp.data['defeito']['status'] == 'concluido'
+        assert resp.data['defeito']['atendido_em']
+        assert 'autor' in resp.data['defeito']['atualizacoes']
+
+    def test_um_terceiro_nao_fecha(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        outro = _new_user_client(client)
+        resp = _sinalizar(outro, created['id'], 'resolvido')
+        assert resp.data['resultado'] is None
+        assert resp.data['defeito']['status'] == 'pendente'
+
+    def test_dois_terceiros_fecham_e_continua_na_lista(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        a, b = _new_user_client(client), _new_user_client(client)
+        _sinalizar(a, created['id'], 'resolvido')
+        resp = _sinalizar(b, created['id'], 'resolvido')
+        assert resp.data['resultado'] == 'concluido'
+        assert resp.data['defeito']['status'] == 'concluido'
+        assert 'cidadãos' in resp.data['defeito']['atualizacoes']
+        lista = client.get(reverse('defeitos-list'))
+        assert any(d['id'] == created['id'] for d in lista.data['results'])
+
+
+class TestRegraNaoExiste:
+    """"Não existe": apaga de vez; autor sem penalidade, terceiros com barra por confirmação."""
+
+    def test_autor_apaga_na_hora_sem_strike(self, auth_client):
+        from defeitos.models import Strike
+        created = _create_defeito(auth_client)
+        resp = _sinalizar(auth_client, created['id'], 'nao_existe')
+        assert resp.status_code == 200
+        assert resp.data['resultado'] == 'inexistente'
+        assert resp.data['defeito'] is None
+        assert not _existe(created['id'])
+        me = auth_client.get(reverse('auth-profile')).data
+        assert Strike.objects.filter(usuario_id=me['id']).count() == 0
+        assert auth_client.get(reverse('defeitos-detail', args=[created['id']])).status_code == 404
+
+    def test_um_terceiro_nao_apaga(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        outro = _new_user_client(client)
+        resp = _sinalizar(outro, created['id'], 'nao_existe')
+        assert resp.data['resultado'] is None
+        assert _existe(created['id'])
+
+    def test_dois_terceiros_apagam_e_autor_leva_strike(self, client, auth_client):
+        from defeitos.models import Strike
+        created = _create_defeito(auth_client)
+        a, b = _new_user_client(client), _new_user_client(client)
+        _sinalizar(a, created['id'], 'nao_existe')
+        resp = _sinalizar(b, created['id'], 'nao_existe')
+        assert resp.data['resultado'] == 'inexistente'
+        assert not _existe(created['id'])
+        me = auth_client.get(reverse('auth-profile')).data
+        assert Strike.objects.filter(usuario_id=me['id']).count() == 1
+        # Some de todo lugar.
+        lista = client.get(reverse('defeitos-list'))
+        assert not any(d['id'] == created['id'] for d in lista.data['results'])
+
+    def test_confirmacao_sobe_a_barra(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        confirmou = _new_user_client(client)
+        _apoiar(confirmou, created['id'])
+        a, b, c = (_new_user_client(client) for _ in range(3))
+        _sinalizar(a, created['id'], 'nao_existe')
+        resp = _sinalizar(b, created['id'], 'nao_existe')
+        assert resp.data['resultado'] is None, 'com 1 confirmação precisa de 3'
+        assert _existe(created['id'])
+        resp = _sinalizar(c, created['id'], 'nao_existe')
+        assert resp.data['resultado'] == 'inexistente'
+        assert not _existe(created['id'])
+
+
+class TestQuarentena:
+    """Com > STRIKES_TOLERADOS strikes ativos, chamados novos nascem restritos."""
+
+    def test_ate_dois_strikes_nada_muda(self, client, auth_client):
+        _dar_strikes(client, auth_client, 2)
+        created = _create_defeito(auth_client)
+        assert created['visibilidade'] == 'publica'
+
+    def test_tres_strikes_restringe(self, client, auth_client):
+        _dar_strikes(client, auth_client, 3)
+        created = _create_defeito(auth_client)
+        assert created['visibilidade'] == 'restrita'
+
+    def test_strike_expirado_nao_conta(self, client, auth_client):
+        _dar_strikes(client, auth_client, 2)
+        _dar_strikes(client, auth_client, 1, dias_atras=120)
+        created = _create_defeito(auth_client)
+        assert created['visibilidade'] == 'publica'
+
+    def test_cliente_nao_pode_forcar_visibilidade(self, client, auth_client):
+        _dar_strikes(client, auth_client, 3)
+        created = _create_defeito(auth_client, visibilidade='publica')
+        assert created['visibilidade'] == 'restrita'
+
+    def test_restrito_some_da_lista_para_os_outros(self, client, auth_client, admin_client):
+        # admin_client é o mesmo usuário de auth_client promovido; usamos outro autor.
+        autor = _new_user_client(client)
+        _dar_strikes(client, autor, 3)
+        created = _create_defeito(autor)
+        assert created['visibilidade'] == 'restrita'
+
+        ids = lambda resp: [d['id'] for d in resp.data['results']]
+        assert created['id'] not in ids(client.get(reverse('defeitos-list')))
+        assert created['id'] not in ids(_new_user_client(client).get(reverse('defeitos-list')))
+        assert created['id'] in ids(autor.get(reverse('defeitos-list')))
+        assert created['id'] in ids(admin_client.get(reverse('defeitos-list')))
+        assert created['id'] in ids(autor.get(reverse('defeitos-meus')))
+
+    def test_restrito_no_mapa_so_para_quem_esta_perto(self, client, auth_client):
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("""
+                INSERT INTO municipios (codigo, nome, uf, uf_sigla, min_lat, max_lat, min_lng, max_lng, polygon_geom)
+                VALUES ('9999909', 'Cidade Quarentena', '35', 'SP', -26.1, -25.9, -52.4, -52.2,
+                        ST_Multi(ST_GeomFromText('POLYGON((-52.4 -26.1, -52.2 -26.1, -52.2 -25.9, -52.4 -25.9, -52.4 -26.1))', 4326)))
+                ON CONFLICT (codigo) DO NOTHING
+            """)
+        autor = _new_user_client(client)
+        _dar_strikes(client, autor, 3)
+        created = _create_defeito(autor, latitude=-26.0, longitude=-52.3)
+        assert created['visibilidade'] == 'restrita'
+
+        longe = client.get(reverse('defeitos-municipio'), {'lat': -26.05, 'lng': -52.35})
+        assert created['id'] not in [d['id'] for d in longe.data['defeitos']]
+        perto = client.get(reverse('defeitos-municipio'), {'lat': -26.001, 'lng': -52.301})
+        assert created['id'] in [d['id'] for d in perto.data['defeitos']]
+        do_autor = autor.get(reverse('defeitos-municipio'), {'lat': -26.05, 'lng': -52.35})
+        assert created['id'] in [d['id'] for d in do_autor.data['defeitos']]
+
+    def test_confirmacao_publica_e_resgata_strike(self, client, auth_client):
+        from defeitos.models import Strike
+        autor = _new_user_client(client)
+        _dar_strikes(client, autor, 3)
+        created = _create_defeito(autor)
+        assert created['visibilidade'] == 'restrita'
+        autor_id = autor.get(reverse('auth-profile')).data['id']
+        strikes = Strike.objects.filter(usuario_id=autor_id)
+
+        # O próprio autor apoiando não conta.
+        _apoiar(autor, created['id'])
+        assert Defeito.objects.get(id=created['id']).visibilidade == 'restrita'
+        assert strikes.count() == 3
+
+        outro = _new_user_client(client)
+        _apoiar(outro, created['id'])
+        assert Defeito.objects.get(id=created['id']).visibilidade == 'publica'
+        assert strikes.count() == 2
+
+        # Segunda confirmação não resgata de novo.
+        _apoiar(_new_user_client(client), created['id'])
+        assert strikes.count() == 2
+
+
 class TestAtender:
 
     ATENDER_URL = 'defeitos-atender'

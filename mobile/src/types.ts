@@ -36,6 +36,9 @@ export type Categoria = {
   icone?: string;
 };
 
+/** Sinal do cidadão sobre um chamado aberto (ver `Sinalizacao` no backend). */
+export type TipoSinalizacao = 'resolvido' | 'nao_existe';
+
 export type Defeito = {
   id: number;
   titulo: string;
@@ -60,6 +63,12 @@ export type Defeito = {
   sla_vencido?: boolean;
   total_apoios?: number;
   apoios_total?: number;
+  /** Quantos cidadãos sinalizaram "já foi resolvido" / "não existe". */
+  sinalizacoes?: { resolvido: number; nao_existe: number };
+  /** 'restrita' = autor em quarentena; o backend já filtra quem vê. */
+  visibilidade?: 'publica' | 'restrita';
+  /** JSON string de [{texto, data}] com registros automáticos (ex.: conclusão por cidadãos). */
+  atualizacoes?: string;
   imagem_thumbnail?: string | null;
   imagens_extra?: string | null;
   usuario?: { id: number | string; nome?: string } | null;

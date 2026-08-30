@@ -123,3 +123,16 @@ def admin_client(auth_client, user_creds):
     user.municipio_id = CIDADE_TESTES
     user.save(update_fields=['admin', 'municipio_id'])
     return auth_client
+
+
+@pytest.fixture(autouse=True)
+def _sem_limite_de_deslocamento(request, monkeypatch):
+    """
+    Os helpers de teste criam chamados ~1 km afastados em milissegundos, o que
+    tropeçaria na regra de deslocamento plausível. Fica sem limite por padrão;
+    a classe marcada com `deslocamento_real` testa a regra de verdade.
+    """
+    if request.node.get_closest_marker('deslocamento_real'):
+        return
+    from defeitos import regras
+    monkeypatch.setattr(regras, 'VELOCIDADE_MAX_KMH', float('inf'))

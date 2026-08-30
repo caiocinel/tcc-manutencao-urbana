@@ -57,6 +57,23 @@ export function totalApoios(defeito: Defeito) {
   return defeito.total_apoios ?? defeito.apoios_total ?? 0;
 }
 
+/**
+ * Frase curta com as sinalizações dos cidadãos ("2 dizem que já foi resolvido ·
+ * 1 diz que não existe"), ou `null` quando não há nenhuma.
+ */
+export function descreverSinalizacoes(defeito: Defeito): string | null {
+  const s = defeito.sinalizacoes;
+  if (!s) return null;
+  const partes: string[] = [];
+  if (s.resolvido > 0) {
+    partes.push(`${s.resolvido} ${s.resolvido === 1 ? 'diz' : 'dizem'} que já foi resolvido`);
+  }
+  if (s.nao_existe > 0) {
+    partes.push(`${s.nao_existe} ${s.nao_existe === 1 ? 'diz' : 'dizem'} que não existe`);
+  }
+  return partes.length ? partes.join(' · ') : null;
+}
+
 /** Data em que o chamado foi concluído, usada para "envelhecer" a cor do status. */
 export function concluidoEm(defeito: Defeito) {
   return defeito.atendido_em ?? defeito.atualizado_em ?? null;

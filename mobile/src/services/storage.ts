@@ -17,6 +17,7 @@ const TOKEN_KEY = 'ciu_token';
 const REFRESH_KEY = 'ciu_refresh';
 const USER_KEY = 'ciu_user_data';
 const THEME_KEY = 'ciu_theme';
+const ONBOARDING_KEY = 'ciu_onboarding_visto';
 
 /** SecureStore não existe no web; lá caímos para o AsyncStorage. */
 const secure = {
@@ -108,4 +109,13 @@ export async function getStoredTheme(): Promise<'light' | 'dark' | null> {
 
 export async function setStoredTheme(theme: 'light' | 'dark') {
   await AsyncStorage.setItem(THEME_KEY, theme);
+}
+
+/** Guia de boas-vindas: mostrado só na primeira entrada. */
+export async function getOnboardingVisto(): Promise<boolean> {
+  return (await AsyncStorage.getItem(ONBOARDING_KEY)) === '1';
+}
+
+export async function setOnboardingVisto() {
+  await AsyncStorage.setItem(ONBOARDING_KEY, '1');
 }
