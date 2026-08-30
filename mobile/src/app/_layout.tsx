@@ -68,6 +68,7 @@ function RootNavigator() {
           contentStyle: { backgroundColor: colors.bgPrimary },
         }}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="boas-vindas" />
         <Stack.Screen name="login" />
         <Stack.Screen name="registro" />
         <Stack.Screen name="escolher-nome" />
