@@ -4,8 +4,9 @@ from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
-from django.db.models import Count
-from .models import Defeito, Apoio
+from django.db.models import Count, Q
+from .models import Defeito, Apoio, Sinalizacao
+from . import regras
 from .serializers import (
     municipio_do_ponto,
     DefeitoListSerializer, DefeitoDetailSerializer,
@@ -36,14 +37,27 @@ def _municipio_por_codigo(codigo):
     return {'codigo': str(row[0]), 'nome': row[1], 'uf_sigla': row[2]}
 
 
+STATUS_FECHADOS = {'atendido', 'encerrado', 'concluido', 'rejeitado'}
 FORA_DO_MUNICIPIO = 'Chamado fora do seu município de operação'
 SEM_MUNICIPIO = 'Operador sem município vinculado'
 
 
 class DefeitoViewSet(viewsets.ModelViewSet):
+    # `distinct=True` em todos os Count: apoios e sinalizações são joins
+    # independentes e sem isso um multiplicaria a contagem do outro.
     queryset = Defeito.objects.select_related(
         'usuario',
-    ).annotate(total_apoios=Count('apoios')).order_by('-criado_em')
+    ).annotate(
+        total_apoios=Count('apoios', distinct=True),
+        total_resolvido=Count(
+            'sinalizacoes', distinct=True,
+            filter=Q(sinalizacoes__tipo=Sinalizacao.RESOLVIDO),
+        ),
+        total_nao_existe=Count(
+            'sinalizacoes', distinct=True,
+            filter=Q(sinalizacoes__tipo=Sinalizacao.NAO_EXISTE),
+        ),
+    ).order_by('-criado_em')
     filter_backends = (filters.SearchFilter, filters.OrderingFilter)
     search_fields = ('titulo', 'descricao', 'rua', 'bairro')
     ordering_fields = ('criado_em', 'total_apoios')
@@ -53,7 +67,18 @@ class DefeitoViewSet(viewsets.ModelViewSet):
         # A listagem é a mesma para todo mundo: o vínculo do operador com um
         # município só restringe a *operação* (ver `operacao` e `_pode_operar`),
         # nunca o que ele enxerga como cidadão.
-        return self.queryset
+        #
+        # Exceção: chamados `restrita` (autor em quarentena, ver `regras.py`)
+        # ficam fora das listagens sem GPS — só o autor e operadores os veem
+        # aqui. A visão do mapa (`municipio`) libera os que estão perto.
+        qs = self.queryset
+        if self.action in ('list', 'apoiados'):
+            user = self.request.user
+            if not user.is_authenticated:
+                qs = qs.filter(visibilidade=Defeito.VISIBILIDADE_PUBLICA)
+            elif not user.admin:
+                qs = qs.filter(Q(visibilidade=Defeito.VISIBILIDADE_PUBLICA) | Q(usuario=user))
+        return qs
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -66,6 +91,7 @@ class DefeitoViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'apoiar', 'meus', 'apoiados', 'apoiei', 'atender', 'status',
+                           'sinalizar', 'sinalizei',
                            'batch_status', 'ordem_servico', 'operacao',
                            'update', 'partial_update', 'destroy', 'anexar'):
             return (permissions.IsAuthenticated(),)
@@ -108,6 +134,7 @@ class DefeitoViewSet(viewsets.ModelViewSet):
             usuario=self.request.user,
             criado_em=timezone.now(),
             atualizado_em=timezone.now(),
+            visibilidade=regras.visibilidade_inicial(self.request.user),
             imagem_thumbnail=webp,
             secretaria_responsavel=rota.get('secretaria', ''),
             prazo_sla_dias=rota.get('prazo_sla_dias', 0),
@@ -123,7 +150,69 @@ class DefeitoViewSet(viewsets.ModelViewSet):
         if not created:
             apoio.delete()
             return Response({'apoiado': False}, status=status.HTTP_200_OK)
+        regras.aplicar_confirmacao(defeito, request.user)
         return Response({'apoiado': True}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def sinalizar(self, request, pk=None):
+        """
+        Cidadão indica que o chamado "já foi resolvido" ou "não existe".
+        Repetir o mesmo tipo remove a sinalização; mandar outro tipo troca.
+        Só para chamados abertos — num fechado não há o que sinalizar.
+
+        Depois de gravar, `regras.aplicar_sinalizacao` decide se o chamado
+        fecha (`resultado: 'concluido'`, vem o `defeito` atualizado) ou some
+        (`resultado: 'inexistente'`, o chamado já não existe mais).
+        """
+        defeito = self.get_object()
+        tipo = request.data.get('tipo')
+        if tipo not in dict(Sinalizacao.TIPO_CHOICES):
+            return Response({'error': 'Tipo invalido'}, status=status.HTTP_400_BAD_REQUEST)
+        if defeito.status in STATUS_FECHADOS:
+            return Response({'error': 'Chamado ja finalizado'}, status=status.HTTP_400_BAD_REQUEST)
+
+        atual = Sinalizacao.objects.filter(usuario=request.user, defeito=defeito).first()
+        if atual is None:
+            Sinalizacao.objects.create(
+                usuario=request.user, defeito=defeito, tipo=tipo,
+                criado_em=timezone.now(),
+            )
+            meu_tipo = tipo
+        elif atual.tipo == tipo:
+            atual.delete()
+            meu_tipo = None
+        else:
+            atual.tipo = tipo
+            atual.criado_em = timezone.now()
+            atual.save()
+            meu_tipo = tipo
+
+        resultado = None
+        if meu_tipo is not None:
+            resultado = regras.aplicar_sinalizacao(defeito, request.user, meu_tipo)
+
+        if resultado == regras.RESULTADO_INEXISTENTE:
+            return Response({
+                'tipo': meu_tipo,
+                'sinalizacoes': {Sinalizacao.RESOLVIDO: 0, Sinalizacao.NAO_EXISTE: 0},
+                'resultado': resultado,
+                'defeito': None,
+            })
+
+        # Recarrega pela viewset para vir com as anotações (apoios, sinalizações).
+        atualizado = self.queryset.get(pk=defeito.pk)
+        return Response({
+            'tipo': meu_tipo,
+            'sinalizacoes': regras.contar_sinalizacoes(defeito),
+            'resultado': resultado,
+            'defeito': DefeitoDetailSerializer(atualizado).data,
+        })
+
+    @action(detail=False, methods=['get'])
+    def sinalizei(self, request):
+        """{defeito_id: tipo} das sinalizações do usuário logado."""
+        pares = Sinalizacao.objects.filter(usuario=request.user).values_list('defeito_id', 'tipo')
+        return Response({'sinalizacoes': {str(d): t for d, t in pares}})
 
     @action(detail=True, methods=['patch'])
     def status(self, request, pk=None):
@@ -256,6 +345,8 @@ class DefeitoViewSet(viewsets.ModelViewSet):
             .filter(municipio_id=municipio['codigo'])
             .exclude(status__in=('atendido', 'encerrado', 'concluido', 'rejeitado'))[:2000]
         )
+        # Chamados restritos só para quem está perto (ou é o autor/operador).
+        abertos = [d for d in abertos if regras.visivel_para(d, request.user, lat, lng)]
         dados = DefeitoListSerializer(abertos, many=True).data
 
         por_categoria = {}

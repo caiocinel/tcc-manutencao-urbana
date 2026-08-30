@@ -23,6 +23,7 @@ import type {
   Estatisticas,
   Municipio,
   PickedImage,
+  TipoSinalizacao,
   User,
 } from '@/types';
 
@@ -368,6 +369,23 @@ export const api = {
     request<{ apoiado: boolean }>(`/api/v1/defeitos/${id}/apoiar/`, { method: 'POST' }),
 
   apoiei: () => request<{ ids: number[] }>('/api/v1/defeitos/apoiei/'),
+
+  /**
+   * Repetir o mesmo tipo remove; outro tipo troca. `tipo: null` na resposta =
+   * sem sinalização. `resultado` diz o que a sinalização disparou: 'concluido'
+   * (chamado fechado, vem em `defeito`) ou 'inexistente' (apagado; `defeito`
+   * é null e o id não existe mais).
+   */
+  sinalizarDefeito: (id: number, tipo: TipoSinalizacao) =>
+    request<{
+      tipo: TipoSinalizacao | null;
+      sinalizacoes: { resolvido: number; nao_existe: number };
+      resultado: 'concluido' | 'inexistente' | null;
+      defeito: Defeito | null;
+    }>(`/api/v1/defeitos/${id}/sinalizar/`, { method: 'POST', body: { tipo } }),
+
+  sinalizei: () =>
+    request<{ sinalizacoes: Record<string, TipoSinalizacao> }>('/api/v1/defeitos/sinalizei/'),
 
   detalharDefeito: (id: number) => request<Defeito>(`/api/v1/defeitos/${id}/`),
 

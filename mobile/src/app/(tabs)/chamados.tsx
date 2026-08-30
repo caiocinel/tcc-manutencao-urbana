@@ -25,7 +25,7 @@ import { useAuth } from '@/context/auth-context';
 import { useColors } from '@/context/theme-context';
 import { useToast } from '@/context/toast-context';
 import { api } from '@/services/api';
-import type { Defeito } from '@/types';
+import type { Defeito, TipoSinalizacao } from '@/types';
 import { concluidoEm, formatarData, maskName, totalApoios } from '@/utils/format';
 
 type Filtro = 'todos' | 'pendentes' | 'atendidos' | 'vinculados' | 'meus';
@@ -49,6 +49,7 @@ export default function ChamadosScreen() {
   const [defeitos, setDefeitos] = useState<Defeito[]>([]);
   const [meusIds, setMeusIds] = useState<Set<number>>(new Set());
   const [apoiei, setApoiei] = useState<Set<number>>(new Set());
+  const [sinalizei, setSinalizei] = useState<Map<number, TipoSinalizacao>>(new Map());
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [ordem, setOrdem] = useState<Ordem>('recentes');
   const [carregando, setCarregando] = useState(true);
@@ -86,6 +87,15 @@ export default function ChamadosScreen() {
       .apoiei()
       .then((r) => {
         if (!cancelado) setApoiei(new Set(r.ids));
+      })
+      .catch(() => {});
+    api
+      .sinalizei()
+      .then((r) => {
+        if (!cancelado) {
+          // Ids são UUIDs (strings) em runtime, como em `apoiei`.
+          setSinalizei(new Map(Object.entries(r.sinalizacoes) as unknown as [number, TipoSinalizacao][]));
+        }
       })
       .catch(() => {});
     return () => {
@@ -139,10 +149,24 @@ export default function ChamadosScreen() {
     setSelecionado(defeito);
   }
 
+  function remover(id: number) {
+    setDefeitos((prev) => prev.filter((d) => d.id !== id));
+    setSelecionado((prev) => (prev?.id === id ? null : prev));
+  }
+
   function alternarApoio(id: number, apoiado: boolean) {
     setApoiei((prev) => {
       const next = new Set(prev);
       if (apoiado) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function alterarSinalizacao(id: number, tipo: TipoSinalizacao | null) {
+    setSinalizei((prev) => {
+      const next = new Map(prev);
+      if (tipo) next.set(id, tipo);
       else next.delete(id);
       return next;
     });
@@ -280,6 +304,9 @@ export default function ChamadosScreen() {
         onPatch={aplicarPatch}
         onReplace={substituir}
         onApoioToggle={alternarApoio}
+        sinalizacao={selecionado ? (sinalizei.get(selecionado.id) ?? null) : null}
+        onSinalizacaoChange={alterarSinalizacao}
+        onRemove={remover}
       />
     </View>
   );

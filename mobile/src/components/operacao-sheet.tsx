@@ -20,6 +20,7 @@ import { useColors } from '@/context/theme-context';
 import { useToast } from '@/context/toast-context';
 import { api } from '@/services/api';
 import type { Defeito, PickedImage } from '@/types';
+import { descreverSinalizacoes } from '@/utils/format';
 import { escolherDaGaleria, ImagemMuitoGrandeError } from '@/utils/image';
 
 type Props = {
@@ -49,6 +50,7 @@ export function OperacaoSheet({ defeito, onClose, onPatch, onReplace }: Props) {
   // Só quem assumiu avança o chamado; outro operador apenas acompanha.
   const podeAvancar = souAtendente && vinculado;
   const slaVencido = !!defeito.sla_vencido && !fechado;
+  const sinalizacoes = !fechado ? descreverSinalizacoes(defeito) : null;
 
   async function comAcao(chave: string, fn: () => Promise<void>) {
     setAcaoEmCurso(chave);
@@ -118,8 +120,16 @@ export function OperacaoSheet({ defeito, onClose, onPatch, onReplace }: Props) {
   }
 
   const destaque =
-    slaVencido || temAtendente ? (
+    slaVencido || temAtendente || sinalizacoes ? (
       <View style={styles.faixas}>
+        {sinalizacoes ? (
+          <View style={[styles.faixa, { backgroundColor: colors.warning + '22' }]}>
+            <Ionicons name="flag" size={14} color={colors.warning} />
+            <Text style={[styles.faixaTexto, { color: colors.warning }]}>
+              Cidadãos: {sinalizacoes}
+            </Text>
+          </View>
+        ) : null}
         {slaVencido ? (
           <View style={[styles.faixa, { backgroundColor: colors.error + '22' }]}>
             <Ionicons name="alarm" size={14} color={colors.error} />

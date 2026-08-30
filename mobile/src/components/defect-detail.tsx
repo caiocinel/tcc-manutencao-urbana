@@ -22,6 +22,7 @@ import { useColors } from '@/context/theme-context';
 import type { Defeito } from '@/types';
 import {
   concluidoEm,
+  descreverSinalizacoes,
   formatarData,
   maskName,
   parseImagensExtra,
@@ -47,6 +48,7 @@ export function DefectDetail({ defeito, onClose, rotuloApoios, destaque, childre
 
   const imagensExtra = parseImagensExtra(defeito.imagens_extra);
   const apoios = totalApoios(defeito);
+  const sinalizacoes = descreverSinalizacoes(defeito);
 
   return (
     <>
@@ -165,6 +167,13 @@ export function DefectDetail({ defeito, onClose, rotuloApoios, destaque, childre
                 </View>
               ) : null}
             </View>
+
+            {sinalizacoes ? (
+              <View style={styles.apoios}>
+                <Ionicons name="flag" size={12} color={colors.warning} />
+                <Text style={[styles.meta, { color: colors.textMuted }]}>{sinalizacoes}</Text>
+              </View>
+            ) : null}
 
             {children ? <View style={detailStyles.acoes}>{children}</View> : null}
           </ScrollView>
