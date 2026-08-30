@@ -105,6 +105,15 @@ class DefeitoViewSet(viewsets.ModelViewSet):
                 {'imagem': 'Tire uma foto do problema para abrir o chamado.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Ninguém reporta em dois lugares que não daria tempo de percorrer.
+        try:
+            lat = float(request.data.get('latitude', ''))
+            lng = float(request.data.get('longitude', ''))
+        except (TypeError, ValueError):
+            lat = lng = None
+        erro = regras.deslocamento_implausivel(request.user, lat, lng)
+        if erro:
+            return Response({'error': erro}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         try:
             return super().create(request, *args, **kwargs)
         except ValidationError as e:

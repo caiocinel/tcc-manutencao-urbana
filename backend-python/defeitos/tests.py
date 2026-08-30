@@ -369,6 +369,55 @@ def _dar_strikes(client, auth_client, n, dias_atras=0):
         Strike.objects.create(usuario_id=me.data['id'], titulo=f'strike {i}', criado_em=quando)
 
 
+@pytest.mark.deslocamento_real
+class TestDeslocamentoPlausivel:
+    """Não dá para reportar aqui e, segundos depois, 1 km adiante."""
+
+    def _reportar(self, client, lat, lng, titulo):
+        return client.post(reverse('defeitos-list'), com_foto({
+            'titulo': titulo, 'descricao': 'deslocamento teste', 'categoria': 'Entulho',
+            'latitude': lat, 'longitude': lng, 'rua': 'Rua Y', 'bairro': 'Centro',
+        }), format='multipart')
+
+    def test_longe_demais_rapido_demais(self, auth_client):
+        created = _create_defeito(auth_client)
+        resp = self._reportar(
+            auth_client, created['latitude'], created['longitude'] + 0.012,
+            f"Longe demais {created['longitude']}",
+        )
+        assert resp.status_code == 429
+        assert 'Aguarde' in resp.data['error']
+
+    def test_perto_pode_na_hora(self, auth_client):
+        created = _create_defeito(auth_client)
+        resp = self._reportar(
+            auth_client, created['latitude'] + 0.0008, created['longitude'] + 0.0008,
+            f"Mesma esquina {created['longitude']}",
+        )
+        assert resp.status_code == 201, resp.data
+
+    def test_com_tempo_passa(self, auth_client):
+        created = _create_defeito(auth_client)
+        # 1 km em 10 minutos: caminhada tranquila.
+        Defeito.objects.filter(id=created['id']).update(
+            criado_em=timezone.now() - timedelta(minutes=10),
+        )
+        resp = self._reportar(
+            auth_client, created['latitude'], created['longitude'] + 0.012,
+            f"Depois da caminhada {created['longitude']}",
+        )
+        assert resp.status_code == 201, resp.data
+
+    def test_outro_usuario_nao_e_afetado(self, client, auth_client):
+        created = _create_defeito(auth_client)
+        outro = _new_user_client(client)
+        resp = self._reportar(
+            outro, created['latitude'], created['longitude'] + 0.012,
+            f"Outra pessoa {created['longitude']}",
+        )
+        assert resp.status_code == 201, resp.data
+
+
 class TestRegraResolvido:
     """"Já foi resolvido": fecha pelo autor ou por RESOLVIDO_MIN pessoas; fica nos relatórios."""
 

@@ -39,6 +39,13 @@ STRIKE_VALIDADE_DIAS = 90
 # Chamado restrito aparece para quem está a até esta distância do ponto.
 RAIO_VISIBILIDADE_RESTRITA_M = 500
 
+# Deslocamento plausível entre dois reports da mesma pessoa: reportar exige
+# estar no local, então o intervalo entre chamados precisa comportar o
+# deslocamento até lá. Até DESLOCAMENTO_LIVRE_M não se cobra tempo nenhum
+# (dois problemas na mesma esquina, ruído de GPS).
+VELOCIDADE_MAX_KMH = 120
+DESLOCAMENTO_LIVRE_M = 300
+
 RESULTADO_CONCLUIDO = 'concluido'
 RESULTADO_INEXISTENTE = 'inexistente'
 
@@ -154,3 +161,37 @@ def visivel_para(defeito, usuario, lat=None, lng=None):
         return False
     from .serializers import _distancia_m
     return _distancia_m(lat, lng, defeito.latitude, defeito.longitude) <= RAIO_VISIBILIDADE_RESTRITA_M
+
+
+def deslocamento_implausivel(usuario, lat, lng):
+    """
+    Mensagem de erro se `usuario` não teria como estar em (lat, lng) agora,
+    dado onde e quando foi seu último chamado; None se estiver tudo bem.
+    Ex.: reportar algo e, 5 segundos depois, outra coisa 1 km adiante.
+    """
+    if lat is None or lng is None:
+        return None
+    ultimo = (
+        Defeito.objects.filter(usuario=usuario)
+        .exclude(latitude=None).exclude(longitude=None)
+        .order_by('-criado_em')
+        .first()
+    )
+    if ultimo is None:
+        return None
+
+    from .serializers import _distancia_m
+    distancia = _distancia_m(lat, lng, ultimo.latitude, ultimo.longitude)
+    if distancia <= DESLOCAMENTO_LIVRE_M:
+        return None
+
+    decorrido = max((timezone.now() - ultimo.criado_em).total_seconds(), 1.0)
+    velocidade_kmh = (distancia / decorrido) * 3.6
+    if velocidade_kmh <= VELOCIDADE_MAX_KMH:
+        return None
+
+    faltam = int((distancia * 3.6) / VELOCIDADE_MAX_KMH - decorrido) + 1
+    return (
+        'Seu último chamado foi agora há pouco, longe daqui. '
+        f'Aguarde cerca de {max(faltam, 30)} segundos para reportar neste local.'
+    )
