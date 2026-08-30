@@ -25,7 +25,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DefectSheet } from '@/components/defect-sheet';
@@ -37,8 +37,8 @@ import type {
   MarcadorMapa,
   Regiao,
 } from '@/components/map-surface.types';
-import { RAIO_BUSCA_PADRAO_M, RAIO_CONFIRMACAO_M, RAIOS_BUSCA_M } from '@/constants/proximidade';
-import { getStatusColor, STATUS_ABERTOS, STATUS_FECHADOS } from '@/constants/status';
+import { RAIO_BUSCA_PADRAO_M, RAIO_CONFIRMACAO_M } from '@/constants/proximidade';
+import { getStatusColor, STATUS_ABERTOS } from '@/constants/status';
 import { FontSize, FontWeight, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useColors, useTheme } from '@/context/theme-context';
@@ -51,8 +51,6 @@ import { concluidoEm } from '@/utils/format';
 import { caixaDosPontos, distanciaAte, regiaoDaCaixa, REGIAO_PADRAO } from '@/utils/geo';
 import { agruparParaHeatmap, corDoPeso, raioDoPeso } from '@/utils/heatmap';
 
-type Filtro = 'pendentes' | 'todos' | 'atendidos' | 'meus';
-
 type ItemProximo = {
   defeito: Defeito;
   distancia: number;
@@ -63,23 +61,12 @@ type ItemProximo = {
 /** Joystick de GPS só no desktop em desenvolvimento (no celular há GPS de verdade). */
 const MOSTRAR_JOYSTICK = __DEV__ && Platform.OS === 'web';
 
-const FILTROS: { value: Filtro; label: string }[] = [
-  { value: 'pendentes', label: 'Pendentes' },
-  { value: 'todos', label: 'Todos' },
-  { value: 'atendidos', label: 'Atendidos' },
-  { value: 'meus', label: 'Meus Chamados' },
-];
-
-function rotuloRaio(raio: number) {
-  return raio >= 1000 ? `${raio / 1000} km` : `${raio} m`;
-}
-
 export default function MapaScreen() {
   const colors = useColors();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const addToast = useToast();
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { posicao, bussola, permitido, erro: erroGps, tentarNovamente } = useLocalizacao();
   // `?abrir=<id>`: o formulário de novo chamado manda para cá quando o backend
   // apontou um duplicado — abre o existente para a pessoa confirmar.
@@ -88,14 +75,12 @@ export default function MapaScreen() {
   const mapRef = useRef<MapSurfaceHandle>(null);
   const [defeitos, setDefeitos] = useState<Defeito[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [filtro, setFiltro] = useState<Filtro>('pendentes');
-  const [raio, setRaio] = useState<number>(RAIO_BUSCA_PADRAO_M);
-  const [heatmap, setHeatmap] = useState(false);
+  // Sem menu de filtros: o mapa mostra sempre as pendências no raio padrão.
+  const raio = RAIO_BUSCA_PADRAO_M;
   const [seguindo, setSeguindo] = useState(true);
   // O mapa nativo ignora `seguir` antes de `onMapReady`; o efeito abaixo
   // depende disto para centralizar assim que ele estiver pronto.
   const [mapaPronto, setMapaPronto] = useState(false);
-  const [menuAberto, setMenuAberto] = useState(false);
   const [selecionado, setSelecionado] = useState<Defeito | null>(null);
   // Visão do município: substitui a navegação por raio pela cidade inteira.
   const [visao, setVisao] = useState<VisaoMunicipio | null>(null);
@@ -164,7 +149,19 @@ export default function MapaScreen() {
     api
       .detalharDefeito(abrir as unknown as number)
       .then((d) => {
-        if (!cancelado) setSelecionado(d);
+        if (cancelado) return;
+        setSelecionado(d);
+        // Vindo de fora (ex.: "Ver no mapa" em Meus chamados), centraliza no
+        // ponto em vez de continuar seguindo o GPS.
+        if (d.latitude != null && d.longitude != null) {
+          setSeguindo(false);
+          mapRef.current?.animarPara({
+            latitude: d.latitude,
+            longitude: d.longitude,
+            latitudeDelta: 0.005,
+            longitudeDelta: 0.005,
+          });
+        }
       })
       .catch(() => {});
     router.setParams({ abrir: undefined });
@@ -180,13 +177,10 @@ export default function MapaScreen() {
     mapRef.current?.seguir(posicao);
   }, [mapaPronto, seguindo, posicao]);
 
-  const filtrados = useMemo(() => {
-    let lista = defeitos;
-    if (filtro === 'pendentes') lista = lista.filter((d) => STATUS_ABERTOS.includes(d.status));
-    if (filtro === 'atendidos') lista = lista.filter((d) => STATUS_FECHADOS.includes(d.status));
-    if (filtro === 'meus' && user) lista = lista.filter((d) => d.usuario?.id === user.id);
-    return lista;
-  }, [defeitos, filtro, user]);
+  const filtrados = useMemo(
+    () => defeitos.filter((d) => STATUS_ABERTOS.includes(d.status)),
+    [defeitos],
+  );
 
   /** Chamados dentro do raio, mais perto primeiro. Sem GPS, cai na lista inteira. */
   const proximos = useMemo<ItemProximo[]>(() => {
@@ -235,7 +229,7 @@ export default function MapaScreen() {
   );
 
   // Visitantes só veem o agregado; marcadores individuais exigem login.
-  const mostrarCalor = heatmap || !isAuthenticated;
+  const mostrarCalor = !isAuthenticated;
 
   const circulos = useMemo<CirculoMapa[]>(() => {
     const lista: CirculoMapa[] = [];
@@ -444,6 +438,26 @@ export default function MapaScreen() {
           </View>
         ) : null}
 
+        {/* Canto superior esquerdo: menu (conta, tema, login). */}
+        <View style={styles.topoEsquerda}>
+          <Pressable
+            onPress={() => router.push('/conta')}
+            accessibilityRole="button"
+            accessibilityLabel="Abrir menu da conta"
+            style={[
+              styles.botaoRedondo,
+              { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault },
+            ]}>
+            {/* Hamburger desenhado à mão: o glifo "menu" do Ionicons sai com
+                as barras desiguais em tamanhos pequenos no web. */}
+            <View style={styles.hamburger}>
+              <View style={[styles.hamburgerBarra, { backgroundColor: colors.textSecondary }]} />
+              <View style={[styles.hamburgerBarra, { backgroundColor: colors.textSecondary }]} />
+              <View style={[styles.hamburgerBarra, { backgroundColor: colors.textSecondary }]} />
+            </View>
+          </Pressable>
+        </View>
+
         {/* Canto superior direito: visão do município (cidade inteira + ranking). */}
         <View style={styles.topoDireita}>
           <Pressable
@@ -465,22 +479,6 @@ export default function MapaScreen() {
               color={visao ? colors.textInverse : colors.textSecondary}
             />
           </Pressable>
-        </View>
-
-        {/* Controles laterais: filtros. */}
-        <View style={[styles.lateral, { bottom: rodape + 60 }]}>
-          {isAuthenticated ? (
-            <Pressable
-              onPress={() => setMenuAberto(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Filtros do mapa"
-              style={[
-                styles.botaoRedondo,
-                { backgroundColor: colors.bgSurface, borderColor: colors.borderDefault },
-              ]}>
-              <Ionicons name="options" size={18} color={colors.textSecondary} />
-            </Pressable>
-          ) : null}
         </View>
 
         {MOSTRAR_JOYSTICK ? <GpsJoystick posicaoReal={posicao} /> : null}
@@ -554,102 +552,6 @@ export default function MapaScreen() {
         </View>
       </View>
 
-      <Modal
-        visible={menuAberto}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMenuAberto(false)}>
-        <Pressable
-          style={[styles.menuBackdrop, { backgroundColor: colors.overlay }]}
-          onPress={() => setMenuAberto(false)}>
-          <View
-            style={[
-              styles.menu,
-              { backgroundColor: colors.bgElevated, borderColor: colors.borderDefault },
-            ]}>
-            <Text style={[styles.menuGrupo, { color: colors.textMuted }]}>Raio ao redor</Text>
-            <View style={styles.raios}>
-              {RAIOS_BUSCA_M.map((opcao) => (
-                <Pressable
-                  key={opcao}
-                  onPress={() => setRaio(opcao)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: raio === opcao }}
-                  style={[
-                    styles.raioChip,
-                    {
-                      borderColor: raio === opcao ? colors.gold500 : colors.borderDefault,
-                      backgroundColor: raio === opcao ? colors.goldMuted : 'transparent',
-                    },
-                  ]}>
-                  <Text
-                    style={[
-                      styles.raioTexto,
-                      {
-                        color: raio === opcao ? colors.gold500 : colors.textSecondary,
-                        fontWeight: raio === opcao ? FontWeight.bold : FontWeight.regular,
-                      },
-                    ]}>
-                    {rotuloRaio(opcao)}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <View style={[styles.menuDivisor, { backgroundColor: colors.borderDefault }]} />
-            <Text style={[styles.menuGrupo, { color: colors.textMuted }]}>Filtros</Text>
-
-            {FILTROS.map((opcao) => (
-              <Pressable
-                key={opcao.value}
-                onPress={() => {
-                  setFiltro(opcao.value);
-                  setMenuAberto(false);
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: filtro === opcao.value }}
-                style={styles.menuItem}>
-                <View
-                  style={[
-                    styles.menuPonto,
-                    filtro === opcao.value && { backgroundColor: colors.gold500 },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.menuTexto,
-                    { color: filtro === opcao.value ? colors.gold500 : colors.textSecondary },
-                  ]}>
-                  {opcao.label}
-                </Text>
-              </Pressable>
-            ))}
-
-            <View style={[styles.menuDivisor, { backgroundColor: colors.borderDefault }]} />
-            <Pressable
-              onPress={() => {
-                setHeatmap((h) => !h);
-                setMenuAberto(false);
-              }}
-              accessibilityRole="button"
-              style={styles.menuItem}>
-              <Ionicons
-                name="flame"
-                size={16}
-                color={heatmap ? colors.gold500 : colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.menuTexto,
-                  { color: heatmap ? colors.gold500 : colors.textSecondary },
-                ]}>
-                Mapa de Calor
-              </Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
-
       <DefectSheet
         key={selecionado?.id}
         defeito={selecionado}
@@ -689,6 +591,20 @@ const styles = StyleSheet.create({
     top: Spacing[3],
     right: Spacing[4],
   },
+  topoEsquerda: {
+    position: 'absolute',
+    zIndex: 1001,
+    top: Spacing[3],
+    left: Spacing[4],
+  },
+  hamburger: {
+    gap: 4,
+  },
+  hamburgerBarra: {
+    width: 18,
+    height: 2,
+    borderRadius: 1,
+  },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -703,12 +619,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     fontWeight: FontWeight.medium,
     flexShrink: 1,
-  },
-  lateral: {
-    position: 'absolute',
-    zIndex: 1000,
-    right: Spacing[4],
-    gap: Spacing[2],
   },
   botaoRedondo: {
     width: 44,
@@ -751,63 +661,5 @@ const styles = StyleSheet.create({
   fabTexto: {
     fontSize: FontSize.md,
     fontWeight: FontWeight.bold,
-  },
-  menuBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    alignItems: 'flex-end',
-    padding: Spacing[4],
-    paddingBottom: Spacing[16],
-  },
-  menu: {
-    minWidth: 220,
-    borderWidth: 1,
-    padding: Spacing[2],
-    gap: 2,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing[2] + 2,
-    paddingHorizontal: Spacing[3],
-    paddingVertical: Spacing[2],
-  },
-  menuTexto: {
-    fontSize: FontSize.sm,
-  },
-  menuDivisor: {
-    height: 1,
-    marginHorizontal: Spacing[2],
-    marginVertical: Spacing[1],
-  },
-  menuGrupo: {
-    paddingHorizontal: Spacing[3],
-    paddingTop: Spacing[1],
-    fontSize: FontSize.xs - 2,
-    fontWeight: FontWeight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  menuPonto: {
-    width: 6,
-    height: 6,
-    borderRadius: Radius.full,
-    backgroundColor: 'transparent',
-  },
-  raios: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing[2],
-    paddingHorizontal: Spacing[3],
-    paddingVertical: Spacing[2],
-  },
-  raioChip: {
-    paddingHorizontal: Spacing[3],
-    paddingVertical: Spacing[1] + 2,
-    borderWidth: 1,
-    borderRadius: Radius.full,
-  },
-  raioTexto: {
-    fontSize: FontSize.xs,
   },
 });
