@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status, filters
@@ -8,10 +7,37 @@ from rest_framework.exceptions import ValidationError
 from django.db.models import Count
 from .models import Defeito, Apoio
 from .serializers import (
+    municipio_do_ponto,
     DefeitoListSerializer, DefeitoDetailSerializer,
     DefeitoCreateSerializer, ApoioSerializer,
 )
 from users.models import User
+
+
+def _pode_operar(user, defeito):
+    """
+    Operar (assumir, mudar status, gerar OS) é restrito ao município a que o
+    operador está vinculado — sem exceção: todo operador, inclusive o super
+    admin, opera numa única cidade. Como cidadão, o mesmo usuário continua
+    livre para reportar/apoiar onde quiser.
+    """
+    if not user.is_authenticated or not user.admin:
+        return False
+    return bool(user.municipio_id) and defeito.municipio_id == user.municipio_id
+
+
+def _municipio_por_codigo(codigo):
+    from django.db import connection
+    with connection.cursor() as cur:
+        cur.execute('SELECT codigo, nome, uf_sigla FROM municipios WHERE codigo = %s', [codigo])
+        row = cur.fetchone()
+    if not row:
+        return {'codigo': str(codigo), 'nome': '', 'uf_sigla': ''}
+    return {'codigo': str(row[0]), 'nome': row[1], 'uf_sigla': row[2]}
+
+
+FORA_DO_MUNICIPIO = 'Chamado fora do seu município de operação'
+SEM_MUNICIPIO = 'Operador sem município vinculado'
 
 
 class DefeitoViewSet(viewsets.ModelViewSet):
@@ -24,13 +50,10 @@ class DefeitoViewSet(viewsets.ModelViewSet):
     lookup_value_regex = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 
     def get_queryset(self):
-        qs = self.queryset
-        user = self.request.user
-        if user.is_authenticated and user.admin:
-            super_admin_email = getattr(settings, 'SUPER_ADMIN_EMAIL', None)
-            if super_admin_email and user.email != super_admin_email:
-                qs = qs.filter(usuario__municipio_id=user.municipio_id)
-        return qs
+        # A listagem é a mesma para todo mundo: o vínculo do operador com um
+        # município só restringe a *operação* (ver `operacao` e `_pode_operar`),
+        # nunca o que ele enxerga como cidadão.
+        return self.queryset
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -43,18 +66,31 @@ class DefeitoViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'apoiar', 'meus', 'apoiados', 'apoiei', 'atender', 'status',
-                           'batch_status', 'ordem_servico',
+                           'batch_status', 'ordem_servico', 'operacao',
                            'update', 'partial_update', 'destroy', 'anexar'):
             return (permissions.IsAuthenticated(),)
         return (permissions.AllowAny(),)
 
     def create(self, request, *args, **kwargs):
+        # Chamado só com foto do local, tirada na hora (o app abre a câmera;
+        # galeria não entra). Sem imagem não há como a prefeitura triar.
+        if 'imagem' not in request.FILES:
+            return Response(
+                {'imagem': 'Tire uma foto do problema para abrir o chamado.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             return super().create(request, *args, **kwargs)
         except ValidationError as e:
             detail = e.detail
             if isinstance(detail, dict) and detail.get('duplicado'):
-                return Response(detail, status=status.HTTP_409_CONFLICT)
+                # O DRF embrulha cada valor em ErrorDetail (string); devolve tipos limpos.
+                corpo = {k: str(v) for k, v in detail.items()}
+                corpo['duplicado'] = True
+                for campo in ('distancia_m', 'similaridade'):
+                    if campo in corpo:
+                        corpo[campo] = float(corpo[campo])
+                return Response(corpo, status=status.HTTP_409_CONFLICT)
             raise
 
     def perform_create(self, serializer):
@@ -92,9 +128,10 @@ class DefeitoViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'])
     def status(self, request, pk=None):
         defeito = self.get_object()
-        if not (request.user.admin or (defeito.atendente_id and defeito.atendente == request.user)):
+        e_atendente = bool(defeito.atendente_id) and defeito.atendente == request.user
+        if not (e_atendente or _pode_operar(request.user, defeito)):
             return Response(
-                {'error': 'Permissao negada'},
+                {'error': FORA_DO_MUNICIPIO if request.user.admin else 'Permissao negada'},
                 status=status.HTTP_403_FORBIDDEN,
             )
         novo_status = request.data.get('status')
@@ -104,13 +141,10 @@ class DefeitoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         resolvidos = {'atendido', 'encerrado', 'concluido'}
-        if novo_status in resolvidos and defeito.status not in resolvidos:
-            arquivo = request.FILES.get('foto_resolucao')
-            if arquivo is None:
-                return Response(
-                    {'error': 'Foto de resolucao obrigatoria para concluir o chamado'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        # Foto de resolução é opcional: se vier, fica guardada como registro
+        # do serviço feito; sem ela o chamado é finalizado do mesmo jeito.
+        arquivo = request.FILES.get('foto_resolucao')
+        if arquivo is not None:
             from services.image_processor import process_image
             try:
                 result = process_image(arquivo.read())
@@ -152,6 +186,11 @@ class DefeitoViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'])
     def atender(self, request, pk=None):
         defeito = self.get_object()
+        if not _pode_operar(request.user, defeito):
+            return Response(
+                {'error': FORA_DO_MUNICIPIO if request.user.admin else 'Permissao negada'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if defeito.atendente_id:
             return Response(
                 {'error': 'Chamado já possui atendente'},
@@ -180,18 +219,78 @@ class DefeitoViewSet(viewsets.ModelViewSet):
         return Response(DefeitoDetailSerializer(defeito).data)
 
     @action(detail=False, methods=['get'])
+    def operacao(self, request):
+        """
+        Fila do operador: todos os chamados do município a que ele está
+        vinculado (sem paginação), mais o município em si para o cabeçalho.
+        """
+        user = request.user
+        if not user.admin:
+            return Response({'error': 'Permissao negada'}, status=status.HTTP_403_FORBIDDEN)
+        if not user.municipio_id:
+            return Response({'error': SEM_MUNICIPIO}, status=status.HTTP_403_FORBIDDEN)
+        qs = self.get_queryset().filter(municipio_id=user.municipio_id)
+        return Response({
+            'municipio': _municipio_por_codigo(user.municipio_id),
+            'defeitos': DefeitoListSerializer(qs[:2000], many=True).data,
+        })
+
+    @action(detail=False, methods=['get'], permission_classes=(permissions.AllowAny,))
+    def municipio(self, request):
+        """
+        Visão expandida do mapa: a cidade onde o ponto (?lat=&lng=) caiu, todos
+        os chamados abertos dela (sem paginação) e rankings prontos — tipos mais
+        frequentes, mais antigos e mais confirmados.
+        """
+        try:
+            lat = float(request.query_params.get('lat', ''))
+            lng = float(request.query_params.get('lng', ''))
+        except ValueError:
+            return Response({'detail': 'Informe lat e lng.'}, status=status.HTTP_400_BAD_REQUEST)
+        municipio = municipio_do_ponto(lat, lng)
+        if not municipio:
+            return Response({'detail': 'Nenhum município neste ponto.'}, status=status.HTTP_404_NOT_FOUND)
+
+        abertos = (
+            self.get_queryset()
+            .filter(municipio_id=municipio['codigo'])
+            .exclude(status__in=('atendido', 'encerrado', 'concluido', 'rejeitado'))[:2000]
+        )
+        dados = DefeitoListSerializer(abertos, many=True).data
+
+        por_categoria = {}
+        for d in dados:
+            nome = d.get('categoria_nome') or 'Sem categoria'
+            por_categoria[nome] = por_categoria.get(nome, 0) + 1
+        tipos = sorted(
+            ({'categoria': k, 'total': v} for k, v in por_categoria.items()),
+            key=lambda x: (-x['total'], x['categoria']),
+        )
+        mais_antigos = sorted(dados, key=lambda d: d['criado_em'])[:10]
+        mais_apoiados = sorted(dados, key=lambda d: (-(d.get('total_apoios') or 0), d['criado_em']))[:10]
+
+        return Response({
+            'municipio': municipio,
+            'total_abertos': len(dados),
+            'tipos': tipos,
+            'mais_antigos': [d['id'] for d in mais_antigos],
+            'mais_apoiados': [d['id'] for d in mais_apoiados if (d.get('total_apoios') or 0) > 0],
+            'defeitos': dados,
+        })
+
+    @action(detail=False, methods=['get'])
     def apoiei(self, request):
         ids = Apoio.objects.filter(usuario=request.user).values_list('defeito_id', flat=True)
         return Response({'ids': [str(i) for i in ids]})
 
     @action(detail=True, methods=['get'])
     def ordem_servico(self, request, pk=None):
-        if not request.user.admin:
+        defeito = self.get_object()
+        if not _pode_operar(request.user, defeito):
             return Response(
-                {'error': 'Permissao negada'},
+                {'error': FORA_DO_MUNICIPIO if request.user.admin else 'Permissao negada'},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        defeito = self.get_object()
         from services.ordem_servico import gerar_ordem_servico
         pdf_bytes = gerar_ordem_servico(defeito)
         id_curto = str(defeito.id)[:8]
@@ -223,13 +322,14 @@ class DefeitoViewSet(viewsets.ModelViewSet):
                 {'error': 'Invalid status'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if not request.user.municipio_id:
+            return Response({'error': SEM_MUNICIPIO}, status=status.HTTP_403_FORBIDDEN)
+        qs = self.get_queryset().filter(id__in=ids, municipio_id=request.user.municipio_id)
+        agora = timezone.now()
         if novo_status in {'atendido', 'encerrado', 'concluido'}:
-            return Response(
-                {'error': 'Status resolvido exige foto de resolucao - use a acao individual'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        qs = self.get_queryset().filter(id__in=ids)
-        updated = qs.update(status=novo_status, atualizado_em=timezone.now())
+            # Marca quando foi resolvido, sem sobrescrever quem já tinha data.
+            qs.filter(atendido_em='').update(atendido_em=agora.isoformat())
+        updated = qs.update(status=novo_status, atualizado_em=agora)
         return Response({'updated': updated})
 
     @action(detail=False, methods=['post'])

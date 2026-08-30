@@ -58,6 +58,10 @@ class Defeito(models.Model):
         User, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='defeitos_atendidos', db_column='atendente_id',
     )
+    # Código IBGE do município onde o ponto caiu (resolvido no backend a partir
+    # de lat/lng, tabela `municipios`). Permite, no futuro, restringir
+    # usuários/admins ao próprio município sem depender do cadastro deles.
+    municipio_id = models.CharField(max_length=255, blank=True, null=True, db_column='municipio_id')
     criado_em = models.DateTimeField(db_column='criado_em')
     atualizado_em = models.DateTimeField(db_column='atualizado_em')
 

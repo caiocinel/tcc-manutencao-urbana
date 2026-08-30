@@ -1,7 +1,9 @@
 import itertools
 from datetime import timedelta
 
+import base64
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
 
@@ -12,6 +14,18 @@ pytestmark = pytest.mark.django_db(transaction=True)
 # Coordenadas únicas por chamada para evitar que a detecção de duplicados
 # (raio espacial + similaridade) rejeite defeitos criados em testes distintos
 # que usariam as mesmas coordenadas de São Paulo.
+
+# PNG 1x1 válido: todo chamado exige uma foto (o backend recusa sem `imagem`).
+_PNG_1X1 = base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+)
+
+
+def com_foto(data):
+    """Copia `data` acrescentando um arquivo `imagem` (multipart)."""
+    return {**data, 'imagem': SimpleUploadedFile('foto.png', _PNG_1X1, content_type='image/png')}
+
+
 _COORD_COUNTER = itertools.count()
 
 
@@ -27,7 +41,7 @@ def _create_defeito(auth_client, **overrides):
         'categoria': 'Buraco',
     }
     data.update(overrides)
-    resp = auth_client.post(reverse('defeitos-list'), data, format='json')
+    resp = auth_client.post(reverse('defeitos-list'), com_foto(data), format='multipart')
     assert resp.status_code == 201
     return resp.data
 
@@ -103,7 +117,7 @@ class TestDefeitosCreate:
             'bairro': 'Centro',
             'categoria': 'Iluminacao',
         }
-        resp = auth_client.post(reverse('defeitos-list'), data, format='json')
+        resp = auth_client.post(reverse('defeitos-list'), com_foto(data), format='multipart')
         assert resp.status_code == 201
         assert resp.data['titulo'] == 'New Bug'
         assert 'id' in resp.data
@@ -113,31 +127,31 @@ class TestDefeitosCreate:
         assert resp.status_code == 401
 
     def test_create_minimal_fields(self, auth_client):
-        resp = auth_client.post(reverse('defeitos-list'), {
+        resp = auth_client.post(reverse('defeitos-list'), com_foto({
             'titulo': 'Minimal bug',
-        }, format='json')
+        }), format='multipart')
         assert resp.status_code == 201
 
     def test_create_with_coordinates(self, auth_client):
         lat, lng = -22.9068, -43.1729
-        resp = auth_client.post(reverse('defeitos-list'), {
+        resp = auth_client.post(reverse('defeitos-list'), com_foto({
             'titulo': 'Bug with coords',
             'latitude': lat,
             'longitude': lng,
-        }, format='json')
+        }), format='multipart')
         assert resp.status_code == 201
         assert abs(float(resp.data['latitude']) - lat) < 0.01
         assert abs(float(resp.data['longitude']) - lng) < 0.01
 
     def test_create_defeito_persists_routing(self, auth_client):
-        resp = auth_client.post(reverse('defeitos-list'), {
+        resp = auth_client.post(reverse('defeitos-list'), com_foto({
             'titulo': 'Buraco na rua',
             'descricao': 'Buraco grande na via',
             'latitude': -21.17,
             'longitude': -47.82,
             'categoria': 'Buraco',
             'status': 'pendente',
-        }, format='json')
+        }), format='multipart')
         assert resp.status_code == 201
         defeito_id = resp.data['id']
         defeito = Defeito.objects.get(id=defeito_id)
@@ -258,16 +272,17 @@ class TestAtender:
 
     ATENDER_URL = 'defeitos-atender'
 
-    def test_atender(self, auth_client):
-        created = _create_defeito(auth_client)
-        resp = auth_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
+    def test_atender(self, admin_client):
+        """Assumir é ação de operador (admin); cidadão comum não assume."""
+        created = _create_defeito(admin_client)
+        resp = admin_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
         assert resp.status_code == 200
         assert 'message' in resp.data
 
-    def test_atender_duplicate(self, auth_client):
-        created = _create_defeito(auth_client)
-        auth_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
-        resp = auth_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
+    def test_atender_duplicate(self, admin_client):
+        created = _create_defeito(admin_client)
+        admin_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
+        resp = admin_client.patch(reverse(self.ATENDER_URL, args=[created['id']]), format='json')
         assert resp.status_code == 400
 
     def test_atender_unauthenticated(self, client, auth_client):
@@ -302,13 +317,17 @@ class TestStatusAction:
         )
         assert resp.status_code == 400
 
-    def test_resolvido_exige_foto_resolucao(self, admin_client):
+    def test_resolvido_sem_foto_resolucao(self, admin_client):
+        """A foto de resolução é opcional: finalizar sem ela é permitido."""
         created = _create_defeito(admin_client)
         resp = admin_client.patch(
             reverse(self.STATUS_URL, args=[created['id']]),
             {'status': 'atendido'}, format='json',
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        assert resp.data['status'] == 'atendido'
+        assert resp.data['atendido_em']
+        assert resp.data['foto_resolucao_url'] is None
 
     def test_resolvido_com_foto_resolucao(self, admin_client):
         import io
@@ -367,14 +386,14 @@ class TestStatusAction:
         )
         assert resp.status_code == 200
 
-    def test_update_status_allowed_for_atendente(self, auth_client):
+    def test_update_status_allowed_for_atendente(self, admin_client):
         """Atendente vinculado ao defeito pode alterar o status."""
-        created = _create_defeito(auth_client)
-        resp = auth_client.patch(
+        created = _create_defeito(admin_client)
+        resp = admin_client.patch(
             reverse('defeitos-atender', args=[created['id']]), format='json',
         )
         assert resp.status_code == 200
-        resp = auth_client.patch(
+        resp = admin_client.patch(
             reverse(self.STATUS_URL, args=[created['id']]),
             {'status': 'em_andamento'}, format='json',
         )
@@ -514,15 +533,18 @@ class TestBatchStatus:
         assert resp.data['updated'] == 1
         assert Defeito.objects.get(id=d1['id']).status == 'em_andamento'
 
-    def test_batch_status_rejects_resolved_status(self, admin_client):
-        """Status resolvidos exigem foto de resolução — inválido em lote."""
+    def test_batch_status_resolvido_marca_atendido_em(self, admin_client):
+        """Finalizar em lote é permitido (foto opcional) e registra atendido_em."""
         d1 = _create_defeito(admin_client)
         resp = admin_client.patch(
             reverse(self.URL),
             {'ids': [d1['id']], 'status': 'atendido'},
             format='json',
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        obj = Defeito.objects.get(id=d1['id'])
+        assert obj.status == 'atendido'
+        assert obj.atendido_em
 
 
 class TestOrdemServico:
@@ -626,3 +648,233 @@ class TestSlaVencido:
         resp = client.get(reverse('defeitos-detail', args=[created['id']]))
         assert resp.status_code == 200
         assert resp.data['sla_vencido'] is False
+
+
+class TestDuplicadoPorCategoria:
+    """Mesma categoria + chamado aberto + <= DUPLICATE_CATEGORY_RADIUS_M -> 409."""
+
+    BASE = {'latitude': -22.9, 'longitude': -43.2, 'categoria': 'Buraco', 'descricao': ''}
+
+    def _post(self, auth_client, **over):
+        i = next(_COORD_COUNTER)
+        data = {'titulo': f'Buraco {i}', 'rua': 'Rua X', 'bairro': 'Centro', **self.BASE, **over}
+        return auth_client.post(reverse('defeitos-list'), com_foto(data), format='multipart')
+
+    def test_mesma_categoria_a_5m_e_rejeitada(self, auth_client):
+        primeiro = self._post(auth_client, longitude=-43.2000)
+        assert primeiro.status_code == 201
+        # ~5 m para leste (1e-5 grau de longitude ≈ 1 m nesta latitude)
+        resp = self._post(auth_client, longitude=-43.2000 + 0.00005)
+        assert resp.status_code == 409
+        assert resp.data['duplicado'] is True
+        assert resp.data['defeito_existente_id'] == str(primeiro.data['id'])
+        assert resp.data['distancia_m'] <= 10
+        assert 'Buraco' in resp.data['detail']
+
+    def test_categoria_diferente_no_mesmo_ponto_passa(self, auth_client):
+        assert self._post(auth_client, latitude=-22.91).status_code == 201
+        assert self._post(auth_client, latitude=-22.91, categoria='Iluminação').status_code == 201
+
+    def test_fora_do_raio_passa(self, auth_client):
+        assert self._post(auth_client, latitude=-22.92).status_code == 201
+        # ~30 m ao norte
+        assert self._post(auth_client, latitude=-22.92 + 0.00027).status_code == 201
+
+    def test_chamado_fechado_nao_bloqueia(self, auth_client):
+        primeiro = self._post(auth_client, latitude=-22.93)
+        assert primeiro.status_code == 201
+        Defeito.objects.filter(id=primeiro.data['id']).update(status='concluido')
+        assert self._post(auth_client, latitude=-22.93).status_code == 201
+
+    def test_categoria_ignora_caixa(self, auth_client):
+        assert self._post(auth_client, latitude=-22.94).status_code == 201
+        assert self._post(auth_client, latitude=-22.94, categoria='buraco').status_code == 409
+
+
+class TestMunicipioDoChamado:
+    """O backend grava em qual município o ponto caiu (tabela `municipios`)."""
+
+    def _post(self, auth_client, lat, lng):
+        i = next(_COORD_COUNTER)
+        return auth_client.post(reverse('defeitos-list'), com_foto({
+            'titulo': f'Poste {i}', 'rua': 'Rua X', 'bairro': 'Centro', 'categoria': 'Iluminação',
+            'descricao': '', 'latitude': lat, 'longitude': lng,
+        }), format='multipart')
+
+    def test_resolve_pelo_poligono(self, auth_client):
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("""
+                INSERT INTO municipios (codigo, nome, uf, uf_sigla, min_lat, max_lat, min_lng, max_lng, polygon_geom)
+                VALUES ('9999901', 'Cidade Teste', '35', 'SP', -23.1, -22.9, -49.4, -49.2,
+                        ST_Multi(ST_GeomFromText('POLYGON((-49.4 -23.1, -49.2 -23.1, -49.2 -22.9, -49.4 -22.9, -49.4 -23.1))', 4326)))
+                ON CONFLICT (codigo) DO NOTHING
+            """)
+        resp = self._post(auth_client, -23.0, -49.3)
+        assert resp.status_code == 201, resp.data
+        assert resp.data['municipio_id'] == '9999901'
+        detalhe = auth_client.get(reverse('defeitos-detail', args=[resp.data['id']]))
+        assert detalhe.data['municipio'] == {'codigo': '9999901', 'nome': 'Cidade Teste', 'uf_sigla': 'SP'}
+
+    def test_fora_de_qualquer_municipio_fica_nulo(self, auth_client):
+        resp = self._post(auth_client, 0.0, -30.0)  # Atlântico
+        assert resp.status_code == 201, resp.data
+        assert resp.data['municipio_id'] is None
+
+
+class TestFotoObrigatoria:
+    def test_sem_imagem_da_400(self, auth_client):
+        resp = auth_client.post(reverse('defeitos-list'), {
+            'titulo': 'Buraco sem foto', 'rua': 'Rua X', 'bairro': 'Centro', 'categoria': 'Buraco',
+            'descricao': '', 'latitude': -22.95, 'longitude': -43.25,
+        }, format='json')
+        assert resp.status_code == 400
+        assert 'imagem' in resp.data
+
+
+class TestVisaoMunicipio:
+    """GET /defeitos/municipio/?lat&lng: cidade do ponto, abertos e rankings."""
+
+    def _post(self, auth_client, categoria, lat, lng):
+        i = next(_COORD_COUNTER)
+        return auth_client.post(reverse('defeitos-list'), com_foto({
+            'titulo': f'{categoria} {i}', 'rua': 'Rua X', 'bairro': 'Centro', 'categoria': categoria,
+            'descricao': '', 'latitude': lat, 'longitude': lng,
+        }), format='multipart')
+
+    def test_rankings_da_cidade(self, auth_client, client):
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("""
+                INSERT INTO municipios (codigo, nome, uf, uf_sigla, min_lat, max_lat, min_lng, max_lng, polygon_geom)
+                VALUES ('9999902', 'Cidade Ranking', '35', 'SP', -24.1, -23.9, -50.4, -50.2,
+                        ST_Multi(ST_GeomFromText('POLYGON((-50.4 -24.1, -50.2 -24.1, -50.2 -23.9, -50.4 -23.9, -50.4 -24.1))', 4326)))
+                ON CONFLICT (codigo) DO NOTHING
+            """)
+        assert self._post(auth_client, 'Buraco', -24.00, -50.30).status_code == 201
+        assert self._post(auth_client, 'Buraco', -24.01, -50.31).status_code == 201
+        assert self._post(auth_client, 'Entulho', -24.02, -50.32).status_code == 201
+
+        resp = client.get(reverse('defeitos-municipio'), {'lat': -24.0, 'lng': -50.3})
+        assert resp.status_code == 200, resp.data
+        assert resp.data['municipio']['codigo'] == '9999902'
+        assert resp.data['municipio']['min_lat'] == -24.1
+        assert resp.data['total_abertos'] == 3
+        assert resp.data['tipos'][0] == {'categoria': 'Buraco', 'total': 2}
+        assert len(resp.data['mais_antigos']) == 3
+        assert resp.data['mais_apoiados'] == []
+        assert {d['municipio_id'] for d in resp.data['defeitos']} == {'9999902'}
+
+    def test_ponto_sem_municipio_404(self, client):
+        assert client.get(reverse('defeitos-municipio'), {'lat': 0, 'lng': -30}).status_code == 404
+
+    def test_sem_coordenadas_400(self, client):
+        assert client.get(reverse('defeitos-municipio')).status_code == 400
+
+
+class TestOperacaoPorMunicipio:
+    """
+    Operador vinculado a um município só opera (fila, assumir, status, OS,
+    lote) nos chamados que caíram nele. Como cidadão, vê e reporta em
+    qualquer lugar.
+    """
+
+    CIDADE = '9999903'
+
+    def _cidade(self):
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("""
+                INSERT INTO municipios (codigo, nome, uf, uf_sigla, min_lat, max_lat, min_lng, max_lng, polygon_geom)
+                VALUES (%s, 'Cidade Operacao', '35', 'SP', -25.1, -24.9, -51.4, -51.2,
+                        ST_Multi(ST_GeomFromText('POLYGON((-51.4 -25.1, -51.2 -25.1, -51.2 -24.9, -51.4 -24.9, -51.4 -25.1))', 4326)))
+                ON CONFLICT (codigo) DO NOTHING
+            """, [self.CIDADE])
+
+    def _operador(self, client, municipio_id=None):
+        """Admin comum (não super) vinculado — ou não — a um município."""
+        from users.models import User
+        op = _new_user_client(client)
+        # O cliente autentica por JWT; acha o usuário pelo perfil.
+        perfil = op.get(reverse('auth-profile'))
+        user = User.objects.get(id=perfil.data['id'])
+        user.admin = 1
+        user.municipio_id = municipio_id
+        user.save(update_fields=['admin', 'municipio_id'])
+        return op
+
+    @staticmethod
+    def _passo():
+        """Deslocamento unico na sessao: o banco de teste guarda chamados entre
+        testes e a deteccao de duplicado (mesma categoria, perto) daria 409."""
+        return next(_COORD_COUNTER) * 0.0005
+
+    def _dentro(self, auth_client):
+        passo = self._passo()
+        return _create_defeito(auth_client, latitude=-25.095 + passo, longitude=-51.395 + passo)
+
+    def _fora(self, auth_client):
+        passo = self._passo()
+        # Longe de qualquer outra cidade de teste.
+        return _create_defeito(auth_client, latitude=-27.0 + passo, longitude=-52.0 - passo)
+
+    def test_fila_so_do_municipio(self, client, auth_client):
+        self._cidade()
+        dentro = self._dentro(auth_client)
+        self._fora(auth_client)
+        op = self._operador(client, self.CIDADE)
+        resp = op.get(reverse('defeitos-operacao'))
+        assert resp.status_code == 200, resp.data
+        assert resp.data['municipio'] == {'codigo': self.CIDADE, 'nome': 'Cidade Operacao', 'uf_sigla': 'SP'}
+        assert [d['id'] for d in resp.data['defeitos']] == [dentro['id']]
+
+    def test_sem_municipio_nao_opera(self, client):
+        op = self._operador(client, None)
+        assert op.get(reverse('defeitos-operacao')).status_code == 403
+
+    def test_assumir_so_no_seu_municipio(self, client, auth_client):
+        self._cidade()
+        dentro = self._dentro(auth_client)
+        fora = self._fora(auth_client)
+        op = self._operador(client, self.CIDADE)
+        assert op.patch(reverse('defeitos-atender', args=[fora['id']])).status_code == 403
+        assert op.patch(reverse('defeitos-atender', args=[dentro['id']])).status_code == 200
+
+    def test_status_e_os_so_no_seu_municipio(self, client, auth_client):
+        self._cidade()
+        fora = self._fora(auth_client)
+        op = self._operador(client, self.CIDADE)
+        resp = op.patch(reverse('defeitos-status', args=[fora['id']]), {'status': 'em_andamento'}, format='json')
+        assert resp.status_code == 403
+        assert op.get(reverse('defeitos-ordem-servico', args=[fora['id']])).status_code == 403
+
+    def test_lote_ignora_outros_municipios(self, client, auth_client):
+        self._cidade()
+        dentro = self._dentro(auth_client)
+        fora = self._fora(auth_client)
+        op = self._operador(client, self.CIDADE)
+        resp = op.patch(
+            reverse('defeitos-batch-status'),
+            {'ids': [dentro['id'], fora['id']], 'status': 'em_andamento'}, format='json',
+        )
+        assert resp.status_code == 200
+        assert resp.data['updated'] == 1
+        assert Defeito.objects.get(id=fora['id']).status == 'pendente'
+
+    def test_como_cidadao_continua_vendo_tudo(self, client, auth_client):
+        """O vínculo não recorta a listagem pública nem o detalhe."""
+        self._cidade()
+        fora = self._fora(auth_client)
+        op = self._operador(client, self.CIDADE)
+        # Busca pelo titulo: a listagem e paginada.
+        lista = op.get(reverse('defeitos-list'), {'search': fora['titulo']}).data['results']
+        assert fora['id'] in {d['id'] for d in lista}
+        assert op.get(reverse('defeitos-detail', args=[fora['id']])).status_code == 200
+
+
+class TestAtenderSoOperador:
+    def test_cidadao_nao_assume(self, auth_client):
+        created = _create_defeito(auth_client)
+        resp = auth_client.patch(reverse('defeitos-atender', args=[created['id']]), format='json')
+        assert resp.status_code == 403
+

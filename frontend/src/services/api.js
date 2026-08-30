@@ -14,12 +14,12 @@ function extractError(err) {
 }
 
 async function request(endpoint, options = {}) {
-  const token = localStorage.getItem('token');
-  const isDemoMode = localStorage.getItem('ciu-demo-mode') === 'true';
+  // Endpoint público (options.publico): não manda o token — um token velho no
+  // navegador daria 401 à toa.
+  const token = options.publico ? null : localStorage.getItem('token');
 
   const headers = {
     ...(token && { Authorization: `Bearer ${token}` }),
-    ...(isDemoMode && { 'X-Demo-Mode': 'true' }),
     ...options.headers,
   };
 
@@ -48,11 +48,22 @@ async function request(endpoint, options = {}) {
           body: JSON.stringify({ refresh: refreshToken }),
         });
         if (refreshRes.ok) {
-          const { access } = await refreshRes.json();
+          const { access, refresh } = await refreshRes.json();
           localStorage.setItem('token', access);
+          // O backend rotaciona o refresh (ROTATE_REFRESH_TOKENS): guardar o
+          // novo é o que faz a sessão "deslizar" em vez de cair 7 dias após o login.
+          if (refresh) localStorage.setItem('refresh', refresh);
           options.headers = { ...options.headers, Authorization: `Bearer ${access}` };
           headers.Authorization = `Bearer ${access}`;
           const retryRes = await fetch(`${API_URL}${endpoint}`, { ...fetchOptions, headers });
+          if (retryRes.status === 401) {
+            // Token novo e ainda 401: a conta não existe mais. Sai da sessão.
+            localStorage.removeItem('token');
+            localStorage.removeItem('refresh');
+            localStorage.removeItem('userData');
+            window.location.href = '/login';
+            throw new Error('Sessão expirada. Faça login novamente.');
+          }
           if (!retryRes.ok) {
             const retryErr = await retryRes.json().catch(() => ({}));
             throw new Error(extractError(retryErr));
@@ -120,18 +131,11 @@ export const api = {
   login: (email, senha) =>
     request('/api/v1/auth/login/', { method: 'POST', body: { email, password: senha } }),
 
-  loginDemo: () =>
-    fetch(`${API_URL}/api/v1/auth/login/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Demo-Mode': 'true' },
-      body: JSON.stringify({ email: 'demo@ciu.app', password: 'Demo@2024' }),
-    }).then(async (res) => {
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Erro' }));
-        throw new Error(err.detail || 'Erro no login demo');
-      }
-      return res.json();
-    }),
+  /** Client IDs do Google por plataforma (vazios = login com Google desligado). */
+  googleConfig: () => request('/api/v1/auth/google/', { publico: true }),
+
+  loginGoogle: (idToken) =>
+    request('/api/v1/auth/google/', { method: 'POST', body: { id_token: idToken }, publico: true }),
 
   register: (nome, email, senha, municipioId, cpf) =>
     request('/api/v1/auth/register/', { method: 'POST', body: {
@@ -212,10 +216,8 @@ export const api = {
 
   gerarOS: async (id) => {
     const token = localStorage.getItem('token');
-    const isDemoMode = localStorage.getItem('ciu-demo-mode') === 'true';
     const headers = {
       ...(token && { Authorization: `Bearer ${token}` }),
-      ...(isDemoMode && { 'X-Demo-Mode': 'true' }),
     };
     const res = await fetch(`${API_URL}/api/v1/defeitos/${id}/ordem_servico/`, { headers });
     if (!res.ok) {

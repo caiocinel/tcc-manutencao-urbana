@@ -1,8 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { MapPin, Brain, ShieldCheck, DeviceMobile, ArrowRight, WarningCircle, Lock } from '@phosphor-icons/react';
-import { useAuth } from '../context/AuthContext';
-import { useToast } from '../components/toast-context';
+import { MapPin, Brain, ShieldCheck, DeviceMobile, ArrowRight } from '@phosphor-icons/react';
 
 const features = [
   { icon: MapPin, title: 'Reporte com GPS', desc: 'Localização precisa do defeito' },
@@ -15,17 +13,6 @@ const EASE = [0.16, 1, 0.3, 1];
 
 export default function Landing() {
   const navigate = useNavigate();
-  const { enterDemoMode } = useAuth();
-  const addToast = useToast();
-
-  async function handleDemo() {
-    try {
-      await enterDemoMode();
-      navigate('/mapa');
-    } catch {
-      addToast('Modo demonstrativo indisponível no momento.', 'warning');
-    }
-  }
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
@@ -101,32 +88,8 @@ export default function Landing() {
             >
               Entrar <ArrowRight size={16} />
             </button>
-            <button
-              onClick={handleDemo}
-              className="h-12 px-8 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-              style={{ background: 'transparent', color: 'var(--color-gold-500)', border: '1px solid var(--color-gold-500)' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-gold-muted)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-              aria-label="Explorar o modo demonstrativo"
-            >
-              Modo Demonstrativo
-            </button>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5, duration: 0.4 }}
-            className="mt-10 inline-flex items-center gap-2 px-4 py-2 text-xs"
-            style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-muted)' }}
-          >
-            <Lock size={14} style={{ color: 'var(--color-gold-500)' }} />
-            <span>Ambiente isolado</span>
-            <span style={{ color: 'var(--color-border-hover)' }}>|</span>
-            <code style={{ color: 'var(--color-gold-500)' }}>demo@ciu.app</code>
-            <span>/</span>
-            <code style={{ color: 'var(--color-gold-500)' }}>Demo@2024</code>
-          </motion.div>
         </section>
 
         {/* Features */}
@@ -154,25 +117,6 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* Demo disclaimer */}
-        <section className="px-5 pb-16">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-60px' }}
-            transition={{ duration: 0.4, ease: EASE }}
-            className="flex flex-col md:flex-row items-start md:items-center gap-3 p-5"
-            style={{ maxWidth: 1080, margin: '0 auto', background: 'var(--color-bg-surface)', borderLeft: '3px solid var(--color-gold-500)' }}
-          >
-            <WarningCircle size={20} style={{ color: 'var(--color-gold-500)', flexShrink: 0 }} />
-            <div>
-              <p className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>Modo Demonstrativo</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                Dados fictícios em ambiente isolado, resetados diariamente. Não afeta o sistema real.
-              </p>
-            </div>
-          </motion.div>
-        </section>
       </main>
 
       {/* Footer */}

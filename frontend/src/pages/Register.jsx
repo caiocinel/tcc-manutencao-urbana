@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/toast-context';
 import { api } from '../services/api';
-import SearchableSelect from '../components/ui/searchable-select';
+import GoogleButton from '../components/GoogleButton';
 
 export default function Register() {
   const { login, isAuthenticated, loading: authLoading } = useAuth();
@@ -14,54 +14,24 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
-  const [cpf, setCpf] = useState('');
-  const [municipioId, setMunicipioId] = useState('');
-  const [municipios, setMunicipios] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const municipioOptions = municipios.map(m => ({ value: m.codigo, label: m.nome, group: m.uf_sigla }));
-
   useEffect(() => {
     if (!authLoading && isAuthenticated) navigate('/mapa');
-    api.getMunicipiosComAdmin().then(setMunicipios).catch(() => {});
   }, [isAuthenticated, authLoading, navigate]);
 
-  function formatCpf(val) {
-    const nums = val.replace(/\D/g, '').slice(0, 11);
-    return nums.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
-      || nums.replace(/^(\d{3})(\d{3})(\d{1,3})$/, '$1.$2.$3')
-      || nums.replace(/^(\d{3})(\d{1,3})$/, '$1.$2')
-      || nums;
-  }
-
-  function validarCpfDigitos(cpf) {
-    const nums = cpf.replace(/\D/g, '');
-    if (nums.length !== 11) return false;
-    if (/^(\d)\1{10}$/.test(nums)) return false;
-    let sum = 0;
-    for (let i = 0; i < 9; i++) sum += parseInt(nums[i]) * (10 - i);
-    let resto = (sum * 10) % 11;
-    if (resto === 10) resto = 0;
-    if (resto !== parseInt(nums[9])) return false;
-    sum = 0;
-    for (let i = 0; i < 10; i++) sum += parseInt(nums[i]) * (11 - i);
-    resto = (sum * 10) % 11;
-    if (resto === 10) resto = 0;
-    if (resto !== parseInt(nums[10])) return false;
-    return true;
-  }
+  // CPF e município são opcionais e ficam no perfil (ProfileSettings).
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    if (!nome || !email || !senha || !confirmarSenha || !cpf) { setError('Preencha todos os campos.'); return; }
+    if (!nome || !email || !senha || !confirmarSenha) { setError('Preencha todos os campos.'); return; }
     if (senha.length < 6) { setError('A senha deve ter no mínimo 6 caracteres.'); return; }
     if (senha !== confirmarSenha) { setError('Senhas não conferem.'); return; }
-    if (!validarCpfDigitos(cpf)) { setError('CPF inválido.'); return; }
     setLoading(true);
     try {
-      const res = await api.register(nome, email, senha, municipioId || undefined, cpf.replace(/\D/g, ''));
+      const res = await api.register(nome, email, senha);
       login(res);
       addToast('Conta criada com sucesso!');
       navigate('/mapa');
@@ -100,19 +70,6 @@ export default function Register() {
               onBlur={e => e.target.style.borderColor = 'var(--color-border-default)'} placeholder="seu@email.com" />
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="reg-cpf" className="text-xs uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>CPF <span style={{ color: 'var(--color-error)' }}>*</span></label>
-            <input id="reg-cpf" type="text" value={cpf} onChange={e => setCpf(formatCpf(e.target.value))}
-              className={fieldStyle}
-              style={{ borderColor: 'var(--color-border-default)' }}
-              onFocus={e => e.target.style.borderColor = 'var(--color-gold-500)'}
-              onBlur={e => e.target.style.borderColor = 'var(--color-border-default)'} placeholder="000.000.000-00" maxLength={14} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="reg-municipio" className="text-xs uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>Município</label>
-            <SearchableSelect options={municipioOptions} value={municipioId} onChange={setMunicipioId}
-              placeholder="Selecione um município" />
-          </div>
-          <div className="flex flex-col gap-1">
             <label htmlFor="reg-senha" className="text-xs uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>Senha</label>
             <input id="reg-senha" type="password" value={senha} onChange={e => setSenha(e.target.value)}
               className={fieldStyle}
@@ -134,6 +91,7 @@ export default function Register() {
             style={{ background: 'var(--color-gold-500)', color: 'var(--color-text-inverse)' }}>
             {loading ? 'Cadastrando...' : 'Cadastrar'}
           </button>
+          <GoogleButton texto="signup_with" />
           <div className="text-center mt-4">
             <Link to="/login" className="text-sm transition-colors hover:underline" style={{ color: 'var(--color-text-secondary)' }}>
               Já tem conta? Faça login

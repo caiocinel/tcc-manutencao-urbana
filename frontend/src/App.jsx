@@ -10,7 +10,6 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { useKeyboardNav } from './hooks/useKeyboardNav';
 import UserDropdown from './components/ui/user-dropdown';
 import { CommandMenu } from './components/ui/command-menu';
-import DemoBanner from './components/ui/DemoBanner';
 import SyncIndicator from './components/ui/sync-indicator';
 import './styles/tokens.css';
 import './styles/globals.css';
@@ -18,6 +17,7 @@ import './styles/globals.css';
 const Landing = lazy(() => import('./pages/Landing'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
+const EscolherNome = lazy(() => import('./pages/EscolherNome'));
 const MapPage = lazy(() => import('./pages/MapPage'));
 const DefectList = lazy(() => import('./pages/DefectList'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -137,7 +137,6 @@ function AppLayout() {
 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--color-bg-primary)' }}>
-      <DemoBanner />
       {shouldRenderHeader && (
         <AppHeader
           theme={theme}
@@ -153,6 +152,7 @@ function AppLayout() {
             <Route path="/mapa" element={<div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}><MapPage /></div>} />
             <Route path="/login" element={<AnimatedRoute><Login /></AnimatedRoute>} />
             <Route path="/registro" element={<AnimatedRoute><Register /></AnimatedRoute>} />
+            <Route path="/escolher-nome" element={<ProtectedRoute><AnimatedRoute><EscolherNome /></AnimatedRoute></ProtectedRoute>} />
             <Route path="/lista" element={<ProtectedRoute><AnimatedRoute><DefectList /></AnimatedRoute></ProtectedRoute>} />
             <Route path="/config" element={<ProtectedRoute><AnimatedRoute><Settings /></AnimatedRoute></ProtectedRoute>} />
             <Route path="/conta" element={<ProtectedRoute><AnimatedRoute><ProfileSettings /></AnimatedRoute></ProtectedRoute>} />

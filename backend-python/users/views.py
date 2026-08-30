@@ -12,6 +12,31 @@ from .models import User, PushSubscription
 from services.email_service import send_verification_code
 
 
+def verificar_id_token_google(token):
+    """Valida o ID token do Google e devolve as claims.
+
+    Levanta ValueError com mensagem legível quando o token é inválido, expirado
+    ou foi emitido para outro app (audience fora de GOOGLE_CLIENT_IDS).
+    Isolado numa função para os testes poderem substituí-la.
+    """
+    from google.auth.exceptions import GoogleAuthError
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token as google_id_token
+
+    aceitos = [cid for cid in settings.GOOGLE_CLIENT_IDS.values() if cid]
+    if not aceitos:
+        raise ValueError('Login com Google não está configurado')
+    try:
+        claims = google_id_token.verify_oauth2_token(token, google_requests.Request())
+    except (ValueError, GoogleAuthError) as exc:
+        raise ValueError('Token do Google inválido ou expirado') from exc
+    if claims.get('aud') not in aceitos:
+        raise ValueError('Token do Google emitido para outro aplicativo')
+    if claims.get('iss') not in ('accounts.google.com', 'https://accounts.google.com'):
+        raise ValueError('Emissor do token inválido')
+    return claims
+
+
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
@@ -39,6 +64,62 @@ class RegisterView(generics.CreateAPIView):
         }, status=status.HTTP_201_CREATED)
 
 
+class GoogleLoginView(APIView):
+    """Entrar com Google.
+
+    GET  -> client IDs por plataforma (o app/web usa para iniciar o fluxo).
+    POST -> {id_token}: valida o token, cria o usuário na primeira vez (e-mail
+            já verificado pelo Google, sem senha) ou vincula à conta existente
+            com o mesmo e-mail, e devolve o mesmo JWT do login comum mais
+            `novo` (True quando a conta acabou de ser criada — o cliente então
+            pede o nome de exibição).
+    """
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        return Response(settings.GOOGLE_CLIENT_IDS)
+
+    def post(self, request):
+        token = request.data.get('id_token')
+        if not token:
+            return Response({'detail': 'id_token é obrigatório'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            claims = verificar_id_token_google(token)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+
+        email = (claims.get('email') or '').strip().lower()
+        if not email or not claims.get('email_verified'):
+            return Response(
+                {'detail': 'A conta Google precisa ter e-mail verificado'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        user = User.objects.filter(email__iexact=email).first()
+        novo = user is None
+        if novo:
+            nome = (claims.get('name') or email.split('@')[0]).strip()[:255]
+            user = User(email=email, nome=nome, email_verified=1)
+            # Sem senha: o login por e-mail/senha fica indisponível para esta conta.
+            user.set_unusable_password()
+            user.save()
+        elif not user.email_verified:
+            # O Google já atestou o e-mail; dispensa o código 2FA pendente.
+            user.email_verified = 1
+            user.codigo_2fa = None
+            user.codigo_2fa_expira = None
+            user.save(update_fields=['email_verified', 'codigo_2fa', 'codigo_2fa_expira'])
+
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'user': UserSerializer(user).data,
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'novo': novo,
+        }, status=status.HTTP_201_CREATED if novo else status.HTTP_200_OK)
+
+
 class LoginView(TokenObtainPairView):
     permission_classes = (permissions.AllowAny,)
 
@@ -63,6 +144,21 @@ class LoginView(TokenObtainPairView):
 
 class RefreshView(TokenRefreshView):
     permission_classes = (permissions.AllowAny,)
+
+    def post(self, request, *args, **kwargs):
+        # O simplejwt renova pelo assinado do token sem olhar o banco; se a
+        # conta sumiu (apagada, ou token de um banco antigo) o cliente ficaria
+        # num loop de 401 com refresh "válido". Aqui a renovação exige o usuário.
+        from rest_framework_simplejwt.exceptions import TokenError
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        try:
+            user_id = RefreshToken(request.data.get('refresh', ''))[settings.SIMPLE_JWT.get('USER_ID_CLAIM', 'user_id')]
+        except (TokenError, KeyError):
+            return Response({'detail': 'Sessão expirada'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not User.objects.filter(pk=user_id).exists():
+            return Response({'detail': 'Usuário não encontrado'}, status=status.HTTP_401_UNAUTHORIZED)
+        return super().post(request, *args, **kwargs)
 
 
 class ProfileView(generics.RetrieveUpdateAPIView):
@@ -305,16 +401,16 @@ class AdminEstatisticasView(APIView):
                 {'error': 'Acesso negado'},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        super_admin_email = getattr(settings, 'SUPER_ADMIN_EMAIL', None)
+        # Operador vinculado a um municipio ve as estatisticas da cidade dele,
+        # pelo municipio em que o chamado caiu (d.municipio_id), nao pelo do
+        # autor. Admin sem vinculo (gestao) ve o agregado geral.
         user = request.user
-        is_mun_admin = bool(
-            super_admin_email and user.email != super_admin_email and user.municipio_id
-        )
-        mun_join = ' INNER JOIN users u ON u.id = d.usuario' if is_mun_admin else ''
-        mun_where = ' WHERE u.municipio_id = %s' if is_mun_admin else ''
-        mun_where_and = ' WHERE u.municipio_id = %s AND' if is_mun_admin else ' WHERE'
+        is_mun_admin = bool(user.municipio_id)
+        mun_join = ''
+        mun_where = ' WHERE d.municipio_id = %s' if is_mun_admin else ''
+        mun_where_and = ' WHERE d.municipio_id = %s AND' if is_mun_admin else ' WHERE'
         mun_params = [user.municipio_id] if is_mun_admin else []
-        from_clause = 'FROM defeitos d' + mun_join + (mun_where if is_mun_admin else ' WHERE 1=1')
+        from_clause = 'FROM defeitos d' + (mun_where if is_mun_admin else ' WHERE 1=1')
 
         with connection.cursor() as cursor:
             cursor.execute(f'SELECT COUNT(*) {from_clause}', mun_params)
@@ -335,7 +431,7 @@ class AdminEstatisticasView(APIView):
             resolvidos = sum(s['total'] for s in por_status if s['status'] in resolvidos_status)
             resolucao_rate = min(round((resolvidos / total) * 100), 100) if total > 0 else 0
 
-            sla_join = ' INNER JOIN users u ON u.id = d.usuario WHERE d.status IN (%s,%s)' + (' AND u.municipio_id = %s' if is_mun_admin else '')
+            sla_join = ' WHERE d.status IN (%s,%s)' + (' AND d.municipio_id = %s' if is_mun_admin else '')
             sla_params = ['atendido', 'encerrado'] + (mun_params if is_mun_admin else [])
             cursor.execute(f'''
                 SELECT AVG(
@@ -432,8 +528,7 @@ class AdminEstatisticasView(APIView):
                     AVG(EXTRACT(EPOCH FROM (COALESCE(d.atendido_em::timestamp, d.atualizado_em::timestamp) - d.criado_em::timestamp)) / 60),
                     COUNT(*)
                 FROM defeitos d
-                INNER JOIN users u ON u.id = d.usuario
-                WHERE d.status IN ('atendido', 'encerrado'){' AND u.municipio_id = %s' if is_mun_admin else ''}
+                WHERE d.status IN ('atendido', 'encerrado'){' AND d.municipio_id = %s' if is_mun_admin else ''}
                 GROUP BY d.categoria
                 ORDER BY 2 DESC
             ''', mun_params)

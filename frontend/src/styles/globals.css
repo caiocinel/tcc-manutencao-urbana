@@ -75,6 +75,9 @@
 .defect-dot { background: none !important; border: none !important; }
 .map-flag-icon { background: none !important; border: none !important; }
 
+/* Tiles OSM em tema escuro: inverte e gira o matiz (OSM não tem variante dark sem chave). */
+.tiles-escuro { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6); }
+
 /* Modo de criacao: moldura dourada delimita a area onde o toque vale como ponto. */
 .map-shell--creating .leaflet-container,
 .map-shell--creating .leaflet-container .leaflet-grab { cursor: crosshair; }

@@ -36,7 +36,6 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'core.middleware.DemoModeMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -46,8 +45,6 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-
-DATABASE_ROUTERS = ['core.db_router.DemoRouter']
 
 ROOT_URLCONF = 'core.urls'
 
@@ -116,6 +113,15 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
+# Login com Google (OAuth / OpenID Connect). Um client ID por plataforma; o
+# backend aceita ID tokens emitidos para qualquer um deles e entrega os IDs aos
+# clientes em GET /api/v1/auth/google/ (assim só o .env do backend os conhece).
+GOOGLE_CLIENT_IDS = {
+    'web': os.environ.get('GOOGLE_CLIENT_ID_WEB', ''),
+    'android': os.environ.get('GOOGLE_CLIENT_ID_ANDROID', ''),
+    'ios': os.environ.get('GOOGLE_CLIENT_ID_IOS', ''),
+}
+
 # CSRF settings for JWT-based SPA (Double Submit Cookie pattern)
 CSRF_USE_SESSIONS = False
 CSRF_COOKIE_HTTPONLY = False
@@ -143,6 +149,8 @@ CACHES = {
 PRIVACY_BLUR_SIGMA = float(os.environ.get('PRIVACY_BLUR_SIGMA', '0.6'))
 PERIMETER_BUFFER_DEG = float(os.environ.get('PERIMETER_BUFFER_DEG', '0.01'))
 DUPLICATE_RADIUS_M = float(os.environ.get('DUPLICATE_RADIUS_M', '50'))
+# Regra dura: mesma categoria, chamado ainda aberto, a menos de N metros -> 409.
+DUPLICATE_CATEGORY_RADIUS_M = float(os.environ.get('DUPLICATE_CATEGORY_RADIUS_M', '10'))
 DUPLICATE_SIMILARITY_THRESHOLD = float(os.environ.get('DUPLICATE_SIMILARITY_THRESHOLD', '0.75'))
 VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
 _vapid_priv = os.environ.get('VAPID_PRIVATE_KEY', '')

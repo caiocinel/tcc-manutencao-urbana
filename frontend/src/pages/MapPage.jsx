@@ -13,35 +13,22 @@ import { CommandMenu } from '../components/ui/command-menu';
 import { useTheme } from '../context/ThemeContext';
 import { createPlacementPinIcon, createDefectIcon, createOpenCallIcon } from '../utils/map-markers';
 import { getTimelineItems } from '../utils/timeline';
-import { getInitialHeatmapState, filterByRadius } from '../utils/map-heatmap';
+import { filterByRadius } from '../utils/map-heatmap';
 import { Timeline } from '../components/ui/timeline';
 import HeatmapLayer from '../components/HeatmapLayer';
 import SyncIndicator from '../components/ui/sync-indicator';
 
-const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-const LIGHT_TILES = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+// OSM não exige chave (Carto passou a exigir); tema escuro = filtro CSS `.tiles-escuro`.
+const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILES_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 const BRAZIL_BOUNDS = [[-33.75, -73.99], [5.27, -28.85]];
 
-function pointInPolygon(point, vs) {
-  const [x, y] = point;
-  let inside = false;
-  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-    const [xi, yi] = vs[i], [xj, yj] = vs[j];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-
-function MapClickHandler({ creatingRef, promptRef, polygonCoordsRef, setCoords, setShowForm, addToast }) {
+function MapClickHandler({ creatingRef, promptRef, setCoords, setShowForm }) {
   useMapEvents({
     click(e) {
       if (!creatingRef.current) return;
-      const point = [e.latlng.lng, e.latlng.lat];
-      const dentro = !polygonCoordsRef.current || pointInPolygon(point, polygonCoordsRef.current);
-      if (!dentro) {
-        addToast('Localização fora do perímetro municipal.', 'error');
-        return;
-      }
+      // Qualquer cidade vale: em qual município o ponto caiu é o backend que
+      // resolve (PostGIS) e grava no chamado.
       setCoords({ lat: e.latlng.lat, lng: e.latlng.lng });
       // com o balão "Abrir Chamado" na tela, o toque apenas reposiciona o alfinete
       if (promptRef.current) return;
@@ -59,7 +46,7 @@ function isInteractiveTarget(target) {
 }
 
 // Pressionar e segurar (touch) ou botão direito (desktop) sobre o mapa abre o fluxo de novo chamado.
-function MapQuickAddHandler({ polygonCoordsRef, onQuickAdd }) {
+function MapQuickAddHandler({ onQuickAdd }) {
   const map = useMap();
   const onQuickAddRef = useRef(onQuickAdd);
   useEffect(() => { onQuickAddRef.current = onQuickAdd; }, [onQuickAdd]);
@@ -77,8 +64,7 @@ function MapQuickAddHandler({ polygonCoordsRef, onQuickAdd }) {
 
     const trigger = (clientX, clientY, viaTouch) => {
       const latlng = map.mouseEventToLatLng({ clientX, clientY });
-      const dentro = !polygonCoordsRef.current || pointInPolygon([latlng.lng, latlng.lat], polygonCoordsRef.current);
-      onQuickAddRef.current({ lat: latlng.lat, lng: latlng.lng, x: clientX, y: clientY, viaTouch, dentro });
+      onQuickAddRef.current({ lat: latlng.lat, lng: latlng.lng, x: clientX, y: clientY, viaTouch });
     };
 
     const onTouchStart = (ev) => {
@@ -121,7 +107,7 @@ function MapQuickAddHandler({ polygonCoordsRef, onQuickAdd }) {
       container.removeEventListener('touchcancel', cancel);
       container.removeEventListener('contextmenu', onContextMenu);
     };
-  }, [map, polygonCoordsRef]);
+  }, [map]);
 
   return null;
 }
@@ -231,13 +217,13 @@ function QuickAddPopover({ position, coords, formData, setFormData, categorias, 
 }
 
 export default function MapPage() {
-  const { isAuthenticated, user, isDemoMode } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const addToast = useToast();
   const mapRef = useRef(null);
   const [defeitos, setDefeitos] = useState([]);
   const [filtro, setFiltro] = useState('todos');
-  const [heatmap, setHeatmap] = useState(() => getInitialHeatmapState(isDemoMode));
+  const [heatmap, setHeatmap] = useState(true);
   const [pertoDeMim, setPertoDeMim] = useState(null); // { ativo, lat, lng, raio }
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -257,16 +243,12 @@ export default function MapPage() {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [categorias, setCategorias] = useState([]);
   const [polygonCoords, setPolygonCoords] = useState(null);
-  const polygonCoordsRef = useRef(null);
-  useEffect(() => { polygonCoordsRef.current = polygonCoords; }, [polygonCoords]);
   const [atendendo, setAtendendo] = useState(null);
   const [apoiando, setApoiando] = useState(null);
   const [apoiei, setApoiei] = useState(new Set());
   const [selectedImage, setSelectedImage] = useState(null);
   const anexarRef = useRef(null);
   const [anexando, setAnexando] = useState(null);
-  const [fotoResolucao, setFotoResolucao] = useState(null);
-  const fotoResolucaoRef = useRef(null);
   const [finalizando, setFinalizando] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const { theme, toggle: toggleTheme } = useTheme();
@@ -340,7 +322,6 @@ export default function MapPage() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    setFotoResolucao(null);
   }, [selected]);
 
   useEffect(() => {
@@ -400,6 +381,10 @@ export default function MapPage() {
       addToast('Selecione uma categoria.', 'error');
       return;
     }
+    if (!file) {
+      addToast('Tire uma foto do problema para abrir o chamado.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       const fd = new FormData();
@@ -410,7 +395,7 @@ export default function MapPage() {
       fd.append('bairro', formData.bairro);
       fd.append('latitude', coords.lat);
       fd.append('longitude', coords.lng);
-      if (file) fd.append('imagem', file);
+      fd.append('imagem', file);
       await api.createDefeito(fd);
       addToast('Chamado criado com sucesso!');
       setShowForm(false);
@@ -465,24 +450,17 @@ export default function MapPage() {
 
   const handleFinalizarMap = useCallback(async (id, e) => {
     e?.stopPropagation();
-    const file = fotoResolucao;
-    if (!file) {
-      addToast('Selecione a foto de resolução antes de finalizar.', 'error');
-      return;
-    }
     setFinalizando(id);
     try {
       const fd = new FormData();
       fd.append('status', 'atendido');
-      fd.append('foto_resolucao', file);
       await api.updateDefeitoComArquivo(id, fd);
       addToast('Chamado finalizado!');
       setSelected(prev => prev?.id === id ? { ...prev, status: 'atendido' } : prev);
       setDefeitos(prev => prev.map(d => d.id === id ? { ...d, status: 'atendido' } : d));
-      setFotoResolucao(null);
     } catch (err) { addToast('Erro: ' + err.message, 'error'); }
     finally { setFinalizando(null); }
-  }, [addToast, fotoResolucao]);
+  }, [addToast]);
 
   const fecharCriacao = useCallback(() => {
     setQuickAdd(null);
@@ -505,15 +483,12 @@ export default function MapPage() {
     setShowForm(true);
   }, []);
 
-  const handleQuickAdd = useCallback(({ lat, lng, x, y, viaTouch, dentro }) => {
+  const handleQuickAdd = useCallback(({ lat, lng, x, y, viaTouch }) => {
     if (!isAuthenticated) {
       addToast('Faça login para registrar um chamado.', 'error');
       return;
     }
-    if (!dentro) {
-      addToast('Localização fora do perímetro municipal.', 'error');
-      return;
-    }
+    // Qualquer cidade vale: o município do chamado é resolvido pelo backend (PostGIS).
     setCreating(true);
     setCoords({ lat, lng });
     if (viaTouch) {
@@ -625,16 +600,14 @@ export default function MapPage() {
           maxBoundsViscosity={1.0}
           zoomControl={true}
           whenReady={handleMapReady}>
-          <TileLayer url={theme === 'dark' ? DARK_TILES : LIGHT_TILES} noWrap />
+          <TileLayer url={TILES} attribution={TILES_ATTR} className={theme === 'dark' ? 'tiles-escuro' : undefined} noWrap />
           <MapClickHandler
             creatingRef={creatingRef}
             promptRef={openCallPromptRef}
-            polygonCoordsRef={polygonCoordsRef}
             setCoords={setCoords}
             setShowForm={setShowForm}
-            addToast={addToast}
           />
-          <MapQuickAddHandler polygonCoordsRef={polygonCoordsRef} onQuickAdd={handleQuickAdd} />
+          <MapQuickAddHandler onQuickAdd={handleQuickAdd} />
           {coords && !openCallPrompt && (
             <Marker position={[coords.lat, coords.lng]} icon={createPlacementPinIcon()} />
           )}
@@ -830,8 +803,9 @@ export default function MapPage() {
                   style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}
                   onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-gold-500)'}
                   onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--color-border-default)'}>
-                  <Camera size={16} /> {file ? file.name.slice(0, 20) : 'Foto'}
-                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                  <Camera size={16} /> {file ? file.name.slice(0, 20) : 'Foto (obrigatória)'}
+                  {/* `capture` abre a câmera direto no celular; no desktop o navegador ignora e abre o seletor. */}
+                  <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
                     onChange={e => setFile(e.target.files?.[0] || null)} />
                 </label>
                 <span className="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>{coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}</span>
@@ -908,14 +882,11 @@ export default function MapPage() {
                   </button>
                 )}
                 {user?.admin && selected.atendente_id && ['vinculado_sem_resposta','vinculado_com_resposta'].includes(selected.status) && (
-                  <button onClick={e => fotoResolucao ? handleFinalizarMap(selected.id, e) : fotoResolucaoRef.current?.click()} disabled={finalizando === selected.id}
+                  <button onClick={e => handleFinalizarMap(selected.id, e)} disabled={finalizando === selected.id}
                     className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
                     style={{ background: 'var(--color-error)', color: '#fff' }}>
                     {finalizando === selected.id ? '...' : 'Finalizar'}
                   </button>
-                )}
-                {fotoResolucao && (
-                  <span className="text-xs truncate max-w-[120px]" style={{ color: 'var(--color-text-muted)' }}>{fotoResolucao?.name}</span>
                 )}
                 <button onClick={() => handleApoiar(selected.id)} disabled={apoiando === selected.id}
                   className="flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
@@ -950,8 +921,6 @@ export default function MapPage() {
                     } catch (err) { addToast('Erro: ' + err.message, 'error'); }
                     finally { setAnexando(null); e.target.value = ''; }
                   }} />
-                <input ref={fotoResolucaoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
-                  onChange={e => { setFotoResolucao(e.target.files?.[0] || null); e.target.value = ''; }} />
               </div>
             </motion.div>
           </div>

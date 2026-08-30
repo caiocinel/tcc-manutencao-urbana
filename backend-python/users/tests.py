@@ -1,7 +1,10 @@
 import uuid
 
 import pytest
+from conftest import CIDADE_TESTES
 from django.urls import reverse
+
+from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -373,6 +376,7 @@ class TestAdminEstatisticas:
 
         now = timezone.now()
         Defeito.objects.create(
+            municipio_id=CIDADE_TESTES,
             titulo='SLA Vencido',
             criado_em=now - timedelta(days=10),
             atualizado_em=now - timedelta(days=10),
@@ -380,6 +384,7 @@ class TestAdminEstatisticas:
             status='pendente',
         )
         Defeito.objects.create(
+            municipio_id=CIDADE_TESTES,
             titulo='Dentro do SLA',
             criado_em=now,
             atualizado_em=now,
@@ -406,6 +411,7 @@ class TestAdminEstatisticas:
         now = timezone.now()
         for i in range(60):
             Defeito.objects.create(
+            municipio_id=CIDADE_TESTES,
                 titulo=f'SLA Vencido Mass {i}',
                 criado_em=now - timedelta(days=10),
                 atualizado_em=now - timedelta(days=10),
@@ -464,3 +470,89 @@ class TestPublicKey:
     def test_not_configured(self, client):
         resp = client.get(reverse(self.URL))
         assert resp.status_code == 501
+
+
+@pytest.mark.django_db
+class TestGoogleLogin:
+    URL = 'auth-google'
+
+    CLAIMS = {
+        'aud': 'web-client-id',
+        'iss': 'https://accounts.google.com',
+        'sub': '1234567890',
+        'email': 'Pessoa@Gmail.com',
+        'email_verified': True,
+        'name': 'Pessoa do Google',
+    }
+
+    @pytest.fixture(autouse=True)
+    def _google(self, monkeypatch, settings):
+        settings.GOOGLE_CLIENT_IDS = {'web': 'web-client-id', 'android': '', 'ios': ''}
+        self.claims = dict(self.CLAIMS)
+
+        def fake(token):
+            if token != 'token-valido':
+                raise ValueError('Token do Google inválido ou expirado')
+            return self.claims
+
+        monkeypatch.setattr('users.views.verificar_id_token_google', fake)
+
+    def test_config_lists_client_ids(self, client):
+        resp = client.get(reverse(self.URL))
+        assert resp.status_code == 200
+        assert resp.data['web'] == 'web-client-id'
+
+    def test_creates_user_first_time(self, client):
+        resp = client.post(reverse(self.URL), {'id_token': 'token-valido'}, format='json')
+        assert resp.status_code == 201
+        assert resp.data['novo'] is True
+        assert 'access' in resp.data and 'refresh' in resp.data
+        assert resp.data['user']['email'] == 'pessoa@gmail.com'
+        assert resp.data['user']['nome'] == 'Pessoa do Google'
+        user = User.objects.get(email='pessoa@gmail.com')
+        assert user.email_verified == 1
+        assert not user.has_usable_password()
+
+    def test_links_existing_account_by_email(self, client, user_creds):
+        client.post(reverse('auth-register'), {**user_creds, 'confirm_password': user_creds['password']}, format='json')
+        self.claims['email'] = user_creds['email'].upper()
+        resp = client.post(reverse(self.URL), {'id_token': 'token-valido'}, format='json')
+        assert resp.status_code == 200
+        assert resp.data['novo'] is False
+        assert User.objects.filter(email__iexact=user_creds['email']).count() == 1
+        # A verificação pendente por código é dispensada: o Google atestou o e-mail.
+        assert User.objects.get(email__iexact=user_creds['email']).email_verified == 1
+
+    def test_rejects_invalid_token(self, client):
+        resp = client.post(reverse(self.URL), {'id_token': 'qualquer'}, format='json')
+        assert resp.status_code == 401
+
+    def test_rejects_unverified_google_email(self, client):
+        self.claims['email_verified'] = False
+        resp = client.post(reverse(self.URL), {'id_token': 'token-valido'}, format='json')
+        assert resp.status_code == 401
+        assert not User.objects.filter(email='pessoa@gmail.com').exists()
+
+    def test_requires_token(self, client):
+        resp = client.post(reverse(self.URL), {}, format='json')
+        assert resp.status_code == 400
+
+
+class TestRefreshExigeUsuario:
+    def test_refresh_de_conta_apagada_da_401(self, client):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        uid = uuid.uuid4().hex[:8]
+        user = User.objects.create_user(email=f'sumiu-{uid}@example.com', nome='Sumiu', password='Test@123456')
+        refresh = str(RefreshToken.for_user(user))
+        user.delete()
+        resp = client.post(reverse('auth-refresh'), {'refresh': refresh}, format='json')
+        assert resp.status_code == 401
+
+    def test_refresh_normal_continua_funcionando(self, client):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        uid = uuid.uuid4().hex[:8]
+        user = User.objects.create_user(email=f'vivo-{uid}@example.com', nome='Vivo', password='Test@123456')
+        refresh = str(RefreshToken.for_user(user))
+        resp = client.post(reverse('auth-refresh'), {'refresh': refresh}, format='json')
+        assert resp.status_code == 200
+        assert 'access' in resp.data
